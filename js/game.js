@@ -100,6 +100,8 @@ class Battle {
     this.time = 0; this.slowT = 0; this.zoom = null; this.lastBump = -1; this.over = false; this.winner = null; this.ended = false; this.endT = 0;
     this.shakeT = 0; this.shakeA = 0; this.hooks = hooks;
     this.stats = { lands: 0, shockHits: 0, knocks: 0 };
+    this.endType = null; this.resultText = null;
+    for (const h of STAGE_HOOKS) h.init && h.init(this); // 스테이지 확장 훅 (js/stages2.js)
   }
   enemy(u) { return this.u[1 - u.team]; }
   // ---------- 대사 ----------
@@ -123,7 +125,9 @@ class Battle {
   }
   bubble(u, t) { return; this.texts.push({ x: u.x, y: u.y - 70 - u.pad * 2.2, txt: t, color: '#fff6dc', size: 8, t: 0, dur: 1.6, bubble: true, u }); }
   later(t, fn) { this.timers.push({ t, fn }); }
-  clampPos(x, y, pad = 0) {
+  clampPos(x, y, pad = 0, u = null) {
+    for (const h of STAGE_HOOKS) if (h.noClamp && u && h.noClamp(this, u)) return { x, y };
+    for (const h of STAGE_HOOKS) if (h.clamp) { const p = h.clamp(this, x, y, pad); x = p.x; y = p.y; }
     x = clamp(x, AR.x + 14 + pad, AR.x + AR.w - 14 - pad); y = clamp(y, AR.y + 26 + pad, AR.y + AR.h - 8 - pad * 0.5);
     const C = this.stage && this.stage.circle;
     if (C) { const R = this.circleR() - 12 - pad, dx = x - C.cx, dy = y - C.cy, d = Math.hypot(dx, dy); if (d > R) { x = C.cx + dx / d * R; y = C.cy + dy / d * R; } }
@@ -254,6 +258,7 @@ class Battle {
     this.collide(this.u[0], this.u[1]);
     for (const u of this.u) { this.updateAir(u, dt); if (!u.airborne) this.resolveBuildings(u); this.circleWall(u); if (!u.airborne) this.updateTerrain(u, dt); }
     this.updateBalls(dt);
+    for (const h of STAGE_HOOKS) h.step && h.step(this, dt);
     for (const bl of this.buildings) bl.hitT = Math.max(0, bl.hitT - dt);
     this.updateProj(dt);
     for (const p of this.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= 1 - 2 * dt; }
@@ -284,7 +289,7 @@ class Battle {
     if (u.counter) { u.counter.t -= dt; if (u.counter.t <= 0) { u.counter = null; if (!u.dead) { this.resEvent(u, 'counterFail'); this.text(u.x, u.y - 60, '+매듭', '#ffb070', 8); } } }
     if (u.pull && !u.dead) { // 와이어에 끌려감
       const P = u.pull, s = P.src, R = 15 * ((u.def.size || 1) + (s.def.size || 1)) + 4, d = dist(u, s);
-      P.t -= dt; if (d > R) { const k = Math.min(d - R, 640 * dt); u.x += (s.x - u.x) / d * k; u.y += (s.y - u.y) / d * k; const p = this.clampPos(u.x, u.y, u.pad); u.x = p.x; u.y = p.y; }
+      P.t -= dt; if (d > R) { const k = Math.min(d - R, 640 * dt); u.x += (s.x - u.x) / d * k; u.y += (s.y - u.y) / d * k; const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
       if (P.t <= 0 || d <= R) u.pull = null;
     }
     { // 격투게임식 방향: 상대 위치 기준 (히스테리시스)
@@ -402,6 +407,7 @@ class Battle {
     if (u.dead) return;
     if (u.air) {
       u.air.t += dt;
+      if (u.air.fling) { const F = u.air.fling, k = easeInOut(clamp(u.air.t / u.air.dur, 0, 1)); u.x = F.x0 + (F.x1 - F.x0) * k; u.y = F.y0 + (F.y1 - F.y0) * k; }
       if (u.air.t >= u.air.dur) { u.air = null; u.padCd = this.time; this.landShock(u); }
       return;
     }
@@ -512,7 +518,7 @@ class Battle {
           }
         }
       }
-      const p = this.clampPos(u.x, u.y, u.pad); u.x = p.x; u.y = p.y;
+      const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y;
       if (!any) break;
     }
   }
@@ -568,6 +574,7 @@ class Battle {
   }
 
   bounceWalls(u) {
+    for (const h of STAGE_HOOKS) if (h.noClamp && h.noClamp(this, u)) return;
     const pd = u.pad, L = AR.x + 14 + pd, R = AR.x + AR.w - 14 - pd, T = AR.y + 26 + pd, B = AR.y + AR.h - 8 - pd * 0.5;
     let vx = Math.cos(u.dir), vy = Math.sin(u.dir), hit = false;
     const sides = [];
@@ -618,7 +625,7 @@ class Battle {
     a.kx -= nx * 5; a.ky -= ny * 5; b.kx += nx * 5; b.ky += ny * 5;
     a.boost = Math.max(a.boost, 0.45); b.boost = Math.max(b.boost, 0.45); // 충돌 직후 가속
     if (impact > 420) this.shake(1.5);
-    for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad); u.x = p.x; u.y = p.y; }
+    for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
     // 충돌 타격: 근접 캐릭터는 부딪히는 순간 공격 쿨이 거의 찼으면 즉시 공격
     for (const [u, e] of [[a, b], [b, a]]) {
       if (u.st.range < 80 && !u.stun && !u.action && u.atkT < 0.5 / u.atkRate) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
@@ -1041,6 +1048,7 @@ const Render = (() => {
       x.fillStyle = 'rgba(0,0,0,0.08)'; x.fillRect(px, py + T - 1, T, 1);
       if (((i * 7 + j * 13) % 5) === 0) { x.fillStyle = 'rgba(0,0,0,0.12)'; x.fillRect(px + 6 + (i % 3) * 4, py + 8 + (j % 3) * 3, 2, 2); }
     }
+    for (const h of STAGE_HOOKS) h.floor && h.floor(x, st);
     if (st.theme === 'island') paintIsland(x, st);
     if (st.theme === 'city') paintCity(x, st);
     if (st.theme === 'ball') { x.fillStyle = '#1c1a24'; x.fillRect(AR.x, AR.y, AR.w, AR.h); x.fillStyle = '#24212e'; for (let j = 0; j < AR.h; j += 8) for (let i = (j / 8) % 2 * 8; i < AR.w; i += 16) x.fillRect(AR.x + i, AR.y + j, 8, 8); }
@@ -1290,6 +1298,7 @@ const Render = (() => {
     (st.buildings || []).forEach((b, i) => drawBuilding(t, makeBuilding(b, i)));
     if (st.circle) drawCapsule(t, st.circle, st.circle.r0, st.circle.r0, st.circle.r0, 0);
     if (st.iceWalls || st.pads) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); if (st.iceWalls) drawIceWalls(t, fake); if (st.pads) drawPads(t, fake, 0); }
+    if (STAGE_HOOKS.some(h => h.drawUnder && h.match(st))) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(t, fake, true); }
     if (st.balls) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); drawBalls(t, fake.balls); }
     x.imageSmoothingEnabled = true; x.drawImage(tmp, AR.x, AR.y, AR.w, AR.h, 0, 0, 112, 136);
     return c.toDataURL();
@@ -1331,6 +1340,7 @@ const Render = (() => {
   }
 
   function drawUnit(ctx, u, b) {
+    if (u.hidden) return;
     let s = Sprites.get(u.def);
     if (s.back && u.lookUp) s = s.back; // 상대보다 아래에 있으면 뒷모습
     const sx = spriteSX(u.def, !!(s.back === undefined && u.lookUp && Sprites.get(u.def).back), u.facing);
@@ -1368,6 +1378,7 @@ const Render = (() => {
     let rot = 0;
     if (u.swing > 0 && !frozen) rot = Math.sin((u.swing / 0.2) * Math.PI) * 0.25;
     if (u.dead && !F) rot = Math.min(1, u.deadT * 3) * 1.4;
+    if (u.air && u.air.spin) rot = u.air.t * 16; // 튕겨나가며 회전
     const kn = !u.dead && u.statuses.find(s => s.knock); // 넘어짐 (충격파 기절)
     if (kn) { const el = kn.dur - kn.t, up = kn.t; rot = (u.knockSide || 1) * sx * Math.PI / 2 * Math.min(1, el * 8, up * 6); ctx.translate(0, -2); }
     ctx.scale(sx, 1);
@@ -1655,6 +1666,7 @@ const Render = (() => {
     }
     if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA; ctx.translate(Math.round(rand(-k, k)), Math.round(rand(-k, k))); }
     ctx.drawImage(floors[sid], 0, 0);
+    for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
     for (const f of b.fx) drawFx(ctx, f, 0);
     drawWater(ctx, b);
     if (b.stage.circle) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
@@ -1675,6 +1687,7 @@ const Render = (() => {
       if (it.u) { drawUnit(ctx, it.u, b); drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); }
       else drawBuilding(ctx, it.bl);
     }
+    for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(ctx, b);
     for (const u of b.u) drawBarrier(ctx, u, b);
     for (const f of b.fx) { if (f.type === 'wire') drawWireFx(ctx, f, b); else if (f.type === 'garrote') drawGarrote(ctx, f, b); }
     for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
@@ -1717,5 +1730,5 @@ const Render = (() => {
     ctx.globalAlpha = 1;
     ctx.restore();
   }
-  return { draw, thumb };
+  return { draw, thumb, glowAt };
 })();

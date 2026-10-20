@@ -144,6 +144,7 @@
       frames[i].querySelector('img').src = Sprites.get(u.def).portrait;
       frames[i].querySelector('.nm').textContent = label(u);
       const rb = frames[i].querySelector('.resbars'); rb.innerHTML = ''; // 자원 바 (display: 'bar')
+      if (battle.race) rb.insertAdjacentHTML('beforeend', `<div class="resb lap" data-k="__lap" title="랩 진행" style="color:#f0f0f0"><div class="rf" style="background:repeating-linear-gradient(90deg,#f4f4f4 0 4px,#9aa0a8 4px 8px)"></div></div>`);
       for (const [k, R] of Object.entries(u.def.resources || {})) if (R.display === 'bar') rb.insertAdjacentHTML('beforeend', `<div class="resb" data-k="${k}" title="${R.name}" style="color:${R.color}"><div class="rf" style="background:${R.color}"></div></div>`);
     });
     window.__battle = battle;
@@ -151,9 +152,9 @@
   function showResult(w) {
     $('#winImg').src = Sprites.get(w.def).portrait;
     $('#winImg').style.borderColor = TEAM_COL[w.team];
-    const fl = battle.fallen;
-    $('#winTxt').textContent = fl ? `${label(fl)} 크레바스에 추락! ${label(w)} 승리!` : `${label(w)} 승리!`;
-    $('#winTxt').style.fontSize = fl ? '17px' : '';
+    const fl = battle.fallen, rt = battle.resultText && battle.resultText(label);
+    $('#winTxt').textContent = rt || (fl ? `${label(fl)} 크레바스에 추락! ${label(w)} 승리!` : `${label(w)} 승리!`);
+    $('#winTxt').style.fontSize = (fl || rt) ? '17px' : '';
     $('#winSub').textContent = `${STAGE_DEFS[stageId].name} · 전투 시간 ${battle.time.toFixed(1)}초 · 남은 체력 ${Math.ceil(w.hp)}/${w.maxHp}`;
     $('#result').classList.remove('hidden');
   }
@@ -177,7 +178,7 @@
       fill.style.backgroundColor = r > 0.5 ? '#6fd38a' : r > 0.2 ? '#f2c94c' : '#ef6b5b';
       f.querySelector('.lag').style.width = (lag[i] / u.maxHp * 100) + '%';
       f.querySelector('.hpnum').textContent = `${Math.ceil(u.hp)} / ${u.maxHp}`;
-      f.querySelectorAll('.resb').forEach(el => { const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
+      f.querySelectorAll('.resb').forEach(el => { if (el.dataset.k === '__lap') { el.firstChild.style.width = ((u.lap ? u.lap.prog : 0) * 100) + '%'; return; } const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
     });
     $('#timer').textContent = battle.time.toFixed(1) + 's';
   }
@@ -204,7 +205,7 @@
     simulate(a, b, maxT = 300, stage = 'arena') {
       const bt = new Battle(a, b, {}, stage); const dt = 1 / 60;
       while (!bt.over && bt.time < maxT) bt.update(dt);
-      return { stats: bt.stats, fell: !!bt.fallen, winner: bt.winner ? bt.winner.team : -1, time: bt.time, hpLeft: bt.winner ? bt.winner.hp / bt.winner.maxHp : 0 };
+      return { end: bt.endType || (bt.fallen ? 'fall' : bt.over ? 'ko' : 'timeout'), stats: bt.stats, fell: !!bt.fallen, winner: bt.winner ? bt.winner.team : -1, time: bt.time, hpLeft: bt.winner ? bt.winner.hp / bt.winner.maxHp : 0 };
     },
   };
 })();

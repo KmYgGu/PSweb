@@ -68,9 +68,28 @@ const STAGE_DEFS = {
     landShock: { r: 72, stun: 0.9, chance: 1 },
     spawns: [{ x: 90, y: 325 }, { x: 270, y: 325 }],
   },
+  race: {
+    name: '레이싱 코스', desc: '타원형 트랙. 시계 방향으로 한 바퀴 먼저 완주하면 체력과 상관없이 승리!', theme: 'race',
+    // race: 트랙 (타원 링). o = 바깥 벽, i = 안쪽 벽. sectors: 체크포인트 수 (시계 방향 순서대로 통과해야 인정)
+    race: { cx: 180, cy: 325, rxo: 160, ryo: 198, rxi: 104, ryi: 140, sectors: 8, bounceRnd: 1.5, tilt: true, tiltMax: 0.85, startAng: -Math.PI / 2 },
+    spawns: [{ x: 180, y: 160 }, { x: 180, y: 180 }], // 실제 위치는 출발선 직후 안/바깥 차선으로 재배치
+  },
+  subway: {
+    name: '지하철역', desc: '위아래 승강장, 가운데 선로. 열차에 치이면 날아가고, 열차 안에 남은 채 떠나면 탈락!', theme: 'subway',
+    // subway: platTop/platBot = 승강장 끝 y, train = 차량 { y, h, cars, carW, doors/windows(차량 내 x구간), stopX }
+    subway: {
+      platTop: 225, platBot: 425,
+      train: { y: 262, h: 126, cars: 4, carW: 120, stopX: -6, doors: [[36, 84]], windows: [[4, 30], [90, 116]], winHp: 45 },
+      firstT: 8, gap: [10, 14], warn: 1.8, arrive: 1.5, stop: 3.5, acc: 30, exitHint: 1.4, // exitHint: 문 닫히기 전 탑승자가 문 쪽으로 향하는 시간
+      hit: { dmg: 20, air: 0.9, height: 26 },
+    },
+    spawns: [{ x: 120, y: 175 }, { x: 240, y: 475 }],
+  },
   // 새 스테이지 예) 빙판: terrain: [{ id: 'ice', shape: { type: 'rect', x: 12, y: 120, w: 336, h: 410 }, spdMul: 1.3, resist: { fire: 1.2 } }]
 };
 const STAGE_RANDOM = 'random';
+// 스테이지 확장 훅: { match(st), init(b), step(b, dt), clamp(b, x, y, pad), noClamp(b, u), floor(ctx, st), drawUnder(ctx, b), drawOver(ctx, b) }
+const STAGE_HOOKS = [];
 
 function shapeContains(s, x, y) {
   if (s.type === 'rect') return x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h;
