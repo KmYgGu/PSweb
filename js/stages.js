@@ -69,9 +69,9 @@ const STAGE_DEFS = {
     spawns: [{ x: 90, y: 325 }, { x: 270, y: 325 }],
   },
   race: {
-    name: '레이싱 코스', desc: '타원형 트랙. 시계 방향으로 한 바퀴 먼저 완주하면 체력과 상관없이 승리!', theme: 'race',
-    // race: 트랙 (타원 링). o = 바깥 벽, i = 안쪽 벽. sectors: 체크포인트 수 (시계 방향 순서대로 통과해야 인정)
-    race: { cx: 180, cy: 325, rxo: 160, ryo: 198, rxi: 104, ryi: 140, sectors: 8, bounceRnd: 1.5, tilt: true, tiltMax: 0.85, startAng: -Math.PI / 2 },
+    name: '레이싱 코스', desc: '타원형 트랙(잔디는 감속). 시계 방향으로 한 바퀴 먼저 완주하면 체력과 상관없이 승리!', theme: 'race',
+    // race: 트랙 (타원 링, o/i = 바깥/안쪽 가장자리). 잔디도 이동 가능(grassSpd 배속), 벽은 경기장 외곽뿐. minR: 이 정규화 반경 미만(중앙)에선 랩 각도 미집계. sectors: 체크포인트 수 (시계 방향 순서대로 통과해야 인정)
+    race: { cx: 180, cy: 325, rxo: 160, ryo: 198, rxi: 104, ryi: 140, sectors: 8, grassSpd: 0.8, minR: 0.6, startAng: -Math.PI / 2 },
     spawns: [{ x: 180, y: 160 }, { x: 180, y: 180 }], // 실제 위치는 출발선 직후 안/바깥 차선으로 재배치
   },
   subway: {
@@ -79,7 +79,7 @@ const STAGE_DEFS = {
     // subway: platTop/platBot = 승강장 끝 y, train = 차량 { y, h, cars, carW, doors/windows(차량 내 x구간), stopX }
     subway: {
       platTop: 225, platBot: 425,
-      train: { y: 262, h: 126, cars: 4, carW: 120, stopX: -6, doors: [[36, 84]], windows: [[4, 30], [90, 116]], winHp: 45 },
+      train: { y: 262, h: 126, cars: 4, carW: 120, stopX: -6, doorsBySide: { top: [[66, 114], [234, 282]], bot: [[150, 198], [300, 348]] }, winW: 24, winGap: 10, winHp: 45 } /* 문 4개(위2·아래2, 열차 기준 x), 창문은 문을 피해 자동 배치 */,
       firstT: 8, gap: [10, 14], warn: 1.8, arrive: 1.5, stop: 3.5, acc: 30, exitHint: 1.4, // exitHint: 문 닫히기 전 탑승자가 문 쪽으로 향하는 시간
       hit: { dmg: 20, air: 0.9, height: 26 },
     },

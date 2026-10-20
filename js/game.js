@@ -74,7 +74,7 @@ class Unit {
   get stun() { return this.blocked('blocksAct'); }
   get airborne() { return !!this.air; } // 공중 상태 (트램펄린 등)
   mult(k) { let m = 1; for (const b of this.buffs) if (b[k] != null) m *= b[k]; return m; }
-  get speed() { return this.st.spd * this.mult('spdMul') * this.smult('spdMul') * (1 + this.boost) * ((this.zone && this.zone.spdMul) || 1) * ((this.barrier && this.barrier.spdMul) || 1); }
+  get speed() { return this.st.spd * this.mult('spdMul') * this.smult('spdMul') * (1 + this.boost) * ((this.zone && this.zone.spdMul) || 1) * ((this.barrier && this.barrier.spdMul) || 1) * (this.terrainMul || 1); }
   get atkRate() { return this.st.atkRate * this.mult('atkRateMul'); }
   get reach() { return this.st.range + 20 + this.pad; }
   get pad() { return 15 * ((this.def.size || 1) - 1); } // 큰 캐릭터 추가 반경

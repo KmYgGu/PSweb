@@ -25,39 +25,30 @@
       });
     },
     ang(T, x, y) { return Math.atan2((y - T.cy) / ((T.ryo + T.ryi) / 2), (x - T.cx) / ((T.rxo + T.rxi) / 2)); },
-    proj(T, x, y, pad) { // 링 안으로 투영
-      const dx = x - T.cx, dy = y - T.cy, r = 11 + pad;
-      const ko = (dx / (T.rxo - r)) ** 2 + (dy / (T.ryo - r)) ** 2;
-      if (ko > 1) { const s = 1 / Math.sqrt(ko); return { x: T.cx + dx * s, y: T.cy + dy * s, hit: 'o' }; }
-      const ki = (dx / (T.rxi + r)) ** 2 + (dy / (T.ryi + r)) ** 2;
-      if (ki < 1) { const s = 1 / Math.sqrt(Math.max(ki, 1e-4)); return { x: T.cx + dx * s, y: T.cy + dy * s, hit: 'i' }; }
-      return { x, y, hit: null };
-    },
-    clamp(b, x, y, pad) { return b.race ? RACE.proj(b.race, x, y, pad) : { x, y }; },
+    nr(T, x, y) { return Math.hypot((x - T.cx) / ((T.rxo + T.rxi) / 2), (y - T.cy) / ((T.ryo + T.ryi) / 2)); }, // 정규화 반경 (트랙 중심선 = 1)
+    onRoad(T, x, y) { const dx = x - T.cx, dy = y - T.cy; return (dx / T.rxo) ** 2 + (dy / T.ryo) ** 2 <= 1 && (dx / T.rxi) ** 2 + (dy / T.ryi) ** 2 >= 1; },
     step(b, dt) {
       const T = b.race; if (!T) return;
       for (const u of b.u) {
         if (u.dead) continue;
-        const p = RACE.proj(T, u.x, u.y, u.pad);
-        if (p.hit) {
-          const dx = p.x - T.cx, dy = p.y - T.cy, rx = p.hit === 'o' ? T.rxo : T.rxi, ry = p.hit === 'o' ? T.ryo : T.ryi;
-          let nx = dx / (rx * rx), ny = dy / (ry * ry); const n = Math.hypot(nx, ny) || 1; nx /= n; ny /= n;
-          if (p.hit === 'o') { nx = -nx; ny = -ny; } // 벽 → 안쪽을 향하는 법선
-          u.x = p.x; u.y = p.y;
-          if (!u.action && reflect(u, nx, ny, T.bounceRnd ?? 0.2)) { // 핀볼: 상대 쪽으로 살짝 꺾음
-            const e = b.enemy(u), toE = Math.atan2(e.y - u.y, e.x - u.x), df = Math.atan2(Math.sin(toE - u.dir), Math.cos(toE - u.dir));
-            if (T.tilt && Math.abs(df) < 2.2) { const nd = u.dir + clamp(df, -(T.tiltMax || 0.8), T.tiltMax || 0.8); if (Math.cos(nd) * nx + Math.sin(nd) * ny > 0.1) u.dir = fixAngle(nd); }
-          }
-          if (b.time - (u.wallT || -1) > 0.12) { u.wallT = b.time; b.dust(u.x, u.y); b.ring(u.x - nx * 10, u.y - ny * 4, 2, 9, 0.18, '#e8e0d8'); }
-        }
+        // 잔디: 이동 가능하지만 감속 (grassSpd), 은은한 풀잎 파티클
+        const grass = !RACE.onRoad(T, u.x, u.y);
+        u.terrainMul = grass ? (T.grassSpd ?? 0.8) : 1;
+        if (grass && !u.air && Math.random() < dt * 6) b.parts.push({ x: u.x + rand(-6, 6), y: u.y + rand(-2, 3), vx: rand(-14, 14), vy: rand(-30, -14), g: 90, life: rand(0.3, 0.5), max: 0.5, color: Math.random() < 0.5 ? '#6fae5a' : '#8cc46e', size: rand(1.2, 2) });
         // 랩 진행: 시계 방향으로 섹터를 순서대로 통과해야 인정
         if (b.over) continue;
         // 누적 각도(역주행은 감소) + 순서대로 통과한 체크포인트 둘 다 만족해야 완주
         const L = u.lap, N = T.sectors, w = TAU / N, ang = RACE.ang(T, u.x, u.y);
-        if (L.prevA == null) L.prevA = ang;
-        L.cum = (L.cum || 0) + Math.atan2(Math.sin(ang - L.prevA), Math.cos(ang - L.prevA)); L.prevA = ang;
+        // 중앙부(minR 미만)에선 각도 추적 정지. 중앙을 가로질러 각도가 한 섹터 이상 점프하면 진행 인정 안 함
+        if (RACE.nr(T, u.x, u.y) < (T.minR ?? 0.6)) { L.paused = true; }
+        else {
+          if (L.prevA == null) L.prevA = ang;
+          const d = Math.atan2(Math.sin(ang - L.prevA), Math.cos(ang - L.prevA));
+          if (!(L.paused && Math.abs(d) > w * 0.5)) L.cum = (L.cum || 0) + d;
+          L.prevA = ang; L.paused = false;
+        }
         const rel = modA(ang - L.a0), sec = Math.floor(rel / w);
-        if (sec === L.next % N && L.cum >= (L.next - 0.5) * w) L.next++;          // 체크포인트 (순서 + 누적각 확인)
+        if (!L.paused && sec === L.next % N && L.cum >= (L.next - 0.5) * w) L.next++;          // 체크포인트 (순서 + 누적각 확인)
         while (L.next > 1 && L.cum < (L.next - 2) * w) L.next--;                  // 역주행하면 체크포인트 취소
         L.prog = clamp(L.cum / TAU, 0, 1);
         if (L.next > N && L.cum >= TAU) { // 완주
@@ -128,17 +119,23 @@
       const S = b.stage.subway; if (!S) return;
       const Tr = S.train, L = Tr.cars * Tr.carW;
       b.sub = { S, L, phase: 'absent', t: S.firstT, x0: -L - 60, vx: 0, door: 0, windows: [], stats: null };
-      for (let c = 0; c < Tr.cars; c++) for (const side of ['top', 'bot']) for (const w of Tr.windows)
-        b.sub.windows.push({ c, side, a: c * Tr.carW + w[0], e: c * Tr.carW + w[1], hp: Tr.winHp, max: Tr.winHp, broken: false, hitT: 0 });
+      for (const side of ['top', 'bot']) for (const [a, e] of SUB.winList(Tr, side, L))
+        b.sub.windows.push({ side, a, e, hp: Tr.winHp, max: Tr.winHp, broken: false, hitT: 0 });
       Object.assign(b.stats, { trainHits: 0, trainElim: 0, trainBoth: 0, windowsBroken: 0, rides: 0 });
     },
     present: sb => sb.phase === 'arrive' || sb.phase === 'stop' || sb.phase === 'depart',
     noClamp(b, u) { return !!(b.sub && b.sub.phase === 'depart' && u.inTrain); },
     inside(sb, u) { const T = sb.S.train; return u.x > sb.x0 && u.x < sb.x0 + sb.L && u.y > T.y && u.y < T.y + T.h; },
     // 벽 구간: 위/아래 벽에서 열린 구간(문 열림, 깨진 창) 제외, 창문은 따로 표시
+    doorList(T, side) { return T.doorsBySide ? T.doorsBySide[side] : Array.from({ length: T.cars }, (_, c) => T.doors.map(d => [c * T.carW + d[0], c * T.carW + d[1]])).flat(); },
+    winList(T, side, L) { // 문을 피해 창문 자동 배치 (winW 폭, winGap 간격)
+      const out = [], ds = SUB.doorList(T, side), W = T.winW || 26, G = T.winGap || 12;
+      for (let a = 8; a + W <= L - 8; a += W + G) { const e = a + W; if (ds.some(([da, de]) => a < de + 6 && e > da - 6)) continue; out.push([a, e]); }
+      return out;
+    },
     gaps(sb, side, outside) { // 닫힘 안내 중엔 밖에서 탑승 불가 (안에서 나가기만 가능)
       const T = sb.S.train, g = [];
-      if (sb.door > 0.6 && !(outside && sb.closing)) for (let c = 0; c < T.cars; c++) for (const d of T.doors) g.push([c * T.carW + d[0], c * T.carW + d[1]]);
+      if (sb.door > 0.6 && !(outside && sb.closing)) for (const d of SUB.doorList(T, side)) g.push([d[0], d[1]]);
       for (const w of sb.windows) if (w.side === side && w.broken) g.push([w.a, w.e]);
       return g.sort((a, b) => a[0] - b[0]);
     },
@@ -235,8 +232,8 @@
         }
         if (sb.phase === 'stop' && u.inTrain && sb.t < (S.exitHint || 0) && !u.action) { // 문 닫힘 안내: 가까운 문 쪽으로 서서히 방향 전환
           let best = null, bd = 1e9;
-          for (let c = 0; c < T.cars; c++) for (const d of T.doors) for (const yy of [T.y - 12, T.y + T.h + 12]) {
-            const dx = sb.x0 + c * T.carW + (d[0] + d[1]) / 2; if (dx < AR.x + 10 || dx > AR.x + AR.w - 10) continue;
+          for (const [side, yy] of [['top', T.y - 12], ['bot', T.y + T.h + 12]]) for (const d of SUB.doorList(T, side)) {
+            const dx = sb.x0 + (d[0] + d[1]) / 2; if (dx < AR.x + 10 || dx > AR.x + AR.w - 10) continue;
             const dd = Math.hypot(dx - u.x, yy - u.y); if (dd < bd) { bd = dd; best = [dx, yy]; }
           }
           if (best) { const ta = Math.atan2(best[1] - u.y, best[0] - u.x), df = Math.atan2(Math.sin(ta - u.dir), Math.cos(ta - u.dir)); u.dir = fixAngle(u.dir + clamp(df, -6 * dt, 6 * dt)); }
@@ -323,8 +320,8 @@
           for (let k = 0; k < cs; k++) { const kx = wx + ww * (0.25 + 0.25 * k); ctx.beginPath(); ctx.moveTo(kx, wy + 1); ctx.lineTo(kx + 3, wy + 3); ctx.lineTo(kx - 2, wy + 5); ctx.stroke(); }
         }
         // 문 (열림 정도만큼 옆으로 밀림)
-        for (let c = 0; c < T.cars; c++) for (const d of T.doors) {
-          const dx = x0 + c * T.carW + d[0], dw = d[1] - d[0], half = dw / 2, sl = half * door;
+        for (const d of SUB.doorList(T, side)) {
+          const dx = x0 + d[0], dw = d[1] - d[0], half = dw / 2, sl = half * door;
           ctx.fillStyle = '#e0e4ea'; ctx.fillRect(dx - sl, wy, half, 6); ctx.fillRect(dx + half + sl, wy, half, 6);
           ctx.fillStyle = '#e07a3a'; ctx.fillRect(dx - sl + half - 2, wy + 1, 2, 4); ctx.fillRect(dx + half + sl, wy + 1, 2, 4);
         }
