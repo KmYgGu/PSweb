@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>픽셀 오토 배틀</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv" width="720" height="1280"></canvas>
+
+    <!-- 전투 상단 UI -->
+    <div id="hud" class="hidden">
+      <div class="frame" id="f0">
+        <div class="pf"><img alt=""></div>
+        <div class="info">
+          <div class="nm"></div>
+          <div class="hpbar"><div class="lag"></div><div class="fill"></div></div><div class="resbars"></div>
+          <div class="hpnum"></div>
+        </div>
+      </div>
+      <div class="vs"><b>VS</b><span id="timer">0.0</span></div>
+      <div class="frame right" id="f1">
+        <div class="pf"><img alt=""></div>
+        <div class="info">
+          <div class="nm"></div>
+          <div class="hpbar"><div class="lag"></div><div class="fill"></div></div><div class="resbars"></div>
+          <div class="hpnum"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 전투 하단 UI -->
+    <div id="bottom" class="hidden">
+      <div id="log"></div>
+      <div id="speed">
+        <span id="stageName" class="stg"></span><span class="lbl">배속</span>
+        <button data-s="1" class="on">1x</button><button data-s="2">2x</button><button data-s="4">4x</button>
+      </div>
+    </div>
+
+    <!-- 캐릭터 선택 -->
+    <div id="select">
+      <h1>픽셀 오토 배틀</h1>
+      <div class="slots">
+        <div class="slot p0 active" data-slot="0"></div>
+        <div class="slot p1" data-slot="1"></div>
+      </div>
+      <div class="hint" id="hint">P1 캐릭터를 고르세요</div>
+      <div class="grid" id="grid"></div>
+      <div class="btns">
+        <button id="rnd" class="sub">랜덤</button>
+        <button id="start" class="main" disabled>전투 시작</button>
+      </div>
+    </div>
+
+    <!-- 스테이지 선택 -->
+    <div id="stageSel" class="hidden">
+      <h1>스테이지 선택</h1>
+      <div class="vsline" id="vsline"></div>
+      <div class="sgrid" id="sgrid"></div>
+      <div class="btns"><button id="sback" class="sub">뒤로</button></div>
+    </div>
+
+    <!-- 결과 -->
+    <div id="result" class="hidden">
+      <div class="box">
+        <img id="winImg" alt="">
+        <div id="winTxt"></div>
+        <div id="winSub"></div>
+        <button id="again" class="main">다시 싸우기</button>
+        <button id="reselect" class="sub">다시 고르기</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="js/characters.js"></script>
+<script src="js/elements.js"></script>
+<script src="js/stages.js"></script>
+<script src="js/status.js"></script>
+<script src="js/skills.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/game.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
