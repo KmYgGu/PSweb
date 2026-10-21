@@ -1,0 +1,798 @@
+--- a/js/game.js
++++ b/js/game.js
+@@ -4,11 +4,12 @@
+ const W = 360, H = 640;
+ const AR = { x: 12, y: 120, w: 336, h: 410 };
+ const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
+-const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a' };
++const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
+ const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
+ const rand = (a, b) => a + Math.random() * (b - a);
+ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+ const playSfx = (name, o) => { if (window.Sfx) Sfx.play(name, o); };
++const projectileColor = p => p.kind === 'magic' && p.hit && ELEMENT_DEFS[p.hit.element] ? ELEMENT_DEFS[p.hit.element].color : PROJ_COL[p.kind] || '#a8d8ff';
+ // 스프라이트 좌우 배율: sprite.faces = { front: 'left'|'right', back: ... } (원본이 바라보는 방향). 없으면 원본은 오른쪽을 본다고 가정
+ const waterImmune = (u, z) => !!(z && (z.water || z.id === 'water') && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'
+ const spriteSX = (def, back, facing) => { const F = def.sprite && def.sprite.faces; if (!F) return facing; return facing * (((back ? F.back : F.front) || 'right') === 'left' ? -1 : 1); };
+@@ -108,6 +109,7 @@
+     this.proj = []; this.parts = []; this.texts = []; this.tele = []; this.timers = []; this.fx = [];
+     this.time = 0; this.slowT = 0; this.zoom = null; this.lastBump = -1; this.over = false; this.winner = null; this.ended = false; this.endT = 0;
+     this.shakeT = 0; this.shakeA = 0; this.hooks = hooks;
++    this.visualFx = []; this.visualTime = 0; this.impactReady = 0; this.finisher = null;
+     this.stats = { lands: 0, shockHits: 0, knocks: 0 };
+     this.endType = null; this.resultText = null;
+     this.play = AR; // 실제 이동 가능 영역 (스테이지 훅이 좁힐 수 있음: 아이돌 무대 등)
+@@ -271,6 +273,31 @@
+ 
+ 
+   // ---------- 시뮬레이션 ----------
++  // 화면 시간으로 재생: 배속과 무관하게 타격 문양과 반동을 읽을 수 있게 한다.
++  updateVisual(dt) {
++    this.visualTime += dt;
++    for (const f of this.visualFx) f.t += dt;
++    this.visualFx = this.visualFx.filter(f => f.t < f.dur);
++    for (const u of this.u) if (u.recoil) { u.recoil.t += dt; if (u.recoil.t >= u.recoil.dur) u.recoil = null; }
++    if (this.finisher) this.finisher.t += dt;
++  }
++  impact(x, y, ang, color, tier = 0, element = 'blunt') {
++    // 짧은 간격의 다단 공격은 문양 수와 카메라 반응을 제한한다.
++    if (this.visualFx.filter(f => f.type === 'impact').length >= 18) return;
++    this.visualFx.push({ type: 'impact', x, y, ang, color, tier, element, t: 0, dur: tier ? 0.28 : 0.18 });
++    if (tier && this.visualTime >= this.impactReady) {
++      this.impactReady = this.visualTime + 0.14;
++      this.hitstop(tier === 2 ? 0.055 : 0.035);
++      this.shake(tier === 2 ? 2.2 : 1.2);
++      this.zoomAt(x, y, tier === 2 ? 0.035 : 0.018);
++    }
++  }
++  finishImpact(tgt, winner) {
++    if (this.freeze || this.finisher) return; // 엑조디아는 전용 연출 유지
++    this.finisher = { x: tgt.x, y: tgt.y - 20 - this.airZ(tgt), winner, t: 0, dur: 1.1 };
++    this.visualFx.push({ type: 'impact', x: this.finisher.x, y: this.finisher.y, ang: -0.45, color: '#ffe3a0', tier: 3, element: 'slash', t: 0, dur: 0.48 });
++    this.zoomAt(tgt.x, tgt.y - 20, 0.08);
++  }
+   // 고속 이동 터널링 방지: 최대 1/120초 단위로 쪼개서 진행
+   update(dt) {
+     if (this.slowT > 0) { this.slowT -= dt; dt *= 0.35; } // 히트스톱(짧은 슬로모션)
+@@ -310,7 +337,7 @@
+     this.shakeT = Math.max(0, this.shakeT - dt);
+     if (this.over) {
+       this.endT += dt;
+-      if (!this.ended && this.endT > 1.3) { this.ended = true; this.hooks.onEnd && this.hooks.onEnd(this.winner); }
++      if (!this.ended && this.endT > 1.3 && (!this.finisher || this.finisher.t >= 0.9)) { this.ended = true; this.hooks.onEnd && this.hooks.onEnd(this.winner); }
+     }
+   }
+ 
+@@ -741,6 +768,13 @@
+     const px = u.x, py = u.y;
+     this.actionStep(u, e, dt, a);
+     if (a.trail && (px !== u.x || py !== u.y)) {
++      if (a.type === 'charge' && u.def.hammer) {
++        a.afterT = (a.afterT || 0) - dt;
++        if (a.afterT <= 0) {
++          a.afterT = 0.045;
++          this.fx.push({ type: 'after', x: px, y: py, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.2, a: 0.32 });
++        }
++      }
+       this.fx.push({ type: 'streak', x1: px, y1: py - 18, x2: u.x, y2: u.y - 18, color: a.trail, w: 12, t: 0, dur: 0.3 });
+       if (Math.random() < 0.6) this.parts.push({ x: u.x, y: u.y - 18 + rand(-8, 8), vx: rand(-20, 20), vy: rand(-20, 20), life: 0.4, max: 0.4, color: a.trail, size: 2.5, glow: true });
+     }
+@@ -848,6 +882,10 @@
+       this.shock(w.x, w.y - 10, 4, 40, '#ffffff', 0.35, 4);
+       this.glow(w.x, w.y - 14, 60, '#ffb36b', 0.45);
+       this.debris(w.x, w.y, 34); this.sparks(w.x, w.y - 14, '#fff0c8', 30, 280);
++      this.impact(w.x, w.y - 18, a.ang, '#ffd08a', 2, 'blunt');
++      // 벽에서 퍼져나오는 먼지와 방향성 파편. 시각 효과만 추가한다.
++      this.sparks(w.x, w.y - 12, '#ffe5af', 14, 240, a.ang + Math.PI);
++      this.visualFx.push({ type: 'wallDust', x: w.x, y: w.y, ang: a.ang, t: 0, dur: 0.65, color: '#b4a58d' });
+       this.hitstop(0.18); this.shake(3.5); this.zoomAt(w.x, w.y, 0.06);
+       if (a.onImpact) a.onImpact(e, w);
+     } else {
+@@ -1029,14 +1067,14 @@
+       if (bl && p.pierce) { if (!(p.hitB || (p.hitB = new Set())).has(bl)) { p.hitB.add(bl); this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y); } }
+       else if (bl) { // 건물이 투사체를 막음
+         p.life = 0; this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y);
+-        this.burst(p.x, p.y, PROJ_COL[p.kind] || '#e8e0c8', 4); p.fizzle && p.fizzle(p); continue;
++        this.burst(p.x, p.y, projectileColor(p), 4); p.fizzle && p.fizzle(p); continue;
+       }
+       if (p.cancel) for (const q of this.proj) { // 데덴탄: 상대 투사체 상쇄
+         if (q === p || q.life <= 0 || q.src.team === p.src.team || Math.hypot(q.x - p.x, q.y - p.y) > (p.r || 12) + 6) continue;
+         q.life = 0; this.burst(q.x, q.y, '#c8ffb0', 8); this.ring(q.x, q.y, 3, 18, 0.25, '#b8ff9a'); this.stats.cancels = (this.stats.cancels || 0) + 1;
+       }
+       p.trail += dt;
+-      if (!p.draw && p.kind !== 'arrow' && p.trail > 0.016) { p.trail = 0; this.parts.push({ x: p.x, y: p.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, max: 0.3, color: PROJ_COL[p.kind] || '#a8d8ff', size: p.kind === 'arrowG' ? 2.5 : 2, glow: true }); }
++      if (!p.draw && p.kind !== 'arrow' && p.trail > 0.016) { p.trail = 0; this.parts.push({ x: p.x, y: p.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, max: 0.3, color: projectileColor(p), size: p.kind === 'arrowG' ? 2.5 : 2, glow: true }); }
+       if (!p.done) for (const o of this.u) {
+         if (o.dead || o === p.src || o.hidden || (o.team === p.src.team && !(p.hitAlly && p.hitAlly(o)))) continue;
+         if (p.hitSet && p.hitSet.has(o)) continue;
+@@ -1047,7 +1085,7 @@
+           const pd = this.damage(p.src, o, p.dmg, { ...(p.hit || {}), viaProj: true });
+           if (pd > 0 && p.onHit) p.onHit(o);
+         }
+-        const c = PROJ_COL[p.kind] || '#e8e0c8';
++        const c = projectileColor(p);
+         if (!p.draw) { this.burst(p.x, p.y, c, 5); if (p.kind !== 'arrow') this.glow(p.x, p.y, 18, c, 0.25); }
+         if (!p.pierce) break;
+       }
+@@ -1108,9 +1146,16 @@
+     const wk = em >= ELEMENT_FX.weak.min ? ELEMENT_FX.weak : em <= ELEMENT_FX.resist.max ? ELEMENT_FX.resist : null;
+     const ncol = wk ? wk.color : crit ? '#ffe27a' : (o.color || '#ffffff');
+     this.text(tgt.x + rand(-6, 6), tgt.y - 40, String(dmg), ncol, (big ? 15 : 11) + (wk ? wk.sizeAdd : 0));
++    const damageNumber = this.texts[this.texts.length - 1];
+     if (wk) this.text(tgt.x + rand(-4, 4), tgt.y - 56, wk.label, wk.color, wk === ELEMENT_FX.weak ? 10 : 9);
+     this.burst(tgt.x, tgt.y - 18, crit ? '#ffe27a' : '#ffd9c8', big ? 10 : 5);
+-    if (big) this.shake(2.5);
++    if (dmg > 0 && src !== tgt && !o.reflected && !o.selfHit) {
++      const tier = o.big || dmg / tgt.maxHp >= 0.08 ? 2 : crit ? 1 : 0;
++      const color = crit ? '#ffe27a' : (ELEMENT_DEFS[o.element] || {}).color || o.color || '#ffd9c8';
++      this.impact(tgt.x, tgt.y - 20 - this.airZ(tgt), a, color, tier, o.element);
++      tgt.recoil = { t: 0, dur: tier ? 0.23 : 0.16, strength: tier ? 0.16 : 0.08, dir: Math.cos(a) >= 0 ? 1 : -1 };
++      damageNumber.impact = tier + 1; damageNumber.dx = Math.cos(a) * (tier ? 14 : 7);
++    }
+     playSfx(big ? 'big' : crit ? 'crit' : (o.viaProj || o.delivery === 'ranged') ? 'projHit' : 'melee', { element: o.element, dmg, crit });
+     const sh = tgt.buff('shield');
+     if (sh && sh.reflect && !o.reflected) this.damage(tgt, src, dmg / sh.dmgTaken * sh.reflect, { reflected: true, noCrit: true, color: '#bfe3ff' });
+@@ -1140,6 +1185,7 @@
+     }
+     this.over = true; this.winner = src && src.team !== tgt.team && !src.dead ? src : this.teamBest(1 - tgt.team);
+     if (this.freeze && this.freeze.winner) this.winner = this.freeze.winner;
++    this.finishImpact(tgt, this.winner);
+     const w = this.winner; if (w.def.lines && w.def.lines.event && w.def.lines.event.kill) this.say(w, 'kill'); else this.say(w, 'win');
+     if (this.multi) this.u.forEach(o => { if (o !== w && o.team === w.team && !o.dead) this.say(o, 'win'); }); // 2인 팀: 생존 팀원도 승리 대사
+     this.say(tgt, 'lose');
+@@ -1179,7 +1225,7 @@
+   stun(u, t, src) { this.applyStatus(u, 'stun', t, src || this.enemy(u)); }
+   // ---------- 화려한 이펙트 API ----------
+   hitstop(t) { this.slowT = Math.max(this.slowT || 0, t); }
+-  zoomAt(x, y, k) { this.zoom = { x, y, k, t: 0, dur: 0.35 }; }
++  zoomAt(x, y, k) { if (this.zoom && this.zoom.k > k && this.zoom.t < this.zoom.dur * 0.6) return; this.zoom = { x, y, k: Math.min(0.08, k), t: 0, dur: 0.35 }; }
+   glow(x, y, r, color, dur = 0.4) { this.fx.push({ type: 'glow', x, y, r, color, t: 0, dur }); }
+   shock(x, y, r0, r1, color, dur = 0.45, w = 6) { this.fx.push({ type: 'shock', x, y, r0, r1, color, w, t: 0, dur }); if (this.balls && this.balls.length) this.pushBalls(x, y, r1 * 1.15, 260); }
+   streak(x1, y1, x2, y2, color, w = 10, dur = 0.3) { this.fx.push({ type: 'streak', x1, y1, x2, y2, color, w, t: 0, dur }); }
+@@ -1205,7 +1251,7 @@
+   // 이동 예측 위치 (직선 가정, 경기장 안으로 제한)
+   predict(e, t) { if (e.action || e.stun > 0) return { x: e.x, y: e.y }; return this.clampPos(e.x + Math.cos(e.dir) * e.speed * t, e.y + Math.sin(e.dir) * e.speed * t); }
+   dash(u, tx, ty, dur, onTouch, trail) { u.action = { type: 'dash', sx: u.x, sy: u.y, tx, ty, dur, t: 0, onTouch, touched: false, trail }; playSfx('dash'); }
+-  shake(a) { this.shakeA = Math.max(this.shakeT > 0 ? this.shakeA : 0, a); this.shakeT = 0.18; }
++  shake(a) { this.shakeA = Math.min(4, Math.max(this.shakeT > 0 ? this.shakeA : 0, a)); this.shakeT = 0.18; }
+   text(x, y, txt, color, size) { this.texts.push({ x, y, txt, color, size, t: 0, dur: 0.9 }); }
+   telegraphLine(x1, y1, x2, y2, w, dur, color) { this.tele.push({ type: 'line', x1, y1, x2, y2, w, dur, color, t: 0 }); }
+   telegraphCircle(x, y, r, dur, color) { this.tele.push({ type: 'circle', x, y, r, dur, color, t: 0 }); }
+@@ -1582,6 +1628,17 @@
+     ctx.save();
+     ctx.translate(Math.round(x + jx), Math.round(y + bob - z));
+     if (zk !== 1) ctx.scale(zk, zk);
++    // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
++    if (u.recoil && !stone && !F) {
++      const r = u.recoil, p = r.t / r.dur;
++      const k = Math.cos(p * Math.PI * 2.5) * (1 - p) * r.strength;
++      ctx.translate(0, -20); ctx.scale(1 + k, 1 - k * 0.7);
++      ctx.rotate(-r.dir * k * 0.45); ctx.translate(0, 20);
++    }
++    if (u.action && u.action.chargeTell) {
++      const k = 1 - clamp(u.action.t / 0.22, 0, 1);
++      ctx.scale(1 + 0.08 * k, 1 - 0.08 * k); ctx.rotate(u.facing * 0.1 * k);
++    }
+     if (F) { ctx.translate(0, -18); ctx.scale(fk, fk); ctx.rotate(u.deadT * 7); ctx.translate(0, 18); }
+     let rot = 0;
+     if (u.swing > 0 && !frozen) rot = Math.sin((u.swing / 0.2) * Math.PI) * 0.25;
+@@ -1625,28 +1682,159 @@
+   }
+ 
+   function drawTele(ctx, t) {
+-    const p = t.t / t.dur;
++    const p = clamp(t.t / t.dur, 0, 1), ready = p * p;
+     ctx.save();
+-    ctx.fillStyle = t.color; ctx.strokeStyle = t.color;
++    ctx.fillStyle = t.color; ctx.strokeStyle = t.color; ctx.lineJoin = 'round';
+     if (t.type === 'circle') {
+-      ctx.globalAlpha = 0.12; ctx.beginPath(); ctx.ellipse(t.x, t.y, t.r, t.r * 0.7, 0, 0, 6.28); ctx.fill();
+-      ctx.globalAlpha = 0.25; ctx.beginPath(); ctx.ellipse(t.x, t.y, t.r * easeInOut(p), t.r * 0.7 * easeInOut(p), 0, 0, 6.28); ctx.fill();
+-      ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.ellipse(t.x, t.y, t.r, t.r * 0.7, 0, 0, 6.28); ctx.stroke();
++      ctx.translate(t.x, t.y); ctx.scale(1, 0.7);
++      const r = Math.max(0.01, t.r), g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
++      g.addColorStop(0, 'transparent'); g.addColorStop(0.68, t.color); g.addColorStop(1, t.color);
++      ctx.globalAlpha = 0.09 + ready * 0.1; ctx.fillStyle = g;
++      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
++      // 바깥 경계는 고정, 내부 수렴 링과 시계 방향 게이지로 발동 시점을 표시.
++      ctx.globalAlpha = 0.45; ctx.strokeStyle = '#101725'; ctx.lineWidth = 4;
++      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
++      ctx.globalAlpha = 0.65; ctx.strokeStyle = t.color; ctx.lineWidth = 1;
++      ctx.stroke();
++      ctx.globalAlpha = 0.9; ctx.lineWidth = 2.5;
++      ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke();
++      ctx.globalAlpha = 0.3 + ready * 0.35; ctx.lineWidth = 1;
++      ctx.beginPath(); ctx.arc(0, 0, r * (1 - p * 0.76), 0, Math.PI * 2); ctx.stroke();
++      for (let i = 0; i < 12; i++) {
++        const a = i * Math.PI / 6, c = Math.cos(a), s = Math.sin(a), tick = i % 3 === 0 ? 8 : 4;
++        ctx.globalAlpha = i / 12 <= p ? 0.9 : 0.25;
++        ctx.beginPath(); ctx.moveTo(c * (r - tick), s * (r - tick)); ctx.lineTo(c * r, s * r); ctx.stroke();
++      }
++      ctx.strokeStyle = '#fff4d8'; ctx.globalAlpha = 0.5 + ready * 0.4;
++      for (let i = 0; i < 4; i++) {
++        const a = i * Math.PI / 2 + p * 0.8, rr = r * 0.65;
++        ctx.beginPath(); ctx.arc(0, 0, rr, a, a + 0.35); ctx.stroke();
++      }
++      ctx.lineWidth = 1.5; const cross = Math.min(8, r * 0.2);
++      ctx.beginPath(); ctx.moveTo(-cross, 0); ctx.lineTo(cross, 0); ctx.moveTo(0, -cross); ctx.lineTo(0, cross); ctx.stroke();
+     } else if (t.type === 'line') {
+       const a = Math.atan2(t.y2 - t.y1, t.x2 - t.x1), L = Math.hypot(t.x2 - t.x1, t.y2 - t.y1);
++      if (L < 0.01) { ctx.restore(); return; }
+       ctx.translate(t.x1, t.y1); ctx.rotate(a);
+-      ctx.globalAlpha = 0.14; ctx.fillRect(0, -t.w / 2, L, t.w);
+-      ctx.globalAlpha = 0.3; ctx.fillRect(0, -t.w / 2, L * easeOut(p), t.w);
+-      ctx.globalAlpha = 0.55; ctx.lineWidth = 1; ctx.strokeRect(0, -t.w / 2, L, t.w);
++      ctx.beginPath(); ctx.rect(0, -t.w / 2, L, t.w); ctx.clip();
++      ctx.globalAlpha = 0.2; ctx.fillStyle = '#0c1424'; ctx.fillRect(0, -t.w / 2, L, t.w);
++      const g = ctx.createLinearGradient(0, -t.w / 2, 0, t.w / 2);
++      g.addColorStop(0, t.color); g.addColorStop(0.35, 'transparent'); g.addColorStop(0.65, 'transparent'); g.addColorStop(1, t.color);
++      ctx.globalAlpha = 0.25 + ready * 0.2; ctx.fillStyle = g; ctx.fillRect(0, -t.w / 2, L, t.w);
++      ctx.strokeStyle = t.color; ctx.globalAlpha = 0.8; ctx.lineWidth = 2;
++      ctx.strokeRect(0, -t.w / 2, L, t.w);
++      // 흐르는 화살표와 진행 띠는 예고 범위 안쪽에만 그린다.
++      ctx.lineWidth = 1.5; ctx.globalAlpha = 0.45 + ready * 0.45;
++      const wing = Math.min(5, t.w * 0.32);
++      for (let i = 0; i < Math.ceil(L / 28); i++) {
++        const x = (i * 28 + p * 56) % L;
++        ctx.beginPath(); ctx.moveTo(x - wing, -wing); ctx.lineTo(x, 0); ctx.lineTo(x - wing, wing); ctx.stroke();
++      }
++      ctx.globalAlpha = 0.12 + ready * 0.12; ctx.fillStyle = t.color;
++      ctx.fillRect(0, -t.w / 2, L * p, t.w);
++      ctx.globalAlpha = 0.8; ctx.strokeStyle = '#fff5dc'; ctx.lineWidth = 1;
++      ctx.beginPath(); ctx.moveTo(L * p, -t.w / 2); ctx.lineTo(L * p, t.w / 2); ctx.stroke();
++      ctx.globalAlpha = 0.4; ctx.setLineDash([3, 8]); ctx.lineDashOffset = -p * 22;
++      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L, 0); ctx.stroke();
+     } else if (t.type === 'fan') {
+-      ctx.globalAlpha = 0.12 + 0.12 * p;
+-      ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.arc(t.x, t.y, t.len * easeOut(p), t.a - t.spread / 2, t.a + t.spread / 2); ctx.closePath(); ctx.fill();
+-    }
++      ctx.translate(t.x, t.y); ctx.rotate(t.a);
++      const r = Math.max(0.01, t.len), half = t.spread / 2;
++      const sector = () => { ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, r, -half, half); ctx.closePath(); };
++      sector(); ctx.globalAlpha = 0.13 + ready * 0.1; ctx.fill();
++      ctx.globalAlpha = 0.8; ctx.lineWidth = 1.5; ctx.stroke();
++      ctx.save(); ctx.clip();
++      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
++      g.addColorStop(0, 'transparent'); g.addColorStop(0.75, 'transparent'); g.addColorStop(1, t.color);
++      ctx.globalAlpha = 0.25; ctx.fillStyle = g; ctx.fillRect(-r, -r, r * 2, r * 2);
++      ctx.lineWidth = 1; ctx.setLineDash([4, 6]); ctx.lineDashOffset = -p * 22;
++      ctx.globalAlpha = 0.3;
++      for (let i = 1; i < 4; i++) {
++        const a = -half + t.spread * i / 4;
++        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); ctx.stroke();
++      }
++      ctx.setLineDash([]);
++      for (let i = 0; i < 3; i++) {
++        const q = (p * 1.4 + i / 3) % 1;
++        ctx.globalAlpha = 0.45 * Math.sin(q * Math.PI); ctx.lineWidth = 1 + q;
++        ctx.beginPath(); ctx.arc(0, 0, Math.max(0.01, r * q), -half, half); ctx.stroke();
++      }
++      ctx.restore(); ctx.strokeStyle = '#fff3d0'; ctx.globalAlpha = 0.85; ctx.lineWidth = 2.5;
++      ctx.beginPath(); ctx.arc(0, 0, r, -half, -half + t.spread * p); ctx.stroke();
++    }
++    ctx.restore();
++  }
++
++  // 전투 판정과 분리된 다층 파동: 원래 반경·수명·바닥 투영 비율을 유지한다.
++  function drawWave(ctx, f, strong) {
++    const p = clamp(f.t / f.dur, 0, 1), fade = (1 - p) ** 1.5;
++    const r = Math.max(0.01, f.r0 + (f.r1 - f.r0) * easeOut(p));
++    ctx.save(); ctx.translate(f.x, f.y); ctx.scale(1, strong ? 0.7 : 0.75);
++    ctx.strokeStyle = f.color;
++    if (strong) {
++      // 넓은 압력 띠 + 가느다란 백색 선단. 중앙은 비워 유닛이 보이게 한다.
++      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r);
++      g.addColorStop(0, 'transparent'); g.addColorStop(0.68, 'transparent');
++      g.addColorStop(0.88, f.color); g.addColorStop(1, 'transparent');
++      ctx.globalAlpha = 0.24 * fade; ctx.fillStyle = g;
++      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
++    }
++    for (let i = strong ? 2 : 1; i >= 0; i--) {
++      const q = p - i * (strong ? 0.09 : 0.12);
++      if (q < 0) continue;
++      const rr = Math.max(0.01, f.r0 + (f.r1 - f.r0) * easeOut(q));
++      ctx.globalAlpha = (i ? 0.2 : 0.65) * fade;
++      ctx.lineWidth = i ? 1 : strong ? Math.max(1, f.w * (1 - p) * 0.6) : 1.8;
++      ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke();
++    }
++    ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#fff4df';
++    ctx.globalAlpha = (strong ? 0.75 : 0.45) * fade; ctx.lineWidth = 1;
++    const count = strong ? 8 : 4;
++    for (let i = 0; i < count; i++) {
++      const a = i * Math.PI * 2 / count + p * (strong ? 0.25 : 0.7);
++      ctx.beginPath(); ctx.arc(0, 0, r, a, a + (strong ? 0.28 : 0.45)); ctx.stroke();
++      if (strong && f.r1 >= 32) {
++        const d = r + 2, len = Math.min(12, f.r1 * 0.12) * fade;
++        ctx.globalAlpha = 0.5 * fade;
++        ctx.beginPath(); ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d);
++        ctx.lineTo(Math.cos(a) * (d + len), Math.sin(a) * (d + len)); ctx.stroke();
++      }
++    }
++    ctx.restore();
++  }
++
++  // 끝이 가늘어지는 칼날 리본. 절차적 도형으로 무기 궤적을 선명하게 그린다.
++  function bladeRibbon(ctx, r, start, sweep, width, color, alpha) {
++    const steps = 18, end = start + sweep;
++    ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
++    ctx.beginPath();
++    for (let i = 0; i <= steps; i++) {
++      const a = start + sweep * i / steps;
++      if (i) ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); else ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
++    }
++    for (let i = steps; i >= 0; i--) {
++      const a = start + sweep * i / steps, rr = r - width * Math.sin(Math.PI * i / steps);
++      ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
++    }
++    ctx.closePath(); ctx.fill();
++    ctx.strokeStyle = '#fff8e8'; ctx.lineWidth = 1;
++    ctx.beginPath(); ctx.arc(0, 0, r, start + sweep * 0.3, end); ctx.stroke();
++    // 칼끝에 작은 섬광을 두어 공격 방향을 강조한다.
++    const x = Math.cos(end) * r, y = Math.sin(end) * r;
++    ctx.fillStyle = '#fff8e8'; ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+     ctx.restore();
+   }
+ 
+   function drawFx(ctx, f, layer) {
+     const p = f.t / f.dur;
++    if (layer === 0 && f.type === 'chargeCue' && !f.u.dead && f.u.action && f.u.action.chargeTell) {
++      ctx.save(); ctx.translate(f.u.x, f.u.y - 4); ctx.rotate(f.ang);
++      ctx.strokeStyle = f.color; ctx.lineWidth = 2; ctx.globalAlpha = (1 - p) * 0.7;
++      for (let i = -1; i <= 1; i++) {
++        const x = -42 * (1 - p) - 8, y = i * 13;
++        ctx.beginPath(); ctx.moveTo(x - 13, y); ctx.lineTo(x, y * 0.45); ctx.stroke();
++      }
++      ctx.restore();
++    }
+     if (layer === 0 && f.type === 'after') {
+       let s = Sprites.get(f.def); if (f.back && s.back) s = s.back;
+       ctx.save(); ctx.globalAlpha = (f.a || 0.3) * (1 - p); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.scale(spriteSX(f.def, !!(f.back && s.back === undefined), f.facing), 1);
+@@ -1655,18 +1843,42 @@
+     if (layer !== 1) return;
+     if (f.t < 0) return;
+     ctx.save();
+-    if (f.type === 'glow') {
++    if (f.type === 'impact') {
++      const k = easeOut(Math.min(1, p * 3)), r = (f.tier === 3 ? 60 : f.tier === 2 ? 29 : f.tier === 1 ? 23 : 13) * (0.5 + 0.5 * k);
++      ctx.translate(f.x, f.y); ctx.rotate(f.ang);
++      ctx.globalAlpha = (1 - p) ** 2; ctx.fillStyle = f.color;
++      if (f.element === 'slash') {
++        // 공격 방향으로 길게 뻗는 픽셀 칼자국.
++        ctx.beginPath(); ctx.moveTo(-r * 1.5, -3); ctx.lineTo(r * 1.5, -1);
++        ctx.lineTo(r * 0.5, 4); ctx.lineTo(-r, 2); ctx.closePath(); ctx.fill();
++      } else {
++        const points = f.tier ? 8 : 6;
++        ctx.beginPath();
++        for (let i = 0; i < points * 2; i++) {
++          const a = i * Math.PI / points, rr = i % 2 ? r * 0.24 : r * (i % 4 ? 0.7 : 1);
++          const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
++          if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
++        }
++        ctx.closePath(); ctx.fill();
++      }
++      ctx.fillStyle = '#fff8df'; ctx.fillRect(-r * 0.4, -2, r * 0.8, 4); ctx.fillRect(-2, -r * 0.35, 4, r * 0.7);
++      ctx.strokeStyle = f.color; ctx.lineWidth = f.tier ? 2 : 1;
++      for (let i = 0; i < (f.tier ? 7 : 4); i++) {
++        const a = i * 2.399, d = r * (0.65 + p * 1.2);
++        ctx.beginPath(); ctx.moveTo(Math.cos(a) * d, Math.sin(a) * d);
++        ctx.lineTo(Math.cos(a) * (d + r * 0.35 * (1 - p)), Math.sin(a) * (d + r * 0.35 * (1 - p))); ctx.stroke();
++      }
++    } else if (f.type === 'wallDust') {
++      ctx.translate(f.x, f.y - 8); ctx.rotate(f.ang + Math.PI);
++      ctx.globalAlpha = 0.25 * (1 - p) ** 2; ctx.fillStyle = f.color;
++      for (let i = -2; i <= 2; i++) {
++        ctx.beginPath(); ctx.ellipse(8 + easeOut(p) * (20 + Math.abs(i) * 5), i * (5 + p * 17), 9 + p * 15, 6 + p * 8, 0, 0, Math.PI * 2); ctx.fill();
++      }
++    } else if (f.type === 'glow') {
+       const k = easeOut(Math.min(1, p * 2));
+       glowAt(ctx, f.x, f.y, f.r * (0.6 + 0.4 * k), f.color, 0.45 * (1 - p) * (1 - p));
+     } else if (f.type === 'shock') {
+-      const r = f.r0 + (f.r1 - f.r0) * easeOut(p);
+-      ctx.globalCompositeOperation = 'lighter';
+-      ctx.globalAlpha = 0.1 * (1 - p); ctx.fillStyle = f.color;
+-      ctx.beginPath(); ctx.ellipse(f.x, f.y, r, r * 0.7, 0, 0, 6.28); ctx.fill();
+-      ctx.globalAlpha = 0.6 * (1 - p); ctx.strokeStyle = f.color; ctx.lineWidth = f.w * (1 - p) + 1;
+-      ctx.beginPath(); ctx.ellipse(f.x, f.y, r, r * 0.7, 0, 0, 6.28); ctx.stroke();
+-      ctx.globalAlpha = 0.35 * (1 - p); ctx.lineWidth = 1; ctx.strokeStyle = '#ffffff';
+-      ctx.beginPath(); ctx.ellipse(f.x, f.y, r * 0.92, r * 0.92 * 0.7, 0, 0, 6.28); ctx.stroke();
++      drawWave(ctx, f, true);
+     } else if (f.type === 'streak') {
+       ctx.globalCompositeOperation = 'lighter'; ctx.lineCap = 'round';
+       ctx.globalAlpha = 0.4 * (1 - p); ctx.strokeStyle = f.color; ctx.lineWidth = f.w * (1 - p * 0.6);
+@@ -1674,14 +1886,15 @@
+       ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(1, f.w * 0.25 * (1 - p));
+       ctx.stroke();
+     } else if (f.type === 'crescent') {
+-      const q = f.t / (f.dur - f.delay), k = easeOut(Math.min(1, q * 1.8));
+-      ctx.globalCompositeOperation = 'lighter';
++      const q = clamp(f.t / (f.dur - f.delay), 0, 1), k = easeOut(Math.min(1, q * 1.8));
+       ctx.translate(f.x, f.y); ctx.rotate(f.ang); ctx.scale(1, 0.75);
+       const r = f.r * (0.8 + 0.3 * k), sweep = 2.6 * k;
+-      ctx.globalAlpha = 0.7 * (1 - q); ctx.fillStyle = f.color;
+-      ctx.beginPath(); ctx.arc(0, 0, r, -1.3, -1.3 + sweep); ctx.arc(r * 0.18, 0, r * 0.82, -1.3 + sweep, -1.3, true); ctx.closePath(); ctx.fill();
+-      ctx.globalAlpha = 0.8 * (1 - q); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+-      ctx.beginPath(); ctx.arc(0, 0, r, -1.3, -1.3 + sweep); ctx.stroke();
++      bladeRibbon(ctx, r, -1.3, sweep, r * 0.22, f.color, 0.8 * (1 - q));
++      ctx.strokeStyle = f.color; ctx.lineWidth = 1;
++      for (let i = 1; i <= 2; i++) {
++        ctx.globalAlpha = (0.3 / i) * (1 - q);
++        ctx.beginPath(); ctx.arc(0, 0, r * (1 - i * 0.16), -1.3 - i * 0.12, -1.3 + sweep * 0.88); ctx.stroke();
++      }
+     } else if (f.type === 'bolt') {
+       ctx.globalCompositeOperation = 'lighter'; ctx.lineJoin = 'round';
+       const a = (1 - p) * (1 - p);
+@@ -1691,15 +1904,13 @@
+       }
+       const e = f.pts[f.pts.length - 1]; glowAt(ctx, e[0], e[1], 22, f.color, 0.5 * a);
+     } else if (f.type === 'slash') {
+-      ctx.globalAlpha = 0.9 * (1 - p); ctx.strokeStyle = f.color; ctx.lineWidth = 2.5 * f.s * (1 - p * 0.5);
+-      const r = 14 * f.s, a0 = f.dir > 0 ? -1.2 : Math.PI - 1.2 + 0.0, sweep = 2.4 * easeOut(Math.min(1, p * 1.6));
+-      ctx.beginPath();
+-      if (f.dir > 0) ctx.arc(f.x, f.y, r, -1.2, -1.2 + sweep); else ctx.arc(f.x, f.y, r, Math.PI + 1.2, Math.PI + 1.2 - sweep, true);
+-      ctx.stroke();
++      const r = 14 * f.s, sweep = 2.4 * easeOut(Math.min(1, p * 1.6));
++      ctx.translate(f.x, f.y); ctx.scale(f.dir > 0 ? 1 : -1, 0.85);
++      bladeRibbon(ctx, r, -1.2, sweep, 5 * f.s, f.color, 0.9 * (1 - p));
++      ctx.strokeStyle = f.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.3 * (1 - p);
++      ctx.beginPath(); ctx.arc(0, 0, r * 0.72, -1.35, -1.2 + sweep * 0.8); ctx.stroke();
+     } else if (f.type === 'ring') {
+-      const r = f.r0 + (f.r1 - f.r0) * easeOut(p);
+-      ctx.globalAlpha = 0.7 * (1 - p); ctx.strokeStyle = f.color; ctx.lineWidth = 2;
+-      ctx.beginPath(); ctx.ellipse(f.x, f.y, r, r * 0.75, 0, 0, 6.28); ctx.stroke();
++      drawWave(ctx, f, false);
+     } else if (f.type === 'pillar') {
+       const a = Math.sin(p * Math.PI);
+       const g = ctx.createLinearGradient(0, f.y - 120, 0, f.y);
+@@ -1735,14 +1946,37 @@
+     ctx.save();
+     const hk = u.def.hammerScale || u.def.size || 1;
+     const psx = spriteSX(u.def, !!u.lookUp, u.facing); // 부모 변환의 좌우 배율 보정 → 월드 기준 u.facing 쪽
+-    ctx.scale(f * psx * hk, hk); ctx.translate(15, -26); ctx.rotate(th + Math.PI / 2);
+-    ctx.fillStyle = '#3a3036'; ctx.fillRect(-1.5, -30, 3, 32);            // 자루
+-    ctx.fillStyle = '#c8a050'; ctx.fillRect(-2, -6, 4, 3);
+-    ctx.fillStyle = '#5a5a64'; ctx.fillRect(-10, -40, 20, 12);           // 머리
+-    ctx.fillStyle = '#8a8a96'; ctx.fillRect(-10, -40, 20, 3);
+-    ctx.fillStyle = '#d8b050'; ctx.fillRect(-2, -40, 4, 12);             // 금색 띠
+-    ctx.fillStyle = '#2a2a30'; ctx.fillRect(-13, -38, 3, 8);             // 로켓 노즐
+-    if (u.hamSwing > 0 || (u.action && u.action.type === 'charge')) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffb36b'; ctx.fillRect(-18, -37, 5, 6); ctx.fillStyle = '#fff0c8'; ctx.fillRect(-16, -36, 3, 4); ctx.globalAlpha = 1; }
++    ctx.scale(f * psx * hk, hk); ctx.translate(15, -26);
++    if (sw >= 0) bladeRibbon(ctx, 36, th - 0.85, 0.85, 5, '#ffc57b', 0.3 * Math.sin(Math.PI * clamp(sw, 0, 1)));
++    ctx.rotate(th + Math.PI / 2);
++    // 자루의 금속 모서리, 가죽 그립과 고정 링.
++    ctx.fillStyle = '#24232d'; ctx.fillRect(-2.5, -30, 5, 35);
++    ctx.fillStyle = '#646371'; ctx.fillRect(-1, -28, 2, 24);
++    ctx.fillStyle = '#c8a050'; ctx.fillRect(-3, -8, 6, 3); ctx.fillRect(-3, 1, 6, 3);
++    ctx.fillStyle = '#372d32'; ctx.fillRect(-2, -4, 4, 5);
++    ctx.fillStyle = '#b09a7c'; for (let i = 0; i < 3; i++) ctx.fillRect(-2, -3 + i * 2, 3, 1);
++    // 해머 헤드의 외곽, 밝은 상판과 어두운 측면.
++    ctx.fillStyle = '#252735'; ctx.beginPath(); ctx.moveTo(-11, -42); ctx.lineTo(9, -42);
++    ctx.lineTo(13, -38); ctx.lineTo(13, -29); ctx.lineTo(9, -26); ctx.lineTo(-11, -28); ctx.closePath(); ctx.fill();
++    ctx.fillStyle = '#767d8c'; ctx.fillRect(-9, -39, 19, 9);
++    ctx.fillStyle = '#b5c2cf'; ctx.fillRect(-9, -41, 17, 3);
++    ctx.fillStyle = '#434b5e'; ctx.fillRect(9, -37, 3, 8);
++    ctx.fillStyle = '#dce7ed'; ctx.fillRect(10, -37, 1, 6); ctx.fillRect(-8, -40, 14, 1);
++    ctx.fillStyle = '#cc9e44'; ctx.fillRect(-3, -41, 5, 14);
++    ctx.fillStyle = '#ffe09a'; ctx.fillRect(-2, -40, 1, 12);
++    ctx.fillStyle = '#242a38'; ctx.fillRect(-7, -36, 3, 2); ctx.fillRect(4, -36, 3, 2);
++    ctx.fillStyle = '#d5e3eb'; ctx.fillRect(-8, -38, 1, 1); ctx.fillRect(7, -31, 1, 1);
++    // 냉각 핀과 추진 노즐. 불꽃 길이만 바꾸고 무기 크기는 유지한다.
++    ctx.fillStyle = '#202431'; ctx.fillRect(-14, -39, 4, 10);
++    ctx.fillStyle = '#788497'; for (let i = 0; i < 3; i++) ctx.fillRect(-14, -38 + i * 3, 3, 1);
++    if (u.hamSwing > 0 || (u.action && u.action.type === 'charge')) {
++      const jet = 9 + Math.sin(b.time * 55) * 3;
++      glowAt(ctx, -15, -34, 13, '#ff9c48', 0.5);
++      ctx.fillStyle = '#ef7139'; ctx.beginPath(); ctx.moveTo(-14, -38); ctx.lineTo(-14 - jet, -37);
++      ctx.lineTo(-19 - jet, -34); ctx.lineTo(-14 - jet, -32); ctx.lineTo(-14, -30); ctx.closePath(); ctx.fill();
++      ctx.fillStyle = '#ffcd73'; ctx.beginPath(); ctx.moveTo(-14, -37); ctx.lineTo(-18 - jet * 0.7, -34); ctx.lineTo(-14, -31); ctx.fill();
++      ctx.fillStyle = '#fff5ce'; ctx.fillRect(-18, -36, 4, 4);
++    }
+     ctx.restore();
+   }
+   function drawBarrier(ctx, u, b) {
+@@ -1827,39 +2061,115 @@
+     ctx.beginPath(); for (let i = 0; i < show; i++) i ? ctx.lineTo(f.pts[i][0], f.pts[i][1]) : ctx.moveTo(f.pts[i][0], f.pts[i][1]); ctx.stroke();
+     ctx.restore();
+   }
++  function projectileTail(ctx, color, length, width) {
++    const g = ctx.createLinearGradient(-length, 0, 3, 0);
++    g.addColorStop(0, 'transparent'); g.addColorStop(1, color);
++    ctx.save(); ctx.globalAlpha = 0.45; ctx.fillStyle = g;
++    ctx.beginPath(); ctx.moveTo(3, -width);
++    ctx.quadraticCurveTo(-length * 0.35, -width * 0.6, -length, 0);
++    ctx.quadraticCurveTo(-length * 0.35, width * 0.6, 3, width); ctx.closePath(); ctx.fill();
++    ctx.restore();
++  }
+   function drawProj(ctx, p) {
+     ctx.save();
+     if (p.draw) { p.draw(ctx, p, glowAt); ctx.restore(); return; } // 커스텀 투사체 (브로리 기탄 등)
+     if (p.kind === 'wire') { // 와이어: 손에서 끝까지 이어진 실
+-      const f = p.from; ctx.restore(); ctx.save();
++      const f = p.from || p.src; ctx.restore(); ctx.save();
+       if (f) { ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ffb070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke();
+         ctx.globalAlpha = 1; ctx.strokeStyle = '#fff0d0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+-      glowAt(ctx, p.x, p.y, 8, '#ffb070', 0.5); ctx.fillStyle = '#fff4e0'; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+-    } else if (p.kind === 'flame') { // 화염 강타: 초승달 모양 화염파
++      glowAt(ctx, p.x, p.y, 8, '#ffb070', 0.5);
++      ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
++      ctx.strokeStyle = '#fff4e0'; ctx.lineWidth = 1.5;
++      ctx.beginPath(); ctx.moveTo(-4, 0); ctx.lineTo(3, 0); ctx.lineTo(0, 3); ctx.stroke();
++      ctx.fillStyle = '#ffbb72'; ctx.fillRect(-2, -1, 3, 2);
++    } else if (p.kind === 'flame') { // 화염 강타: 세로로 선 백열 화염의 막
+       const a = Math.atan2(p.vy, p.vx);
+-      glowAt(ctx, p.x, p.y, 26, '#ff8a3a', 0.45);
++      glowAt(ctx, p.x, p.y, 35, '#ff991d', 0.5);
+       ctx.translate(p.x, p.y); ctx.rotate(a);
+-      ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff6a2a'; ctx.beginPath(); ctx.ellipse(-8, 0, 16, 24, 0, 0, 6.28); ctx.fill();
+-      ctx.globalAlpha = 0.6; ctx.fillStyle = '#ff8a3a'; ctx.beginPath(); ctx.ellipse(-2, 0, 12, 22, 0, -1.57, 1.57); ctx.fill();
+-      ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffc070'; ctx.beginPath(); ctx.ellipse(2, 0, 8, 17, 0, -1.5, 1.5); ctx.fill();
+-      ctx.globalAlpha = 1; ctx.fillStyle = '#fff0c8'; ctx.beginPath(); ctx.ellipse(5, 0, 4, 11, 0, -1.4, 1.4); ctx.fill();
+-    } else if (p.kind === 'arrow') {
+-      const a = Math.atan2(p.vy, p.vx);
+-      ctx.translate(p.x, p.y); ctx.rotate(a);
+-      ctx.fillStyle = '#c9a26a'; ctx.fillRect(-8, -0.75, 10, 1.5);
+-      ctx.fillStyle = '#e8eef4'; ctx.fillRect(2, -1.5, 3, 3);
+-      ctx.fillStyle = '#f2f2e8'; ctx.fillRect(-9, -2, 2, 4);
+-    } else if (p.kind === 'arrowG') {
+-      const a = Math.atan2(p.vy, p.vx);
+-      glowAt(ctx, p.x, p.y, 10, '#a8f07a', 0.45);
+-      ctx.translate(p.x, p.y); ctx.rotate(a);
+-      ctx.fillStyle = '#d8f0a0'; ctx.fillRect(-10, -1, 13, 2);
+-      ctx.fillStyle = '#f4ffe0'; ctx.fillRect(2, -2, 4, 4);
++      const phase = p.life * 24, flutter = Math.sin(phase) * 1.8;
++      // 진행 방향 뒤에 짧은 열기 잔상을 두고 화염의 자세는 유지한다.
++      const wake = ctx.createLinearGradient(-36, 0, 8, 0);
++      wake.addColorStop(0, 'transparent'); wake.addColorStop(1, '#ffb526');
++      ctx.globalAlpha = 0.22; ctx.fillStyle = wake;
++      ctx.beginPath(); ctx.moveTo(5, -28); ctx.quadraticCurveTo(-24, -21, -36, 0);
++      ctx.quadraticCurveTo(-25, 20, 3, 29); ctx.closePath(); ctx.fill();
++      ctx.save(); ctx.transform(1, 0, -0.18, 1, 0, 0);
++      // 위아래가 뾰족하고 앞쪽이 백열하는 한 장의 화염.
++      ctx.globalAlpha = 0.95; ctx.fillStyle = '#ff6c13';
++      ctx.beginPath(); ctx.moveTo(-3, -40);
++      ctx.bezierCurveTo(8, -30, 16, -16, 14, -2);
++      ctx.bezierCurveTo(16, 12, 9, 29, -3, 40);
++      ctx.lineTo(-6, 29); ctx.quadraticCurveTo(-16 + flutter, 26, -12, 13);
++      ctx.lineTo(-19, 18); ctx.quadraticCurveTo(-13, 3, -16 + flutter, -3);
++      ctx.lineTo(-21, 3); ctx.quadraticCurveTo(-16, -13, -11, -19);
++      ctx.lineTo(-15, -26); ctx.lineTo(-7, -24); ctx.closePath(); ctx.fill();
++      ctx.fillStyle = '#ffc522';
++      ctx.beginPath(); ctx.moveTo(-2, -36);
++      ctx.bezierCurveTo(8, -24, 13, -12, 11, 0);
++      ctx.bezierCurveTo(12, 13, 5, 28, -3, 35);
++      ctx.quadraticCurveTo(-6, 20, -3, 11); ctx.lineTo(-8, 16);
++      ctx.quadraticCurveTo(-3, -1, -7, -8); ctx.lineTo(-4, -18); ctx.closePath(); ctx.fill();
++      ctx.fillStyle = '#fff38b';
++      ctx.beginPath(); ctx.moveTo(-1, -33); ctx.bezierCurveTo(7, -22, 10, -11, 8, 1);
++      ctx.bezierCurveTo(10, 13, 3, 27, -2, 32); ctx.lineTo(0, 14);
++      ctx.quadraticCurveTo(-4, 4, 0, -5); ctx.lineTo(-3, -13); ctx.closePath(); ctx.fill();
++      ctx.strokeStyle = '#ffffdf'; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.95;
++      ctx.beginPath(); ctx.moveTo(0, -29); ctx.bezierCurveTo(9, -17, 10, -6, 8, 4);
++      ctx.bezierCurveTo(9, 14, 3, 25, -1, 30); ctx.stroke();
++      // 화염 내부를 따라 흐르는 가느다란 주황색 결.
++      ctx.strokeStyle = '#ffaf1a'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.75;
++      for (let i = 0; i < 3; i++) {
++        const q = ((p.life * 1.8 + i / 3) % 1 + 1) % 1, y = -24 + q * 48;
++        ctx.beginPath(); ctx.moveTo(-4, y - 5); ctx.quadraticCurveTo(2, y - 2, 1, y + 5); ctx.stroke();
++      }
++      ctx.restore();
++      for (let i = 0; i < 5; i++) {
++        const q = ((p.life * 2 + i * 0.217) % 1 + 1) % 1;
++        const x = -9 - q * 26, y = Math.sin(i * 2.1 + phase * 0.1) * (13 + q * 12);
++        ctx.globalAlpha = (1 - q) * 0.8; ctx.fillStyle = '#ffe27a'; ctx.fillRect(x, y, 1.5, 1.5);
++      }
++    } else if (p.kind === 'arrow' || p.kind === 'arrowG') {
++      const poison = p.kind === 'arrowG';
++      if (poison) glowAt(ctx, p.x, p.y, 12, '#a8f07a', 0.45);
++      ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
++      projectileTail(ctx, poison ? '#b8ef86' : '#c0d7e3', poison ? 30 : 22, poison ? 2 : 0.8);
++      ctx.fillStyle = '#513d32'; ctx.fillRect(-13, -1.5, 17, 3);
++      ctx.fillStyle = poison ? '#bbdd81' : '#c9a26a'; ctx.fillRect(-12, -1, 15, 1.5);
++      ctx.fillStyle = '#f6edc9'; ctx.fillRect(-11, -1, 11, 0.5);
++      // 목재 축·깃털·소켓·금속 화살촉을 각각 분리해 표현.
++      for (const side of [-1, 1]) {
++        ctx.fillStyle = poison ? '#9ecf73' : '#d8e0dd';
++        ctx.beginPath(); ctx.moveTo(-13, 0); ctx.lineTo(-15, side * 4);
++        ctx.lineTo(-9, side * 3); ctx.lineTo(-6, 0); ctx.closePath(); ctx.fill();
++        ctx.strokeStyle = poison ? '#e2ffb8' : '#fcf9e6'; ctx.lineWidth = 0.7;
++        ctx.beginPath(); ctx.moveTo(-13, side * 2); ctx.lineTo(-8, side); ctx.stroke();
++      }
++      ctx.fillStyle = '#707b88'; ctx.fillRect(0, -1.5, 3, 3);
++      ctx.fillStyle = poison ? '#d8ffa0' : '#e2edf5';
++      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(1, -3); ctx.lineTo(2, 0); ctx.lineTo(1, 3); ctx.closePath(); ctx.fill();
++      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.7; ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(7, 0); ctx.stroke();
+     } else {
+-      const c = p.kind === 'holy' ? ['#fff3b0', '#ffe27a'] : ['#cfeaff', '#8fc8ff'];
+-      glowAt(ctx, p.x, p.y, 12, c[1], 0.4);
+-      ctx.globalAlpha = 0.35; ctx.fillStyle = c[1]; ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 6.28); ctx.fill();
+-      ctx.globalAlpha = 1; ctx.fillStyle = c[0]; ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 6.28); ctx.fill();
++      const holy = p.kind === 'holy', color = projectileColor(p), spin = p.life * 9;
++      glowAt(ctx, p.x, p.y, 17, color, 0.45);
++      ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
++      projectileTail(ctx, color, holy ? 30 : 26, 5);
++      ctx.fillStyle = color; ctx.globalAlpha = 0.55;
++      ctx.beginPath(); ctx.ellipse(-1, 0, 7, 5.5, 0, 0, Math.PI * 2); ctx.fill();
++      ctx.strokeStyle = color; ctx.globalAlpha = 0.8; ctx.lineWidth = 1;
++      for (let i = 0; i < 2; i++) {
++        const a = spin + i * Math.PI;
++        ctx.beginPath(); ctx.ellipse(0, 0, 8.5, 6.5, 0, a, a + 1.9); ctx.stroke();
++        const x = Math.cos(a) * 8.5, y = Math.sin(a) * 6.5;
++        ctx.fillStyle = '#fff4d8'; ctx.fillRect(x - 1, y - 1, 2, 2);
++      }
++      ctx.globalAlpha = 1; ctx.fillStyle = '#fff7df';
++      if (holy) {
++        ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(0, -4); ctx.lineTo(-4, 0); ctx.lineTo(0, 4); ctx.closePath(); ctx.fill();
++        ctx.globalAlpha = 0.65; ctx.fillRect(-7, -0.5, 15, 1); ctx.fillRect(-0.5, -8, 1, 16);
++      } else {
++        ctx.beginPath(); ctx.arc(1, 0, 3, 0, Math.PI * 2); ctx.fill();
++        ctx.fillStyle = '#ffffff'; ctx.fillRect(1, -1, 2, 2);
++      }
+     }
+     ctx.restore();
+   }
+@@ -1879,6 +2189,7 @@
+     ctx.drawImage(floors[sid], 0, 0);
+     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
+     for (const f of b.fx) drawFx(ctx, f, 0);
++    for (const f of b.visualFx) drawFx(ctx, f, 0);
+     drawWater(ctx, b);
+     if (b.stage.circle) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
+     if (b.balls.length) drawBalls(ctx, b.balls);
+@@ -1887,11 +2198,29 @@
+     for (const bl of b.buildings) if (bl.dead) drawRubble(ctx, bl);
+     for (const f of b.fx) if (f.type === 'crack') drawCrack(ctx, f);
+     for (const f of b.fx) if (f.type === 'ripple') {
+-      const p = f.t / f.dur, r = (f.big ? 6 : 4) + (f.big ? 22 : 12) * easeOut(p);
+-      ctx.globalAlpha = 0.5 * (1 - p); ctx.strokeStyle = '#e0f6ff'; ctx.lineWidth = 1;
+-      ctx.beginPath(); ctx.ellipse(f.x, f.y, r, r * 0.4, 0, 0, 6.28); ctx.stroke(); ctx.globalAlpha = 1;
++      const p = clamp(f.t / f.dur, 0, 1), start = f.big ? 6 : 4, reach = f.big ? 22 : 12;
++      ctx.save(); ctx.translate(f.x, f.y); ctx.scale(1, 0.4);
++      ctx.strokeStyle = '#b5e9ff'; ctx.lineWidth = 1;
++      for (let i = 0; i < 2; i++) {
++        const q = p - i * 0.16; if (q < 0) continue;
++        ctx.globalAlpha = (i ? 0.22 : 0.5) * (1 - p);
++        ctx.beginPath(); ctx.arc(0, 0, start + reach * easeOut(q), 0, Math.PI * 2); ctx.stroke();
++      }
++      ctx.strokeStyle = '#f0fcff'; ctx.globalAlpha = 0.65 * (1 - p) ** 2;
++      const r = start + reach * easeOut(p);
++      for (let i = 0; i < 3; i++) {
++        const a = i * Math.PI * 2 / 3 + p * 0.4;
++        ctx.beginPath(); ctx.arc(0, 0, r, a, a + 0.5); ctx.stroke();
++      }
++      ctx.restore();
+     }
+     for (const t of b.tele) drawTele(ctx, t);
++    if (b.finisher && b.finisher.t < b.finisher.dur) {
++      const f = b.finisher, p = f.t / f.dur;
++      ctx.save(); ctx.fillStyle = '#090b18'; ctx.globalAlpha = 0.45 * Math.sin(Math.PI * p) ** 0.5;
++      ctx.fillRect(0, 0, W, H); ctx.restore();
++      if (f.winner) glowAt(ctx, f.winner.x, f.winner.y - 20, 65, '#ffe3a0', 0.6 * Math.sin(Math.PI * p));
++    }
+     // 유닛과 건물을 y 순서로 그림
+     const list = [...b.u.map(u => ({ y: u.y, u })), ...b.buildings.filter(x => !x.dead).map(bl => ({ y: bl.y + bl.h, bl }))].sort((a, c) => a.y - c.y);
+     for (const it of list) {
+@@ -1904,6 +2233,7 @@
+     for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
+     for (const p of b.proj) drawProj(ctx, p);
+     for (const f of b.fx) drawFx(ctx, f, 1);
++    for (const f of b.visualFx) drawFx(ctx, f, 1);
+     for (const p of b.parts) {
+       const a = clamp(p.life / p.max, 0, 1);
+       if (p.soft) { ctx.globalAlpha = a * 0.5; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1.6 - a * 0.6), 0, 6.28); ctx.fill(); continue; }
+@@ -1933,15 +2263,26 @@
+     for (const t of b.texts) {
+       if (t.bubble) continue;
+       const p = t.t / t.dur;
+-      const pop = p < 0.15 ? 0.7 + 0.3 * easeOut(p / 0.15) * 1.25 : 1;
++      const pop = p < 0.15 ? 0.7 + (t.impact ? 0.65 : 0.375) * easeOut(p / 0.15) : 1;
+       ctx.globalAlpha = p > 0.65 ? 1 - (p - 0.65) / 0.35 : 1;
+       ctx.font = `bold ${Math.round(t.size * pop)}px "Galmuri11", "Malgun Gothic", sans-serif`;
+-      const y = t.y - 18 * easeOut(p);
+-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,18,30,0.85)'; ctx.strokeText(t.txt, t.x, y);
+-      ctx.fillStyle = t.color; ctx.fillText(t.txt, t.x, y);
++      const y = t.y - (t.impact ? 26 : 18) * easeOut(p), x = t.x + (t.dx || 0) * easeOut(p);
++      ctx.lineWidth = t.impact ? 4 : 3; ctx.strokeStyle = 'rgba(20,18,30,0.85)'; ctx.strokeText(t.txt, x, y);
++      ctx.fillStyle = t.color; ctx.fillText(t.txt, x, y);
+     }
+     ctx.globalAlpha = 1;
+     ctx.restore();
++    // 카메라 흔들림에서 분리된 결정타 타이틀. HUD를 가리지 않는다.
++    if (b.finisher && b.finisher.t < b.finisher.dur) {
++      const f = b.finisher, p = f.t / f.dur;
++      ctx.save(); ctx.globalAlpha = Math.min(1, f.t / 0.09, (f.dur - f.t) / 0.22);
++      ctx.translate(W / 2, AR.y + 48); ctx.scale(1 + 0.22 * (1 - easeOut(Math.min(1, p * 5))), 1);
++      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '900 italic 32px "Malgun Gothic", sans-serif';
++      ctx.strokeStyle = '#171321'; ctx.lineWidth = 6; ctx.strokeText('K.O.', 0, 0);
++      ctx.fillStyle = '#ffe3a0'; ctx.fillText('K.O.', 0, 0);
++      ctx.fillStyle = '#ffe3a0'; ctx.fillRect(-56, 24, 112 * easeOut(Math.min(1, p * 4)), 2);
++      ctx.restore();
++    }
+   }
+   return { draw, thumb, glowAt };
+ })();
+--- a/js/main.js
++++ b/js/main.js
+@@ -227,6 +227,7 @@
+   function loop(now) {
+     const dt = Math.min(0.1, (now - last) / 1000); last = now;
+     if (battle) {
++      battle.updateVisual(dt);
+       acc += dt * speed;
+       let n = 0;
+       while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; }
+--- a/js/skills.js
++++ b/js/skills.js
+@@ -155,7 +155,7 @@
+   },
+   // ===== 라인하르트 =====
+   fireStrike: {
+-    desc: '해머를 크게 휘둘러 일직선으로 관통하는 화염 참격을 날립니다.',
++    desc: '해머를 크게 휘둘러 세로로 선 화염 참격을 날립니다. 화염은 일직선으로 관통합니다.',
+     canUse: (u, e, d) => d > 60 && d < 260,
+     use(u, e, b, slot) {
+       const a = Math.atan2(e.y - u.y, e.x - u.x);
+@@ -163,7 +163,10 @@
+       b.glow(u.x, u.y - 24, 34, '#ff9a4a', 0.35);
+       b.windup(u, 0.3, () => {
+         u.hamSwing = 0.35;
+-        b.crescent(u.x + Math.cos(a) * 14, u.y - 20, 36, a, '#ffb36b', 0.3);
++        const sx = u.x + Math.cos(a) * 14, sy = u.y - 20;
++        const nx = -Math.sin(a), ny = Math.cos(a);
++        b.streak(sx - nx * 30, sy - ny * 30, sx + nx * 30, sy + ny * 30, '#ffb526', 8, 0.2);
++        b.streak(sx - nx * 25, sy - ny * 25, sx + nx * 25, sy + ny * 25, '#fff6b2', 2.5, 0.14);
+         b.shoot(u, { angle: a, spd: 430, dmg: u.st.atk * ((slot && slot.mult) || 1.7), kind: 'flame', piercesBarrier: true, hit: hit(slot, { piercesBarrier: true }) }); // 방벽 관통
+         const p = b.proj[b.proj.length - 1]; p.pierce = true; p.life = 1.4;
+         b.embers(u.x, u.y - 14, '#ffb36b', 10);
+@@ -178,7 +181,9 @@
+       const a = Math.atan2(ty - u.y, tx - u.x);
+       b.telegraphLine(u.x, u.y, u.x + Math.cos(a) * 200, u.y + Math.sin(a) * 200, 20, 0.22, '#ffd08a');
+       b.glow(u.x, u.y - 20, 40, '#ffb36b', 0.3);
++      b.visualFx.push({ type: 'chargeCue', u, ang: a, color: '#ffd08a', t: 0, dur: 0.22 });
+       b.windup(u, 0.22, () => b.charge(u, a, 560, slot));
++      u.action.chargeTell = true;
+     },
+   },
+   barrier: {
+--- a/js/broly.js
++++ b/js/broly.js
+@@ -279,6 +279,19 @@
+   }
+   function drawKi(ctx, p, glowAt) {
+     const r = p.r * (p.vis || 0.9), pul = 1 + 0.08 * Math.sin(p.life * 30);
++    // 기탄의 진행 방향으로 꼬리를 늘리고, 외곽에 회전하는 에너지층을 표시.
++    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
++    const tail = Math.min(65, r * 4), g = ctx.createLinearGradient(-tail, 0, 0, 0);
++    g.addColorStop(0, 'transparent'); g.addColorStop(1, p.col);
++    ctx.fillStyle = g; ctx.globalAlpha = 0.4;
++    ctx.beginPath(); ctx.moveTo(0, -r * 0.7); ctx.quadraticCurveTo(-tail * 0.35, -r * 0.4, -tail, 0);
++    ctx.quadraticCurveTo(-tail * 0.35, r * 0.4, 0, r * 0.7); ctx.closePath(); ctx.fill();
++    ctx.strokeStyle = p.col; ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
++    for (let i = 0; i < 3; i++) {
++      const a = p.life * 7 + i * TAU / 3;
++      ctx.beginPath(); ctx.ellipse(0, 0, r * 1.22, r * 0.92, 0, a, a + 0.9); ctx.stroke();
++    }
++    ctx.restore();
+     glowAt(ctx, p.x, p.y, r * 2.6, p.col, 0.55);
+     ctx.globalAlpha = 0.45; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, r * pul, 0, TAU); ctx.fill();
+     ctx.globalAlpha = 0.9; ctx.fillStyle = p.core || '#c8ffc8'; ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.62, 0, TAU); ctx.fill();
+--- a/README.md
++++ b/README.md
+@@ -160,6 +160,19 @@
+   - 그 외: `evasion(tgt) - accuracy(src)` 확률로 회피. 현재 스텁(`st.eva`, `st.acc` 기본 0 → 항상 명중).
+   - 향후 명중/회피 스탯은 STAT_DEFS/STAT_DEFAULTS에 `acc`, `eva`를 추가하면 바로 반영됨.
+ - `landShock: { r, stun, chance }`: 착지 시 충격파. 반경 내 지상의 상대는 넘어지며(옆으로 눕는 포즈) 기절(상태저항 적용), 기절이 끝나면 일어남.
++
++## 타격 연출
++
++- 공통 적중 문양은 일반 / 치명타 / 강타로 구분합니다. 베기는 방향성 검흔, 그 외 공격은 별 모양 충격과 파편 선으로 표시합니다. 지속 피해·반사·자해에는 추가 타격 문양을 적용하지 않습니다.
++- 피격 시 스프라이트만 짧게 눌렸다 복원됩니다. 좌표·충돌 범위·공격 수치는 바꾸지 않습니다.
++- `Battle.updateVisual(dt)`는 화면 프레임마다 실제 경과 시간으로 호출합니다 (`main.js`). `visualFx`와 피격 반동은 배속에 관계없이 같은 길이로 재생됩니다. 별도 실행 루프에서도 `update(dt)`와 함께 호출하세요.
++- 동시 타격 문양은 최대 18개, 추가 카메라 반응은 최소 0.14초 간격입니다. 화면 흔들림은 최대 4px, 확대는 최대 8%로 제한하며 강한 확대를 약한 효과가 즉시 덮어쓰지 않습니다.
++- 최종 KO는 짧은 배경 암전·승자 발광·K.O. 타이틀을 표시합니다. 결과 화면은 실제 시간으로 최소 0.9초 뒤에 열립니다. 팀원 한 명의 탈락과 엑조디아의 전용 승리 연출에는 이 효과를 적용하지 않습니다.
++- 라인하르트 돌진에는 준비 자세와 모여드는 선, 이동 잔상, 벽 충돌 방향으로 퍼지는 파편과 먼지를 추가했습니다. 준비 시간과 피해량은 기존 값을 유지합니다.
++- 충격파는 압력 띠·후속 링·밝은 선단·방사형 잔광으로 표현하며, 작은 링과 물결도 이중 파동으로 표시합니다. 중앙은 낮은 불투명도로 유지합니다.
++- 공격 예고는 직선(흐르는 화살표·진행 띠), 원형(고정 외곽선·수렴 링·발동 게이지), 부채꼴(고정 외곽선·방사선·이동 파동)로 구분합니다. 진행도는 기존 예고 타이머를 따르며 범위와 지속시간은 바꾸지 않습니다.
++- 무기·공격 디테일: 해머의 금속 면·그립·냉각 핀·추진 불꽃, 끝이 가늘어지는 참격과 후속 검흔, 화살의 촉·축·깃, 화염파의 움직이는 꼬리, 마법탄의 속성 색·회전 무늬, 브로리 기탄의 에너지층을 절차적으로 그립니다. 속도·피해량·충돌 반경은 유지하며 마법탄의 잔광과 적중·건물 충돌 파편도 같은 속성 색을 사용합니다.
++- 화염 강타는 오버워치 라인하르트의 화염 강타를 참고한 세로형 화염 참격입니다. 길고 뾰족한 화염 막·백색에 가까운 노란 중심·주황색 외곽·짧은 열기 잔상으로 표현합니다. 비행 중 자세는 유지하며 가장자리와 내부의 결만 일렁입니다. 발사 섬광도 진행 방향에 수직인 참격으로 맞췄습니다.
+ 
+ ## 카메라
+ - 흔들림/줌 펄스는 `draw()`의 단일 카메라 변환으로 바닥·스테이지 오브젝트·유닛·이펙트 전체에 동일 적용. HUD/로그는 DOM이라 영향 없음.

@@ -105,7 +105,7 @@ class Battle {
       const horiz = side === 'top' || side === 'bottom', len = horiz ? AR.w : AR.h, n = Math.round(len / IW.segLen);
       for (let i = 0; i < n; i++) this.iceSegs.push({ side, a0: (horiz ? AR.x : AR.y) + len * i / n, a1: (horiz ? AR.x : AR.y) + len * (i + 1) / n, hp: IW.hp, maxHp: IW.hp, dead: false, hitT: 0, seed: i * 7 + side.length });
     }
-    this.proj = []; this.parts = []; this.texts = []; this.tele = []; this.timers = []; this.fx = [];
+    this.proj = []; this.parts = []; this.texts = []; this.tele = []; this.timers = []; this.fx = []; this.visualFx = [];
     this.time = 0; this.slowT = 0; this.zoom = null; this.lastBump = -1; this.over = false; this.winner = null; this.ended = false; this.endT = 0;
     this.shakeT = 0; this.shakeA = 0; this.hooks = hooks;
     this.stats = { lands: 0, shockHits: 0, knocks: 0 };
@@ -314,6 +314,12 @@ class Battle {
     }
   }
 
+  // 화면 프레임마다 실제 경과 시간으로 호출 (main.js): 배속과 무관한 연출 (visualFx)
+  updateVisual(dt) {
+    if (!this.visualFx) this.visualFx = [];
+    for (const f of this.visualFx) f.t += dt;
+    this.visualFx = this.visualFx.filter(f => f.t < f.dur);
+  }
   // 전투 정지 중 진행: 정지 전용 타이머 + 순수 시각 효과 + 결과 처리만
   frozenStep(dt) {
     const F = this.freeze;
@@ -437,6 +443,7 @@ class Battle {
     const d = STATUS_DEFS[id];
     if (!d || tgt.dead || this.over) return null;
     if (src && src !== tgt && !d.positive && (tgt.counter || tgt.evadeT > this.time)) { if (tgt.counter) this.counterTrigger(tgt, src); return null; }
+    if (!o.fromList && !o.noResistScale && !d.noResistScale && !d.positive && src && src !== tgt) { const m = this.statusResistMod(tgt, id); if (m < 0) dur *= 1 - m / 2; } // 직접 부여도 저항 감소 반영
     let s = tgt.status(id);
     if (s) { if (d.stack !== 'ignore') { s.t = Math.max(s.t, dur); s.dur = Math.max(s.dur, dur); s.src = src; } return s; }
     s = { id, t: dur, dur, src, power: o.power, tickT: d.tick || 0 };
@@ -653,14 +660,17 @@ class Battle {
     const sr = u.def.statusResist || {};
     let r = (sr.all || 0) + (sr[id] || 0);
     for (const b of u.buffs) if (b.statusResist) r += typeof b.statusResist === 'number' ? b.statusResist : (b.statusResist.all || 0) + (b.statusResist[id] || 0);
-    return clamp(r, 0, 0.9);
+    r += this.statusResistMod(u, id);
+    return clamp(r, -0.6, 0.9); // 음수 = 저항 감소 디버프 (갈포드): 확률·지속시간 증가
   }
+  // 상태이상 저항 보정 (statusResistMod: 음수 = 저항 감소). 대상 상태 자신은 제외
+  statusResistMod(u, id) { let m = 0; for (const s of u.statuses) { const d = STATUS_DEFS[s.id]; if (d && d.statusResistMod && s.id !== id) m += d.statusResistMod; } return m; }
   // applies: [{ status, duration, chance=1, power }]  → 저항: 확률 x(1-r), 지속시간 x(1-r/2)
   applyList(src, tgt, list) {
     if (!list || tgt.dead) return;
     for (const a of list) {
       const r = this.statusResist(tgt, a.status), roll = Math.random(), base = a.chance ?? 1;
-      if (roll < base * (1 - r)) this.applyStatus(tgt, a.status, a.duration * (1 - r / 2), src, a);
+      if (roll < base * (1 - r)) this.applyStatus(tgt, a.status, a.duration * (1 - r / 2), src, { ...a, fromList: true });
       else if (roll < base && STATUS_DEFS[a.status]) this.text(tgt.x, tgt.y - 84, STATUS_DEFS[a.status].name + ' 저항', '#a8b0c4', 9);
     }
   }
@@ -1572,7 +1582,7 @@ const Render = (() => {
     const x = u.x + u.kx + fox, y = u.y + u.ky + foy;
     // 그림자 & 팀 링 (공중이면 그림자가 작아지고 분리됨)
     if (!F) {
-      const sk = 1 - z / 70;
+      const sk = Math.max(0.15, 1 - z / 70); // 높은 점프(>60px)에서도 음수 반경 방지
       ctx.globalAlpha = 0.35 * alpha * sk; ctx.fillStyle = '#000';
       const zs = u.size; ctx.beginPath(); ctx.ellipse(x, y + 2, 14 * sk * zs, 5 * sk * zs, 0, 0, 6.28); ctx.fill();
       ctx.globalAlpha = 0.75 * alpha * sk; ctx.strokeStyle = TEAM_COL[u.team]; ctx.lineWidth = 1.5;
@@ -1904,6 +1914,12 @@ const Render = (() => {
     for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
     for (const p of b.proj) drawProj(ctx, p);
     for (const f of b.fx) drawFx(ctx, f, 1);
+    for (const f of b.visualFx || []) if (f.type === 'chargeCue' && f.u && !f.u.dead) { // 돌진 준비: 진행 방향으로 모여드는 선
+      const p = clamp(f.t / f.dur, 0, 1), u = f.u, c = Math.cos(f.ang), s = Math.sin(f.ang);
+      ctx.save(); ctx.globalAlpha = 0.8 * (1 - p * 0.5); ctx.strokeStyle = f.color; ctx.lineWidth = 2;
+      for (let i = -2; i <= 2; i++) { const ox = -s * i * 7, oy = c * i * 7, r0 = 44 - p * 26, r1 = r0 - 12; ctx.beginPath(); ctx.moveTo(u.x + ox - c * r0, u.y - 18 + oy - s * r0); ctx.lineTo(u.x + ox - c * r1, u.y - 18 + oy - s * r1); ctx.stroke(); }
+      ctx.restore();
+    }
     for (const p of b.parts) {
       const a = clamp(p.life / p.max, 0, 1);
       if (p.soft) { ctx.globalAlpha = a * 0.5; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (1.6 - a * 0.6), 0, 6.28); ctx.fill(); continue; }

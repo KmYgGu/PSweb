@@ -279,6 +279,19 @@
   }
   function drawKi(ctx, p, glowAt) {
     const r = p.r * (p.vis || 0.9), pul = 1 + 0.08 * Math.sin(p.life * 30);
+    // 기탄의 진행 방향으로 꼬리를 늘리고, 외곽에 회전하는 에너지층을 표시.
+    ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
+    const tail = Math.min(65, r * 4), g = ctx.createLinearGradient(-tail, 0, 0, 0);
+    g.addColorStop(0, 'transparent'); g.addColorStop(1, p.col);
+    ctx.fillStyle = g; ctx.globalAlpha = 0.4;
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.7); ctx.quadraticCurveTo(-tail * 0.35, -r * 0.4, -tail, 0);
+    ctx.quadraticCurveTo(-tail * 0.35, r * 0.4, 0, r * 0.7); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = p.col; ctx.lineWidth = 1; ctx.globalAlpha = 0.7;
+    for (let i = 0; i < 3; i++) {
+      const a = p.life * 7 + i * TAU / 3;
+      ctx.beginPath(); ctx.ellipse(0, 0, r * 1.22, r * 0.92, 0, a, a + 0.9); ctx.stroke();
+    }
+    ctx.restore();
     glowAt(ctx, p.x, p.y, r * 2.6, p.col, 0.55);
     ctx.globalAlpha = 0.45; ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, r * pul, 0, TAU); ctx.fill();
     ctx.globalAlpha = 0.9; ctx.fillStyle = p.core || '#c8ffc8'; ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.62, 0, TAU); ctx.fill();

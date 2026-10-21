@@ -155,7 +155,7 @@ const SKILLS = {
   },
   // ===== 라인하르트 =====
   fireStrike: {
-    desc: '해머를 크게 휘둘러 일직선으로 관통하는 화염 참격을 날립니다.',
+    desc: '해머를 크게 휘둘러 세로로 선 화염 참격을 날립니다. 화염은 일직선으로 관통합니다.',
     canUse: (u, e, d) => d > 60 && d < 260,
     use(u, e, b, slot) {
       const a = Math.atan2(e.y - u.y, e.x - u.x);
@@ -163,7 +163,10 @@ const SKILLS = {
       b.glow(u.x, u.y - 24, 34, '#ff9a4a', 0.35);
       b.windup(u, 0.3, () => {
         u.hamSwing = 0.35;
-        b.crescent(u.x + Math.cos(a) * 14, u.y - 20, 36, a, '#ffb36b', 0.3);
+        const sx = u.x + Math.cos(a) * 14, sy = u.y - 20;
+        const nx = -Math.sin(a), ny = Math.cos(a);
+        b.streak(sx - nx * 30, sy - ny * 30, sx + nx * 30, sy + ny * 30, '#ffb526', 8, 0.2);
+        b.streak(sx - nx * 25, sy - ny * 25, sx + nx * 25, sy + ny * 25, '#fff6b2', 2.5, 0.14);
         b.shoot(u, { angle: a, spd: 430, dmg: u.st.atk * ((slot && slot.mult) || 1.7), kind: 'flame', piercesBarrier: true, hit: hit(slot, { piercesBarrier: true }) }); // 방벽 관통
         const p = b.proj[b.proj.length - 1]; p.pierce = true; p.life = 1.4;
         b.embers(u.x, u.y - 14, '#ffb36b', 10);
@@ -178,7 +181,9 @@ const SKILLS = {
       const a = Math.atan2(ty - u.y, tx - u.x);
       b.telegraphLine(u.x, u.y, u.x + Math.cos(a) * 200, u.y + Math.sin(a) * 200, 20, 0.22, '#ffd08a');
       b.glow(u.x, u.y - 20, 40, '#ffb36b', 0.3);
+      b.visualFx.push({ type: 'chargeCue', u, ang: a, color: '#ffd08a', t: 0, dur: 0.22 });
       b.windup(u, 0.22, () => b.charge(u, a, 560, slot));
+      u.action.chargeTell = true;
     },
   },
   barrier: {

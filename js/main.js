@@ -227,6 +227,7 @@
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (battle) {
+      battle.updateVisual(dt);
       acc += dt * speed;
       let n = 0;
       while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; }

@@ -1,0 +1,36 @@
+{
+  "baseCommit": "9f0ac07",
+  "source": "Exact patch replay from this chat",
+  "files": {
+    "js/game.js": {
+      "recoveredAs": "game.js",
+      "patches": 13,
+      "sha256": "7c3d36e32ce9dae8816745d21582bd41cf5ef79b23da4d9c7ee137a7d9bc317c",
+      "bytes": 146341
+    },
+    "js/main.js": {
+      "recoveredAs": "main.js",
+      "patches": 1,
+      "sha256": "4b6b07eef38692d247da2a081f809ebb1e619bd2eba92c17778f76f99de10719",
+      "bytes": 17048
+    },
+    "js/skills.js": {
+      "recoveredAs": "skills.js",
+      "patches": 3,
+      "sha256": "2245296141acf8980d741e8d56db85d3a3679dd03c8ef85de8d4ea9aa4f97fab",
+      "bytes": 13787
+    },
+    "js/broly.js": {
+      "recoveredAs": "broly.js",
+      "patches": 1,
+      "sha256": "6909aabbdb6786bc82ab37e6fa628e9d6d058c30807073499396a97a4f59761b",
+      "bytes": 35199
+    },
+    "README.md": {
+      "recoveredAs": "project-README.md",
+      "patches": 5,
+      "sha256": "835d251c85bd3aa25ab21f6057ffbd73bc15e2998ff6422a0e467a9dc940b2df",
+      "bytes": 59381
+    }
+  }
+}
