@@ -2,35 +2,31 @@
  * 블레이드 (거대한 하늘색 수정 칼날을 쓰는 원거리 캐릭터)
  *  스킬: 블레이드 탑승 / 스플릿블레이드 / 폭풍의 칼날 / 표식
  *  - 칼날 연출은 절차적으로 그림 (몸 스프라이트는 assets/Blade)
- *  - 기본 AI 보조: 거리 유지(카이팅) — def.kite
  * ========================================================= */
 (() => {
   const TAU = Math.PI * 2;
   const CY = '#7fe0ff', CY2 = '#d8faff', CYD = '#2f9cc8', HUB = '#8a5a3a', HUBR = '#c8303a';
 
   // ---------- 칼날 그리기 ----------
-  // 큰 칼날: 고리(손잡이) + 서로 반대로 휜 수정 날 2개 (참고 그림 형태)
+  // 큰 칼날: 갈색/붉은 고리(손잡이) 둘레에 휘어진 하늘색 수정 날 4개 (참고 그림 형태)
   function drawBigBlade(ctx, x, y, s, rot, alpha = 1) {
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(rot); ctx.scale(s, s); ctx.globalAlpha *= alpha;
-    for (const k of [1, -1]) {
-      ctx.save(); ctx.scale(k, k);
-      ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(6, -4); ctx.quadraticCurveTo(30, -10, 40, 14); ctx.quadraticCurveTo(26, 0, 6, 4); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = CY2; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(8, -3); ctx.quadraticCurveTo(29, -8, 39, 12); ctx.stroke();
-      ctx.strokeStyle = CYD; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(10, 1); ctx.quadraticCurveTo(24, -2, 32, 8); ctx.stroke();
+    for (let k = 0; k < 4; k++) {
+      ctx.save(); ctx.rotate(k * Math.PI / 2);
+      ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(5, -5); ctx.quadraticCurveTo(26, -12, 36, 8); ctx.quadraticCurveTo(22, -2, 6, 3); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = CY2; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(7, -4); ctx.quadraticCurveTo(25, -10, 35, 7); ctx.stroke();
+      ctx.strokeStyle = CYD; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(9, 0); ctx.quadraticCurveTo(20, -3, 28, 4); ctx.stroke();
       ctx.restore();
     }
+    ctx.fillStyle = 'rgba(0,0,0,0)';
     ctx.strokeStyle = HUB; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.stroke();
-    ctx.strokeStyle = HUBR; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(0, 0, 6, -0.4, 0.4); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, 6, Math.PI - 0.4, Math.PI + 0.4); ctx.stroke();
+    ctx.strokeStyle = HUBR; ctx.lineWidth = 1.2;
+    for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(0, 0, 6, k * Math.PI / 2 - 0.3, k * Math.PI / 2 + 0.3); ctx.stroke(); }
     ctx.restore();
   }
-  // 작은 칼날 (투사체/함정): 짧은 초승달 조각
-  function drawShard(ctx, x, y, ang, s = 1, alpha = 1) {
-    ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s); ctx.globalAlpha *= alpha;
-    ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.quadraticCurveTo(0, -6, 9, -1); ctx.quadraticCurveTo(1, -1, -7, 3); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = CY2; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-6, 2); ctx.quadraticCurveTo(0, -5, 8, -1); ctx.stroke();
-    ctx.restore();
-  }
-  const shardDraw = (ctx, p) => drawShard(ctx, p.x, p.y, p.spin != null ? p.spin : Math.atan2(p.vy, p.vx), 1.15);
+  // 작은 칼날 (투사체/함정): 같은 모양의 작은 4날 칼날
+  function drawShard(ctx, x, y, ang, s = 1, alpha = 1) { drawBigBlade(ctx, x, y, 0.32 * s, ang, alpha); }
+  const shardDraw = (ctx, p) => { p.spin = (p.spin || 0) + 0.35; drawShard(ctx, p.x, p.y, p.spin, 1.1); };
   const iceHit = (b, x, y) => { b.sparks(x, y, CY2, 6, 140); b.glow(x, y, 14, CY, 0.2); };
   const hitO = (slot, extra) => ({ element: slot.element || 'ice', delivery: slot.delivery || 'ranged', pierce: slot.pierce || 0, applies: slot.applies || null, ...extra });
   const L = b => b.bladeObj || (b.bladeObj = { big: [], traps: [] });
@@ -43,12 +39,13 @@
 
   // ---------- 1. 블레이드 탑승 ----------
   SKILLS.bladeRide = {
-    desc: '거대한 칼날에 올라타 공중 상태가 됩니다(지상 효과·근접 공격 무시). 피해를 받으면 즉시 내려옵니다. 이동 경로에 작은 칼날이 일정 간격으로 생겨(최대 3개) 무작위 방향으로 날아갔다가 잠시 후 되돌아옵니다(닿은 상대에게 피해).',
+    desc: '거대한 칼날에 올라타 공중 상태가 되고 이동 속도가 크게 증가합니다(x2.2, 지상 효과·근접 공격 무시). 피해를 받으면 즉시 내려옵니다. 이동 경로에 작은 칼날이 일정 간격으로 생겨(최대 3개) 무작위 방향으로 날아갔다가 잠시 후 되돌아옵니다(닿은 상대에게 피해).',
     canUse: (u, e, d, b) => !u.airborne && !u.bladeSplit && (d < 150 || b.threatTo(u)),
     use(u, e, b, slot) {
       const dur = slot.dur || 3;
       u.air = { t: 0, dur, h: slot.h || 16, ride: true };
       u.bladeRide = { slot, next: slot.gap || 0.6, n: 0 };
+      u.buffs = u.buffs.filter(q => q.type !== 'bladeRideSpd'); u.buffs.push({ type: 'bladeRideSpd', t: dur, spdMul: slot.spdMul || 2.2 }); // 탑승 중 이동 속도 대폭 증가
       b.text(u.x, u.y - 64, '탑승!', CY2, 10); b.ring(u.x, u.y, 4, 26, 0.3, CY);
     },
   };
@@ -61,7 +58,7 @@
 
   // ---------- 2. 스플릿블레이드 ----------
   SKILLS.splitBlade = {
-    desc: '제자리에 멈춰 큰 칼날을 조종합니다. 칼날은 벽·캐릭터·장애물에 튕기며 지나간 자리에 칼날 함정을 남깁니다(상대가 밟으면 피해, 일정 시간 후 소멸). 튕길 때마다 칼날이 작아지고, 사라지면 다시 움직일 수 있습니다.',
+    desc: '제자리에 멈춰 큰 칼날을 조종합니다. 칼날은 빠르게 날아가며 벽·캐릭터·장애물에 튕기며 지나간 자리에 칼날 함정을 남깁니다(상대가 밟으면 피해, 일정 시간 후 소멸). 튕길 때마다 칼날이 작아지고, 사라지면 다시 움직일 수 있습니다.',
     canUse: (u, e, d) => !u.bladeSplit && !u.airborne && d > 50 && d < 240 && !e.dead,
     use(u, e, b, slot) {
       const a = Math.atan2(e.y - u.y, e.x - u.x), spd = slot.spd || 300;
@@ -73,7 +70,11 @@
       u.action = st;
     },
   };
-  function stepBig(b, B, dt) {
+  function stepBig(b, B, dt) { // 고속(600) 터널링 방지: 이동 4px 단위로 쪼개서 진행
+    const n = Math.max(1, Math.ceil(Math.hypot(B.vx, B.vy) * dt / 4));
+    for (let i = 0; i < n && !B.dead; i++) stepBigSub(b, B, dt / n);
+  }
+  function stepBigSub(b, B, dt) {
     const S = B.slot, u = B.u, R = 18 * B.s;
     B.t += dt; B.rot += dt * 14;
     if (u.dead || B.t > (S.maxT || 6)) { B.dead = true; return; }
@@ -144,14 +145,12 @@
   // ---------- 4. 표식 ----------
   STATUS_DEFS.bladeMark = { name: '표식', color: '#7fe0ff', tint: '#7fe0ff', tintA: 0.12, particle: '#d8faff', stack: 'refresh' };
   SKILLS.bladeMark = {
-    desc: '은신합니다(반투명, 회피율 +45%, 상태이상 저항 -30%). 은신 중 상대에게 닿으면 표식을 새기고, 상대의 현재 위치로 칼날을 여러 번 던집니다(유도 없음). 은신은 시간이 지나거나, 공격하거나, 상태이상에 걸리면 풀립니다.',
+    desc: '은신합니다(반투명, 회피율 +45%, 상태이상 저항 -30%). 은신 중 상대에게 닿으면 표식을 새기고, 제자리에 멈춰 상대의 현재 위치로 칼날 8개를 빠르게 연속으로 던집니다(유도 없음). 은신은 시간이 지나거나, 공격하거나, 상태이상에 걸리면 풀립니다.',
     canUse: (u, e, d) => !u.bladeStealth && !u.airborne && !u.bladeSplit && d < 260 && !e.dead,
     use(u, e, b, slot) {
       const dur = slot.dur || 4;
       u.buffs = u.buffs.filter(q => q.type !== 'invis');
       u.buffs.push({ type: 'invis', t: dur, eva: slot.eva ?? 0.45, statusResist: slot.resDown ?? -0.3, bladeStealth: true });
-      u.atkT = Math.max(u.atkT, 0.3); // 시전 직후 기본 공격으로 바로 풀리지 않게
-      if (u.skillT) for (let i = 0; i < u.skillT.length; i++) u.skillT[i] = Math.max(u.skillT[i], 0.3);
       u.bladeStealth = { t: dur, slot, nStat: u.statuses.filter(s => !(STATUS_DEFS[s.id] || {}).positive).length };
       b.smoke(u.x, u.y - 18, '#a8e8ff', 8); b.text(u.x, u.y - 64, '은신', CY2, 10);
     },
@@ -165,8 +164,10 @@
     endStealth(b, u, null);
     b.applyStatus(e, 'bladeMark', slot.markDur || 4, u);
     b.text(e.x, e.y - 70, '표식!', CY2, 12);
-    const n = slot.throws || 5, gap = slot.throwGap || 0.18;
-    for (let i = 0; i < n; i++) b.later(0.12 + i * gap, () => {
+    const n = slot.throws || 8, gap = slot.throwGap || 0.1, hold = 0.1 + n * gap + 0.1;
+    if (u.action && u.action.pin && u.action.tgt) b.releasePin(u.action.tgt);
+    const st = { type: 'bladeThrow', t: 0 }; st.step = (dt) => { st.t += dt; u.moving = false; if (st.t >= hold || u.dead) u.action = null; }; u.action = st; // 던지는 동안 제자리
+    for (let i = 0; i < n; i++) b.later(0.1 + i * gap, () => {
       if (u.dead || e.dead || b.over) return;
       const tx = e.x, ty = e.y - 18 - b.airZ(e), a = Math.atan2(ty - (u.y - 18 - b.airZ(u)), tx - u.x); // 던지는 순간의 현재 위치 (유도 없음)
       throwShard(b, u, a, slot.spd || 520, u.st.atk * (slot.mult || 0.7), slot, { life: 1.0 });
@@ -179,7 +180,7 @@
     init(b) { b.bladeObj = { big: [], traps: [] }; },
     on(b, ev, a, c) {
       if ((ev === 'attack' || ev === 'skill') && a && a.bladeStealth) endStealth(b, a, ev === 'attack' ? null : null); // 공격/스킬 → 은신 해제
-      if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { c.air.t = c.air.dur; c.bladeRide = null; b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
+      if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { c.air.t = c.air.dur; c.bladeRide = null; c.buffs = c.buffs.filter(q => q.type !== 'bladeRideSpd'); b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
       return false;
     },
     step(b, dt) {
@@ -187,7 +188,7 @@
       for (const u of b.u) {
         if (u.bladeRide) {
           const R = u.bladeRide;
-          if (u.dead || !u.air || !u.air.ride) u.bladeRide = null;
+          if (u.dead || !u.air || !u.air.ride) { u.bladeRide = null; u.buffs = u.buffs.filter(q => q.type !== 'bladeRideSpd'); }
           else if (R.n < (R.slot.max || 3)) { R.next -= dt; if (R.next <= 0) { R.next = R.slot.gap || 0.6; spawnRideShard(b, u, R); } }
         }
         if (u.bladeStealth) {
@@ -195,22 +196,9 @@
           const nBad = u.statuses.filter(s => !(STATUS_DEFS[s.id] || {}).positive).length;
           if (u.dead || S.t <= 0 || !u.buff('invis')) endStealth(b, u, S.t <= 0 ? '은신 해제' : null);
           else if (nBad > S.nStat) endStealth(b, u, '은신 풀림');
-          else {
-            u.atkT = Math.max(u.atkT, 0.2); // 은신 중엔 기본 공격 보류 (접촉 표식이 목적)
-            if (u.skillT) for (let i = 0; i < u.skillT.length; i++) u.skillT[i] = Math.max(u.skillT[i], 0.2); // 스킬도 보류 (은신 유지)
+          else { // 이동은 일반 캐릭터와 같음. 우연히 상대에게 닿으면 표식
             const e = b.enemy(u);
-            if (e && !e.dead && !u.blocked('blocksMove') && !u.action) { // 은신 중엔 상대에게 접근
-              u.dir = Math.atan2(e.y - u.y, e.x - u.x);
-              if (dist(u, e) < 15 * ((u.size || 1) + (e.size || 1)) + 8 && !e.airborne) markAndThrow(b, u, e, S.slot);
-            }
-          }
-        } else if (u.def.kite && !u.dead && !u.action && !b.over && !u.blocked('blocksMove')) { // 카이팅: 거리 유지
-          const e = b.enemy(u);
-          if (e && !e.dead) {
-            const K = u.def.kite, d = dist(u, e), away = Math.atan2(u.y - e.y, u.x - e.x);
-            let want = null;
-            if (d < K.min) want = away; else if (d > K.max) want = away + Math.PI;
-            if (want != null) { let df = Math.atan2(Math.sin(want - u.dir), Math.cos(want - u.dir)); u.dir = fixAngle(u.dir + clamp(df, -K.turn * dt, K.turn * dt)); }
+            if (e && !e.dead && !e.airborne && dist(u, e) < 15 * ((u.size || 1) + (e.size || 1)) + 8) markAndThrow(b, u, e, S.slot);
           }
         }
       }
@@ -255,12 +243,11 @@
     stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0.08 },
     attack: { element: 'ice', delivery: 'ranged' }, projectile: 'magic',
     resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
-    kite: { min: 110, max: 190, turn: 6 }, // 거리 유지 AI
     skills: [
-      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 5, throwGap: 0.18, mult: 0.7, spd: 520, element: 'ice', delivery: 'ranged' },
-      { id: 'splitBlade', name: '스플릿블레이드', cd: 14, spd: 300, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
+      { id: 'splitBlade', name: '스플릿블레이드', cd: 14, spd: 600, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
       { id: 'bladeStorm', name: '폭풍의 칼날', cd: 11, dist: 70, gap: 0.3, count: 8, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
-      { id: 'bladeRide', name: '블레이드 탑승', cd: 12, dur: 3, h: 16, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeRide', name: '블레이드 탑승', cd: 12, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
     ],
     sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Blade/portrait.png',
