@@ -133,8 +133,12 @@ class Battle {
   // ---------- 대사 ----------
   // def.lines = { skill: { 스킬명: [..] }, event: { 이벤트: [..] }, cd?: { 이벤트: 초 } }. 같은 대사 연속 방지, 이벤트별/캐릭터별 쿨다운
   line(u, kind, key) {
-    const L = (u.form && u.form.lines) || u.def.lines, arr = L && L[kind] && L[kind][key];
+    const L = (u.form && u.form.lines) || u.def.lines;
+    let arr = L && L[kind] && L[kind][key];
     if (!arr || !arr.length) return null;
+    // 대사 항목: 문자열 또는 { t, female: true } (상대가 여성일 때만 후보). '{opp}' → 가장 가까운 생존 상대 이름
+    const fancy = arr.some(x => typeof x !== 'string' || x.includes('{opp}')), opp = fancy ? this.enemy(u) : null;
+    if (fancy) { arr = arr.filter(x => typeof x === 'string' || !x.female || (opp && opp.gender === 'female')); if (!arr.length) return null; }
     u.voice = u.voice || { last: {}, prev: {}, any: -9 };
     const force = kind === 'skill' || key === 'win' || key === 'lose' || key === 'fallCrevasse' || key === 'battleStart';
     const cd = (L.cd && L.cd[key]) ?? (kind === 'skill' ? 0 : 6);
@@ -142,7 +146,8 @@ class Battle {
     let i = Math.floor(Math.random() * arr.length);
     if (arr.length > 1 && i === u.voice.prev[kind + key]) i = (i + 1) % arr.length;
     u.voice.prev[kind + key] = i; u.voice.last[kind + key] = this.time; u.voice.any = this.time;
-    return arr[i];
+    const x = arr[i], t = typeof x === 'string' ? x : x.t;
+    return fancy ? t.replace(/\{opp\}/g, opp ? opp.def.name : '') : t;
   }
   say(u, key) { // 이벤트 대사 → 로그 + 말풍선
     const t = this.line(u, 'event', key); if (!t) return;
@@ -151,6 +156,8 @@ class Battle {
   }
   bubble(u, t) { return; this.texts.push({ x: u.x, y: u.y - 70 - u.pad * 2.2, txt: t, color: '#fff6dc', size: 8, t: 0, dur: 1.6, bubble: true, u }); }
   later(t, fn) { this.timers.push({ t, fn }); }
+  // 엔진 이벤트 → STAGE_HOOKS[].on(b, ev, ...args). 하나라도 true 를 반환하면 '무효' (듀얼리스트 함정 등, js/duel.js)
+  emit(ev, ...a) { let neg = false; for (const h of STAGE_HOOKS) if (h.on && h.on(this, ev, ...a)) neg = true; return neg; }
   clampPos(x, y, pad = 0, u = null) {
     for (const h of STAGE_HOOKS) if (h.noClamp && u && h.noClamp(this, u)) return { x, y };
     for (const h of STAGE_HOOKS) if (h.clamp) { const p = h.clamp(this, x, y, pad); x = p.x; y = p.y; }
@@ -357,6 +364,7 @@ class Battle {
       const vl = sk.say ? sk.say(u, e, this, slot) : this.line(u, 'skill', slot.name); // sk.say: 동적 대사 (예: '기를 낮추거라 <상대>!')
       this.hooks.onSkill && this.hooks.onSkill(u, slot.name, vl);
       if (vl) this.bubble(u, vl);
+      if (this.emit('skill', u, slot, e)) { this.text(u.x, u.y - 60, '무효!', '#c8c0ff', 11); break; } // 함정 등으로 무효
       sk.use(u, e, this, slot);
       break;
     }
@@ -437,8 +445,8 @@ class Battle {
     u.dead = true; u.fallen = { t: 0, side, x: u.x, y: u.y }; u.action = null; u.statuses = [];
     this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 크레바스에 추락!');
     if (this.teamAlive(u.team)) { this.allyDown(u); this.hitstop(0.12); return; } // 팀원이 남아 있으면 계속
-    this.say(this.enemy(u), 'win');
     this.over = true; this.winner = this.teamBest(1 - u.team); this.fallen = u;
+    this.u.forEach(o => { if (o.team !== u.team && !o.dead && (o === this.winner || this.multi)) this.say(o, 'win'); });
     this.hitstop(0.2);
     playSfx('ko');
   }
@@ -932,9 +940,10 @@ class Battle {
     return Math.abs(dtn) < g.hw && dn < 5 && dn > -12 && (p.vx * g.nx + p.vy * g.ny) < 0;
   }
   basicAttack(u, e) {
+    if (this.emit('attack', u, e)) { this.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정
     u.swing = 0.2;
     const miss = Math.random() < u.smax('misdirect') && !(u.st.range >= 80 && e.airborne); // 혼란: 오조준 (공중 대상 원거리는 반드시 명중)
-    const atk = { ...(u.def.attack || {}), applies: u.def.attackApplies }; // 기본 공격 피해 속성
+    const atk = { ...(u.def.attack || {}), applies: u.def.attackApplies, basic: true }; // 기본 공격 피해 속성 (basic: 기본/충돌 공격 표시)
     if (u.st.range >= 80) {
       if (miss) {
         const a = Math.atan2(e.y - u.y, e.x - u.x) + (Math.random() < 0.5 ? -1 : 1) * rand(0.7, 1.6);
@@ -1027,6 +1036,9 @@ class Battle {
       const ta = Math.atan2(src.y - tgt.y, src.x - tgt.x), df = Math.abs(Math.atan2(Math.sin(ta - tgt.barrier.ang), Math.cos(ta - tgt.barrier.ang)));
       if (df < 1.2) { const g = this.barrierGeom(tgt); this.barrierHit(tgt, amount, g.cx, g.cy); return 0; }
     }
+    if (!o.dot) for (const h of STAGE_HOOKS) if (h.preDamage) { // 피해 직전 훅: true = 무효, 숫자 = 피해량 변경 (듀얼리스트 크리보/방패/함정 등)
+      const r = h.preDamage(this, src, tgt, amount, o); if (r === true) return 0; if (typeof r === 'number') amount = r;
+    }
     const hc = this.hitCheck(src, tgt, o);
     if (!hc.hit) { this.text(tgt.x, tgt.y - 48 - this.airZ(tgt), hc.label, '#c8d8ff', 11); playSfx('whiff'); return 0; }
     if (hc.sure) this.text(tgt.x + 8, tgt.y - 58 - this.airZ(tgt), hc.label, '#9ff0ff', 9);
@@ -1042,6 +1054,7 @@ class Battle {
     dmg *= tgt.mult('dmgTaken') * tgt.smult('dmgTaken') * src.smult('dmgDealt') * src.mult('dmgDealt'); // 버프 dmgDealt (아이돌 무대 팬심 등)
     for (const s of [...tgt.statuses]) { const d = STATUS_DEFS[s.id]; if (d && d.onDamaged) dmg *= d.onDamaged(tgt, this, s, o) ?? 1; }
     dmg *= 1 + Math.max(0, this.time - RAMP_START) * RAMP_RATE; // 장기전 방지: RAMP_START초 이후 피해 점증
+    const lpK = tgt.def.duelist ? (window.DUEL_LP_SCALE || 1) : 1; dmg *= lpK; // 듀얼리스트(LP 4000): 받는 피해를 LP 단위로 환산 (js/duel.js)
     dmg = Math.max(1, Math.round(dmg * rand(0.85, 1.15)));
     tgt.hp -= dmg;
     if (o.dot) { // 지속 피해: 조용히 표시
@@ -1059,7 +1072,7 @@ class Battle {
     tgt.flash = 0.12;
     const a = Math.atan2(tgt.y - src.y, tgt.x - src.x), kb = o.big ? 7 : 3;
     tgt.kx += Math.cos(a) * kb; tgt.ky += Math.sin(a) * kb;
-    const big = o.big || dmg >= 45;
+    const big = o.big || dmg / lpK >= 45;
     const wk = em >= ELEMENT_FX.weak.min ? ELEMENT_FX.weak : em <= ELEMENT_FX.resist.max ? ELEMENT_FX.resist : null;
     const ncol = wk ? wk.color : crit ? '#ffe27a' : (o.color || '#ffffff');
     this.text(tgt.x + rand(-6, 6), tgt.y - 40, String(dmg), ncol, (big ? 15 : 11) + (wk ? wk.sizeAdd : 0));
@@ -1074,6 +1087,7 @@ class Battle {
     if (tgt.hp > 0 && !tgt.lowSaid && tgt.hp < tgt.maxHp * 0.3) { tgt.lowSaid = true; this.say(tgt, 'lowHp'); }
     if (tgt.hp <= 0) this.kill(tgt, src);
     else if (o.applies) this.applyList(src, tgt, o.applies);
+    if (src !== tgt && !this.over) this.emit('damaged', src, tgt, dmg, o);
     if (src !== tgt && src.team !== tgt.team && !tgt.dead && !src.dead && !this.over && !o.reflected) { // 캐릭터 패시브 훅: def.onHit(공격 적중) / def.onHurt(피격)
       if (src.def.onHit) src.def.onHit(src, tgt, this, dmg, o);
       if (tgt.def.onHurt) tgt.def.onHurt(tgt, src, this, dmg, o);
@@ -1093,6 +1107,7 @@ class Battle {
     }
     this.over = true; this.winner = src && src.team !== tgt.team && !src.dead ? src : this.teamBest(1 - tgt.team);
     const w = this.winner; if (w.def.lines && w.def.lines.event && w.def.lines.event.kill) this.say(w, 'kill'); else this.say(w, 'win');
+    if (this.multi) this.u.forEach(o => { if (o !== w && o.team === w.team && !o.dead) this.say(o, 'win'); }); // 2인 팀: 생존 팀원도 승리 대사
     this.say(tgt, 'lose');
     this.burst(tgt.x, tgt.y - 16, tgt.def.color, 26);
     this.glow(tgt.x, tgt.y - 18, 60, tgt.def.color, 0.6);

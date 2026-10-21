@@ -115,6 +115,25 @@ const STAGE_DEFS = {
     }],
     spawns: [{ x: 70, y: 480 }, { x: 200, y: 485 }],
   },
+  soccer: {
+    name: '축구장', desc: '위 골대 = 1P, 아래 골대 = 2P. 공격·스킬·몸으로 공을 차서 상대 골대에 먼저 3골! (자책골 주의, 체력 0도 패배)', theme: 'soccer',
+    // soccer: top/bottom = 골라인 y, side = 터치라인 여백, goalW = 골문 폭, net = 골망 깊이, win = 승리 골 수, annDur = 골 안내 시간(그동안 공은 골망에, 이후 중앙 재배치)
+    // ball: r 반지름, friction 감속(/초), rest 반발, kickBase + atk × kickAtk = 차는 속도(px/s), maxSpd 상한, body 몸통 접촉 배율
+    // ai: chase = 공 몰기 모드 확률, turn = 방향 전환 속도(rad/s), dur = 모드 지속 시간 [min,max]
+    soccer: { top: 136, bottom: 514, side: 6, goalW: 80, net: 15, postR: 3, win: 3, annDur: 2.2,
+      ball: { r: 6, friction: 1.25, rest: 0.78, kickBase: 170, kickAtk: 7.5, maxSpd: 620, body: 0.55 },
+      ai: { chase: 0.6, turn: 4.5, dur: [1.5, 3.2] } },
+    spawns: [{ x: 180, y: 215 }, { x: 180, y: 435 }],
+  },
+  fastfood: {
+    name: '패스트푸드점 아르바이트', short: '패스트푸드점', desc: '벽 메뉴판을 치면 음식을 들고, 손님에게 닿으면 배달! 그 손님의 스킬 하나를 대신 시전합니다 (잘못 줘도 OK).', theme: 'fastfood',
+    // fastfood: wallY = 메뉴판/카운터 아래 끝 y (그 위는 벽), foods = 메뉴 (왼쪽부터 칸), maxCust = 동시 손님 수, custScale = 손님 크기
+    // first = 첫 손님, gap = 손님이 나간 뒤 다음 손님까지 [min,max], walk = 걷는 속도, patience = 기다리다 그냥 가는 시간, hitCd = 메뉴판 재타격 대기
+    // ai: errand = 심부름 모드 확률 (음식 없음 → 메뉴판 / 들고 있음 → 손님), turn = 방향 전환 속도
+    fastfood: { wallY: 176, foods: ['burger', 'pizza', 'chicken', 'fries', 'spaghetti', 'hotdog'], maxCust: 3, custScale: 0.72, first: 0.6, gap: [2.0, 4.0], walk: 55, patience: 24, hitCd: 0.35,
+      doors: [300, 450], ai: { errand: 0.45, errandFood: 0.65, turn: 3, dur: [1.4, 3.0] } },
+    spawns: [{ x: 110, y: 330 }, { x: 250, y: 330 }],
+  },
   // 새 스테이지 예) 빙판: terrain: [{ id: 'ice', shape: { type: 'rect', x: 12, y: 120, w: 336, h: 410 }, spdMul: 1.3, resist: { fire: 1.2 } }]
 };
 const STAGE_RANDOM = 'random';

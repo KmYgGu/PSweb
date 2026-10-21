@@ -139,3 +139,28 @@ img { image-rendering: pixelated; }
 .drow.down .dn { text-decoration: line-through; }
 .duo-tag { display: block; font-size: 10px; color: #c9b0ff; font-weight: normal; }
 .duoinfo { margin-top: 6px; border-top: 1px dashed rgba(255,255,255,.08); padding-top: 3px; }
+
+/* 2인 팀 선택 화면 능력치: 파라가스 / 브로리 / LSS 3열 */
+.stat.dstat { gap: 3px; }
+.stat.dstat .k { width: 30px; flex: none; }
+.stat.dstat .dc { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; }
+.stat.dstat .dc .bar { height: 5px; }
+.stat.dstat .dc .v { width: auto; min-width: 18px; font-size: 9px; }
+.stat.dhead .dc { font-size: 9px; font-weight: bold; justify-content: center; white-space: nowrap; overflow: hidden; }
+
+/* ===== 듀얼리스트 HUD (패/덱/묘지/세트 함정 3칸) ===== */
+.duelhud { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 8px; line-height: 10px; color: #b8bcd0; white-space: nowrap; }
+.right .duelhud { flex-direction: row-reverse; }
+.duelhud .dk b { color: #f0f0f8; margin-left: 1px; font-weight: bold; }
+.duelhud .dk b.low { color: #ff7a7a; }
+.duelhud .tr { display: inline-flex; gap: 1px; padding: 1px; border-radius: 2px; }
+.duelhud .tr i { width: 5px; height: 7px; border: 1px solid #4a3a52; background: #1a1622; border-radius: 1px; }
+.duelhud .tr i.on { background: #7a4220; border-color: #d8a050; }
+.duelhud .tr.full { box-shadow: 0 0 0 1px #ff6a8a; }
+.duelhud.wait .dk:first-child { opacity: .75; }
+.logl .dtag { display: inline-block; padding: 0 3px; border-radius: 2px; color: #fff; font-size: 9px; line-height: 12px; margin-right: 2px; }
+.logl .dmini { color: #9aa0b8; font-size: 9px; }
+.duelhud .ex { color: #c8a860; margin-left: 2px; }
+.duelhud .ex b { color: #f0e0a0; margin: 0 1px; }
+.duelhud .ex.hot b { color: #ffd040; }
+.duelhud .ex.hot { color: #ffb040; }

@@ -13,13 +13,14 @@
   const isBroly = o => o && o.def && o.def.id === 'broly';
   const isParagus = o => o && o.def && o.def.id === 'paragus';
   const FACES = { front: 'left', back: 'left' };
-  const FACES_B = { front: 'right', back: 'left' }; // 유저 브로리 일반 정면은 오른쪽을 봄
+  const FACES_B = { front: 'left', back: 'left' };
+  const FACES_L = { front: 'right', back: 'left' }; // 전설 브로리 정면은 오른쪽을 봄
   const ease = t => 1 - Math.pow(1 - t, 3);
 
   // ===================== 캐릭터 정의 =====================
   const PARAGUS = {
     id: 'paragus', name: '파라가스', gender: 'male', color: '#8a6ac8',
-    stats: { hp: 520, atk: 24, spd: 235, range: 46, atkRate: 0.85, def: 12 },
+    stats: { hp: 327, atk: 15.4, spd: 235, range: 46, atkRate: 0.85, def: 6.2 },
     attack: { element: 'blunt', delivery: 'melee' }, // 지팡이
     resist: { dark: 0.9, light: 1.15, slash: 1.1 },
     statusResist: { confusion: 0.3 },
@@ -34,31 +35,31 @@
     lines: {
       skill: { '데드☆퍼니셔!': ['데드☆퍼니셔!'], '무스코 크러쉬!': ['무스코 크러쉬!', '이 아버지의 품으로 오너라!'] },
       event: {
-        battleStart: ['후후후… 브로리, 저 녀석을 처리해라.', '이 행성째로 끝장을 내주마!'],
-        debuffed: ['크윽…!', '이, 이런 하찮은 녀석에게…!'],
-        lowHp: ['이, 이건 계산에 없었다…!', '브로리! 이 아버지를 지켜라!'],
-        lose: ['브, 브로리이…!', '이럴 수가… 나의 계획이…!'],
-        win: ['후하하하! 이것이 전설의 힘이다!'],
-        allyLost: ['브, 브로리…?! 이럴 수가…!'],
+        battleStart: ['FU~HAHAHA~! 이 곳을 본거지로 삼아 제국을 건설하겠다!', '브로리! 사이어인의 힘을 저 녀석을 없애버려랏~!', { t: '어른스런 누님 좋구나~', female: true }],
+        debuffed: ['그만둬라, {opp}! 그만둬어~!', 'SWAT!?.'],
+        lowHp: ['살려주십시오!', '이것도 사이어인의 숙명인가...'],
+        lose: ['DOOR!?', '또어어어어오오오오옹느!'],
+        win: ['나와 브로리의 제국은 영원불멸이다!', '네 죽음의 공포도 머지않아 끝났구나. 고맙게 생각해라.'],
+        allyLost: ['가엾지만 브로리.. 너도 이 별과 함께 사라지는 거다..'],
       },
     },
   };
   const LSS_FORM = {
     id: 'broly@lss', name: '브로리', color: '#b8f05a', gender: 'male', size: 1.55,
-    sprite: { src: 'assets/broly/lss_front.png', back: 'assets/broly/lss_back.png', scale: 0.5, foot: 2, faces: FACES },
+    sprite: { src: 'assets/broly/lss_front.png', back: 'assets/broly/lss_back.png', scale: 0.5, foot: 2, faces: FACES_L },
     portrait: 'assets/broly/lss_portrait.png',
     lines: {
       skill: { '암반': ['어디로 가려는 거냐?', '도망칠 곳은 없다!'], '무시카라 사커': ['흐아압!', '날아가라!'], '데덴탄': ['이걸로 끝이다아아!', '흐하하하하!'] },
       event: {
-        transform: ['아버지이이이이이!!!', '우오오오오오오오오!!!'],
-        buffed: ['흐하하하!'], debuffed: ['그런 건 안 통해!'], lowHp: ['아직이다… 아직 끝나지 않았어!'],
-        kill: ['내가… 악마다!', '흐하하하하하!'], win: ['내가… 악마다!'], lose: ['카… 카아아아…!'],
+        transform: ['그 정도의 파워로 날 쓰러트릴수 있을 거라고 생각하는 거냐?', '자, 와라! 여기가 네 녀석이 죽을 장소DA☆~!!!'],
+        buffed: ['기가 높아...흘러 넘친다...'], debuffed: ['그런 건 안 통해!'], lowHp: ['아무리 버텨봤자, 이 나를 뛰어넘는 건 불가능해!!!'],
+        kill: ['내가… 악마다!', '흐하하하하하!'], win: ['내가… 악마다!'], lose: ['{opp}!!'],
       },
     },
   };
   const BROLY = {
     id: 'broly', name: '브로리', gender: 'male', color: '#5ad07a',
-    stats: { hp: 860, atk: 30, spd: 220, range: 52, atkRate: 0.8, def: 24 },
+    stats: { hp: 541, atk: 19.2, spd: 220, range: 52, atkRate: 0.8, def: 12.3 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { blunt: 0.85, light: 0.9, elec: 1.2 },
     statusResist: { stun: 0.2 },
@@ -71,8 +72,9 @@
     ],
     // 전설의 슈퍼사이어인: 파라가스가 먼저 쓰러지면 변신 (onAllyDown)
     lss: {
-      desc: '파라가스가 먼저 쓰러지면 → 전설의 슈퍼사이어인 (공격력×1.5, 방어 +18, 속도×1.12, 공속×1.2, 체력 35% 회복, 상태저항 +25%)',
-      form: LSS_FORM, boost: { atk: 1.5, def: 18, spd: 1.12, atkRate: 1.2, heal: 0.35, statusResist: 0.25 },
+      desc: '파라가스가 먼저 쓰러지면 → 전설의 슈퍼사이어인 (체력 608 · 공격력 24.2 · 방어력 12.9 고정, 속도×1.12, 공속×1.2, 상태저항 +25%, 체력 비율 유지)',
+      form: LSS_FORM, boost: { spd: 1.12, atkRate: 1.2, statusResist: 0.25 }, // 속도·공속은 소폭 배율
+      stats: { hp: 608, atk: 24.2, def: 12.9 }, // 절대값: 다른 캐릭터 평균(HP 868.5 / ATK 34.6 / DEF 18.5)의 0.7배
       skills: [
         { id: 'bedrock', name: '암반', cd: 9, mult: 3.2, spd: 620, element: 'blunt', delivery: 'melee', pierce: 0.2 },
         { id: 'soccer', name: '무시카라 사커', cd: 9, mult: 2.2, near: 62, fling: 150, element: 'blunt', delivery: 'melee' },
@@ -83,10 +85,10 @@
     portrait: 'assets/broly/portrait.png',
     poses: { throw: { id: 'broly@throw', name: '브로리', color: '#5ad07a', sprite: { src: 'assets/broly/throw.png', scale: 0.5, foot: 2, faces: FACES_B } } },
     lines: {
-      skill: { '스로잉 블래스터': ['흥…!', '사라져라.'], '지반 격파': ['우오오!'], '남겨둔 기탄': ['…남겨두지.'] },
+      skill: { '스로잉 블래스터': ['흥…!', '사라져라.'], '지반 격파': ['우오오!'], '남겨둔 기탄': ['남겨둔 것이다..!'] },
       event: {
-        battleStart: ['……부숴주마.', '아버지… 명령인가.'],
-        debuffed: ['…으윽.'], lowHp: ['크… 크아아…'], lose: ['아버지…'], win: ['……끝났다.'],
+        battleStart: ['{opp}! 우선 너부터 피의 축제의 제물로 만들어주지!', '얌전히 죽음을 기다렸으면 뜨거운 맛을 보지 않아도 됐을 것을…'],
+        debuffed: ['크이익!'], lowHp: ['죽다 만 놈이!'], lose: ['바보같은!.'], win: ['.. 끝났구나. 결국은 쓰레기는 쓰레기로구나'],
         allyLost: ['아버지…?'],
       },
     },
@@ -98,18 +100,17 @@
   BROLY.onAllyDown = (u, dead, b) => {
     if (isParagus(dead) && !u.form && !u.dead) b.later(0.5, () => transform(u, b));
   };
-  PARAGUS.onAllyDown = (u, dead, b) => { if (isBroly(dead)) voice(b, u, PARAGUS.lines.event.allyLost[0]); };
+  PARAGUS.onAllyDown = (u, dead, b) => { if (isBroly(dead)) { u.voice && (u.voice.any = -9); b.say(u, 'allyLost'); } };
   function transform(u, b) {
     if (u.dead || u.form || b.over) return;
     const L = BROLY.lss, B = L.boost;
     u.form = L.form;
-    u.st.atk *= B.atk; u.st.def += B.def; u.st.spd *= B.spd; u.st.atkRate *= B.atkRate;
+    const S = L.stats, ratio = u.hp / u.maxHp; // 현재 체력 비율 유지 (회복 없음)
+    u.st.hp = S.hp; u.maxHp = S.hp; u.hp = Math.max(1, ratio * S.hp); u.st.atk = S.atk; u.st.def = S.def; u.st.spd *= B.spd; u.st.atkRate *= B.atkRate;
     u.skills = L.skills; u.skillT = u.skills.map(s => s.cd * rand(0.12, 0.3));
     u.statuses = u.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive); // 해로운 상태 정화
     u.buffs.push({ type: 'lssAura', name: '전설의 슈퍼사이어인', t: 1e9, nodispel: true, statusResist: B.statusResist });
-    u.buffs.push({ type: 'transformGuard', t: 1.0, dmgTaken: 0.3, nodispel: true });
     u.nBuffs = u.buffs.length; // 변신 버프는 'buffed' 대사 없이
-    b.heal(u, u.maxHp * B.heal);
     u.action = { type: 'wind', t: 0.9 }; // 기를 끌어올림
     b.hitstop(0.3); b.zoomAt(u.x, u.y - 30, 0.08); b.shake(4);
     for (let i = 0; i < 3; i++) b.later(i * 0.12, () => b.shock(u.x, u.y, 6, 70 + i * 26, i % 2 ? '#f4ffa0' : '#b8ff5a', 0.6, 6));
@@ -117,6 +118,8 @@
     b.debris(u.x, u.y, 26);
     b.stats.lss = (b.stats.lss || 0) + 1;
     sys(b, '브로리: 전설의 슈퍼사이어인으로 각성!!');
+    u.voice && (u.voice.any = -9); u.lowSaid = u.hp < u.maxHp * 0.3 ? u.lowSaid : false; // LSS 저체력 대사가 다시 나올 수 있게
+    b.later(1.4, () => { if (!u.dead && !b.over) { u.voice.any = -9; b.say(u, 'buffed'); } }); // 기 모으기 후 '기가 높아...'
     const t = b.line(u, 'event', 'transform') || LSS_FORM.lines.event.transform[0];
     voice(b, u, t);
   }
@@ -216,7 +219,7 @@
           const sp = (slot.spd || 640) * dt;
           u.x += Math.cos(ang) * sp; u.y += Math.sin(ang) * sp; u.facing = Math.cos(ang) >= 0 ? 1 : -1;
           const q = b.clampPos(u.x, u.y, u.pad, u); u.x = q.x; u.y = q.y;
-          if (Math.random() < 0.6) b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
+          if (Math.random() < 0.3) b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
           let hitU = null;
           for (const o of b.u) { // 경로상 먼저 닿은 유닛 (아군은 브로리만)
             if (o === u || o.dead || o.airborne || o.hidden) continue;
@@ -249,8 +252,8 @@
   }
   function fxList(b) { return b.bfx || (b.bfx = []); }
   function hearts(u, o, b) { // 효과 없음: 화면 밖에서 하트가 모여들며 작아지고 선명해짐
-    const H = { type: 'hearts', a: u, b: o, t: 0, dur: 1.5, items: [] };
-    for (let i = 0; i < 16; i++) { const ang = (i / 16) * TAU + rand(-0.15, 0.15); H.items.push({ ang, r0: rand(260, 340), ox: rand(-18, 18), oy: rand(-22, 8), delay: rand(0, 0.35), s: rand(0.9, 1.3) }); }
+    const H = { type: 'hearts', a: u, b: o, t: 0, dur: 1.1, items: [] }; // 모바일 최적화: 6개, 짧게
+    for (let i = 0; i < 6; i++) { const ang = (i / 6) * TAU + rand(-0.2, 0.2); H.items.push({ ang, r0: rand(240, 300), ox: rand(-16, 16), oy: rand(-20, 6), delay: i * 0.04, s: rand(0.9, 1.15) }); }
     fxList(b).push(H);
     b.stats.hearts = (b.stats.hearts || 0) + 1;
     b.text((u.x + o.x) / 2, Math.min(u.y, o.y) - 80, '♥', '#ff8ac8', 16);
@@ -444,17 +447,21 @@
   };
 
   // ===================== 연출 훅 (하트 / 어색한 침묵) =====================
-  function drawHeart(ctx, x, y, s, col) { // 픽셀 하트 (7x6)
-    const P = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
-    ctx.fillStyle = col;
-    for (let j = 0; j < 6; j++) for (let i = 0; i < 7; i++) if (P[j][i] === 'X') ctx.fillRect(x + (i - 3.5) * s, y + (j - 3) * s, s + 0.05, s + 0.05);
+  // 하트/땀방울은 오프스크린 캔버스에 한 번만 그려두고 drawImage (매 프레임 path/filter 없음)
+  let HEART_IMG = null, DROP_IMG = null;
+  function bake(w, h, rows, col) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); g.fillStyle = col;
+    for (let j = 0; j < rows.length; j++) for (let i = 0; i < rows[j].length; i++) if (rows[j][i] === 'X') g.fillRect(i, j, 1, 1);
+    return c;
   }
+  function heartImg() { return HEART_IMG || (HEART_IMG = bake(7, 6, ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'], '#ff6ab4')); }
+  function dropImg() { return DROP_IMG || (DROP_IMG = bake(3, 5, ['.X.', '.X.', 'XXX', 'XXX', '.X.'], '#8fd0ff')); }
+  const DOTS = ['', '·', '··', '···', '····', '·····', '······'];
   STAGE_HOOKS.push({
     match: () => false,
     step(b, dt) {
       if (!b.bfx) return;
-      for (const f of b.bfx) f.t += dt;
-      b.bfx = b.bfx.filter(f => f.t < f.dur);
+      for (let i = b.bfx.length - 1; i >= 0; i--) { const f = b.bfx[i]; f.t += dt; if (f.t >= f.dur) b.bfx.splice(i, 1); } // 할당 없이 제거
       for (const u of b.u) if (u.def.id === 'paragus' && u.poseT > 0 && u.pose === 'fallen' && !u.status('stun')) u.poseT = 0; // 기절이 풀리면 일어남
     },
     drawTop(ctx, b) {
@@ -462,36 +469,29 @@
       for (const f of b.bfx) {
         const mx = (f.a.x + f.b.x) / 2, my = (f.a.y + f.b.y) / 2 - 26;
         ctx.save();
-        if (f.type === 'hearts') {
-          const P = f.t / f.dur;
-          ctx.globalAlpha = 0.25 * Math.sin(Math.PI * Math.min(1, P * 1.2)); ctx.fillStyle = '#ff8ac8';
-          ctx.beginPath(); ctx.ellipse(mx, my + 10, 46, 34, 0, 0, TAU); ctx.fill();
-          for (const h of f.items) {
-            const p = clamp((f.t - h.delay) / (f.dur * 0.7), 0, 1); if (p <= 0) continue;
+        if (f.type === 'hearts') { // 화면 밖에서 모여들며 작아지고 진해짐 (blur 대신 크기+알파로 표현)
+          const img = heartImg(), D = f.dur * 0.7;
+          ctx.imageSmoothingEnabled = false;
+          for (let i = 0; i < f.items.length; i++) {
+            const h = f.items[i], p = clamp((f.t - h.delay) / D, 0, 1); if (p <= 0) continue;
             const k = ease(p), r = h.r0 * (1 - k);
             const x = mx + h.ox * k + Math.cos(h.ang) * r, y = my + h.oy * k + Math.sin(h.ang) * r * 1.3;
-            const s = (2.4 - 1.6 * k) * h.s, fade = p >= 1 ? Math.max(0, 1 - (f.t - h.delay - f.dur * 0.7) / 0.35) : 1;
-            ctx.globalAlpha = (0.2 + 0.8 * k) * fade;             // 점점 진하게
-            ctx.filter = `blur(${((1 - k) * 2.5).toFixed(2)}px)`;   // 점점 선명하게
-            drawHeart(ctx, x, y, s, k > 0.85 ? '#ff5aa8' : '#ff9ad0');
+            const sc = (2.6 - 1.4 * k) * h.s, w = 7 * sc, hh = 6 * sc;
+            ctx.globalAlpha = (0.25 + 0.75 * k) * (p >= 1 ? Math.max(0, 1 - (f.t - h.delay - D) / 0.25) : 1);
+            ctx.drawImage(img, x - w / 2, y - hh / 2, w, hh);
           }
-          ctx.filter = 'none';
         } else if (f.type === 'awk') { // 어색한 침묵: 차가운 공기 + 식은땀 + "……"
           const P = f.t / f.dur, A = P < 0.12 ? P / 0.12 : P > 0.8 ? (1 - P) / 0.2 : 1;
-          ctx.globalAlpha = 0.22 * A; ctx.fillStyle = '#5a6a8a'; ctx.beginPath(); ctx.ellipse(mx, my + 20, 62, 40, 0, 0, TAU); ctx.fill();
-          ctx.globalAlpha = 0.5 * A; ctx.strokeStyle = '#c8d4f0'; ctx.lineWidth = 1;
-          for (let i = 0; i < 4; i++) { const yy = my - 10 + i * 12, xx = mx - 60 + ((f.t * 40 + i * 37) % 120); ctx.beginPath(); ctx.moveTo(xx, yy); ctx.lineTo(xx + 14, yy); ctx.stroke(); } // 썰렁한 바람
-          for (const u of [f.a, f.b]) { // 식은땀 (흘러내림)
-            const s = Sprites.get(u.fdef), hx = u.x + u.facing * -9, top = u.y - s.dh * 0.82 - b.airZ(u);
-            for (let i = 0; i < 2; i++) {
-              const d = ((f.t * 1.2 + i * 0.5) % 1), dy = d * 14;
-              ctx.globalAlpha = A * (1 - d * 0.6); ctx.fillStyle = '#8fd0ff';
-              ctx.beginPath(); ctx.moveTo(hx + i * 18 - 9, top + dy - 4); ctx.quadraticCurveTo(hx + i * 18 - 6, top + dy + 2, hx + i * 18 - 9, top + dy + 3); ctx.quadraticCurveTo(hx + i * 18 - 12, top + dy + 2, hx + i * 18 - 9, top + dy - 4); ctx.fill();
-            }
+          ctx.globalAlpha = 0.18 * A; ctx.fillStyle = '#5a6a8a'; ctx.fillRect(mx - 56, my - 14, 112, 64); // 썰렁한 공기 (사각 한 장)
+          ctx.globalAlpha = 0.5 * A; ctx.fillStyle = '#c8d4f0';
+          for (let i = 0; i < 3; i++) ctx.fillRect(mx - 60 + ((f.t * 40 + i * 37) % 120), my - 10 + i * 14, 14, 1); // 썰렁한 바람
+          const di = dropImg(); ctx.imageSmoothingEnabled = false;
+          for (let n = 0; n < 2; n++) { // 식은땀 (흘러내림)
+            const u = n ? f.b : f.a, top = u.y - Sprites.get(u.fdef).dh * 0.82 - b.airZ(u), hx = u.x - u.facing * 9;
+            const d = (f.t * 1.2) % 1; ctx.globalAlpha = A * (1 - d * 0.6); ctx.drawImage(di, hx - 3, top + d * 14 - 4, 6, 10);
           }
-          const dots = Math.min(6, Math.floor(f.t / 0.15)); // …… (하나씩)
           ctx.globalAlpha = A; ctx.font = 'bold 14px "Galmuri11", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-          const t = '·'.repeat(dots); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,18,30,0.85)'; ctx.strokeText(t, mx, my - 46); ctx.fillStyle = '#e8eaf4'; ctx.fillText(t, mx, my - 46);
+          const t = DOTS[Math.min(6, Math.floor(f.t / 0.15))]; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,18,30,0.85)'; ctx.strokeText(t, mx, my - 46); ctx.fillStyle = '#e8eaf4'; ctx.fillText(t, mx, my - 46);
         }
         ctx.restore();
       }

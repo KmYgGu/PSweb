@@ -45,7 +45,7 @@
   }
   // 조종: 신비술사가 움직인 만큼 같이 이동. 벽(이동 가능 영역 경계/스테이지 벽)에 막히면 큰 피해
   function controlStep(b, u, dt) {
-    const e = b.u.find(o => o.team !== u.team && o.status('control') && o.status('control').src === u) || b.enemy(u), s = e.status('control');
+    const e = b.u.find(o => o.team !== u.team && o.status('control') && o.status('control').src === u) || (u.def.id === 'mystic' ? b.enemy(u) : null), s = e && e.status('control');
     const dx = u.x - (u.mPrev ? u.mPrev[0] : u.x), dy = u.y - (u.mPrev ? u.mPrev[1] : u.y);
     if (!s || e.dead || b.over || e.airborne || e.climb || e.inTrain) return;
     s.wallCd = Math.max(0, (s.wallCd || 0) - dt);
@@ -127,7 +127,7 @@
     match: () => false,
     step(b, dt) {
       for (const u of b.u) {
-        if (u.def.id !== 'mystic') continue;
+        if (u.def.id !== 'mystic' && !u.orb && !u.mark && !b.u.some(o => o.team !== u.team && o.status('control') && o.status('control').src === u)) { u.mPrev = null; continue; } // 다른 캐릭터가 빌려 쓴 미스틱 볼/포지셔닝 (패스트푸드점 배달 스킬)도 처리
         if (u.orb) orbStep(b, u, dt);
         if (u.mark) markStep(b, u, dt);
         controlStep(b, u, dt);

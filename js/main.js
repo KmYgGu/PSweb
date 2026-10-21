@@ -78,12 +78,19 @@
       <div class="res"><span class="ba">기본공격</span> ${hitTag(c.attack) || '-'}</div>`;
   }
   function fmt(sd, v) { return sd.fmt ? sd.fmt(v) : Math.round(v); }
+  function duoStats(c) { // 2인 팀: 파라가스 / 브로리 / (LSS) 를 같은 바 스타일로 나란히
+    const B = c.lss && c.lss.boost, cols = [[c.partner, { ...STAT_DEFAULTS, ...c.partner.stats }], [c, { ...STAT_DEFAULTS, ...c.stats }]];
+    if (B) { const l = { ...cols[1][1], ...(c.lss.stats || {}) }; l.spd *= B.spd || 1; cols.push([c.lss.form, l]); }
+    const head = `<div class="stat dstat dhead"><span class="k"></span>${cols.map(([d], k) => `<span class="dc" style="color:${d.color}">${k === 2 ? 'LSS' : d.name}</span>`).join('')}</div>`;
+    return head + STAT_DEFS.map(sd => `<div class="stat dstat"><span class="k">${sd.label}</span>${cols.map(([d, st]) => `<span class="dc"><span class="bar"><i style="width:${Math.min(100, st[sd.key] / sd.max * 100)}%;background:${d.color}"></i></span><span class="v">${fmt(sd, st[sd.key])}</span></span>`).join('')}</div>`).join('');
+  }
   function slotHTML(i) {
     const c = pick[i], tag = `<div class="tag">${i ? 'P2 · 레드' : 'P1 · 블루'}</div>`;
     if (!c) return tag + `<div class="empty">캐릭터를 선택하세요</div>`;
     const st = { ...STAT_DEFAULTS, ...c.stats };
-    const stats = STAT_DEFS.map(sd => `<div class="stat"><span class="k">${sd.label}</span><span class="bar"><i style="width:${Math.min(100, st[sd.key] / sd.max * 100)}%;background:${c.color}"></i></span><span class="v">${fmt(sd, st[sd.key])}</span></div>`).join('');
-    const skills = (c.skills || []).map(sl => `<div class="skill"><b>${sl.name}</b> <span class="cd">(쿨타임 ${sl.cd}초)</span> ${hitTag(sl)}<br>${(SKILLS[sl.id] || {}).desc || ''}${(sl.applies || []).map(a => ` <span style="color:${STATUS_DEFS[a.status].color}">[${STATUS_DEFS[a.status].name}${a.chance != null && a.chance < 1 ? ' ' + Math.round(a.chance * 100) + '%' : ''}]</span>`).join('')}</div>`).join('');
+    const stats = c.partner ? duoStats(c) : STAT_DEFS.map(sd => `<div class="stat"><span class="k">${sd.label}</span><span class="bar"><i style="width:${Math.min(100, st[sd.key] / sd.max * 100)}%;background:${c.color}"></i></span><span class="v">${fmt(sd, st[sd.key])}</span></div>`).join('');
+    const vis = (c.skills || []).filter(sl => !sl.hidden); // hidden: 선택 화면에 숨김 (듀얼리스트 패스트푸드 전용 슬롯 등)
+    const skills = vis.map(sl => `<div class="skill"><b>${sl.name}</b> <span class="cd">(쿨타임 ${sl.cd}초)</span> ${hitTag(sl)}<br>${(SKILLS[sl.id] || {}).desc || ''}${(sl.applies || []).map(a => ` <span style="color:${STATUS_DEFS[a.status].color}">[${STATUS_DEFS[a.status].name}${a.chance != null && a.chance < 1 ? ' ' + Math.round(a.chance * 100) + '%' : ''}]</span>`).join('')}</div>`).join('');
     const skl = list => (list || []).map(sl => `<div class="skill"><b>${sl.name}</b> <span class="cd">(쿨타임 ${sl.cd}초)</span> ${hitTag(sl)}<br>${(SKILLS[sl.id] || {}).desc || ''}</div>`).join('');
     let extra = '';
     if (c.partner) { // 2인 팀 (파라가스 & 브로리): 파트너 / 변신 스킬도 표시
@@ -92,7 +99,7 @@
     }
     if (c.lss) extra += `<div class="skills duoinfo"><div class="sh">${c.lss.desc || ''}</div>${skl(c.lss.skills)}</div>`;
     return tag + `<div class="top"><img src="${Sprites.get(c).portrait}" alt=""><div class="n">${c.name}${c.partner ? `<span class="duo-tag">+ ${c.partner.name}</span>` : ''}</div></div>${stats}${resistHTML(c)}
-      <div class="skills"><div class="sh">스킬 ${c.skills.length}개</div>${skills}</div>${extra}`;
+      ${c.duelist && window.DUEL ? DUEL.describe(c) : `<div class="skills"><div class="sh">스킬 ${vis.length}개</div>${skills}</div>`}${extra}`;
   }
   function refresh() {
     document.querySelectorAll('.slot').forEach((s, i) => { s.classList.toggle('active', i === active); s.innerHTML = slotHTML(i); });
@@ -156,7 +163,7 @@
     $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden');
     $('#log').innerHTML = '';
     battle = new Battle(pick[0], pick[1], { onSkill: addLog, onVoice: addVoice, onEnd: showResult, onSystem: addSys, onStatus: addStatus }, stageId);
-    $('#stageName').textContent = '🗺 ' + STAGE_DEFS[stageId].name;
+    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name); // short: 하단 바용 짧은 이름
     hud = [];
     [0, 1].forEach(i => {
       const mem = battle.u.filter(u => u.team === i), f = frames[i], face = mem[mem.length - 1];
@@ -172,6 +179,7 @@
       const rb = f.querySelector('.resbars'); rb.innerHTML = ''; // 자원 바 (display: 'bar')
       if (battle.race) rb.insertAdjacentHTML('beforeend', `<div class="resb lap" data-k="__lap" title="랩 진행" style="color:#f0f0f0"><div class="rf" style="background:repeating-linear-gradient(90deg,#f4f4f4 0 4px,#9aa0a8 4px 8px)"></div></div>`);
       for (const [k, R] of Object.entries(u.def.resources || {})) if (R.display === 'bar') rb.insertAdjacentHTML('beforeend', `<div class="resb" data-k="${k}" title="${R.name}" style="color:${R.color}"><div class="rf" style="background:${R.color}"></div></div>`);
+      for (const X of (window.HUD_EXT || [])) X.init && X.init(u, f, battle); // 캐릭터 확장 HUD (듀얼리스트 패/덱/묘지/함정)
       hud.push({ u, f, face: u, single: true, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: f.querySelector('.fill'), lagEl: f.querySelector('.lag'), num: f.querySelector('.hpnum') });
     });
     window.__battle = battle;
@@ -207,6 +215,7 @@
       H.num.textContent = H.single ? `${Math.ceil(u.hp)} / ${u.maxHp}` : `${Math.ceil(u.hp)}`;
       if (H.row) H.row.classList.toggle('down', u.dead);
       if (u === H.face) { const fd = H.face.fdef; if (f.dataset.form !== fd.id) { f.dataset.form = fd.id; f.querySelector('img').src = Sprites.get(fd).portrait; } } // 오니화/변신 초상화
+      if (H.single) for (const X of (window.HUD_EXT || [])) X.update && X.update(u, f);
       if (H.single) f.querySelectorAll('.resb').forEach(el => { if (el.dataset.k === '__lap') { el.firstChild.style.width = ((u.lap ? u.lap.prog : 0) * 100) + '%'; return; } const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
     }
     $('#timer').textContent = battle.time.toFixed(1) + 's';
