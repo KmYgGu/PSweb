@@ -36,7 +36,7 @@ img { image-rendering: pixelated; }
 .logl .sk { color: #ffe27a; }
 #speed { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 6px; }
 #speed .lbl { font-size: 11px; color: #9aa0b8; margin-right: 4px; }
-#speed button { width: 40px; height: 22px; font-size: 12px; border-radius: 4px; background: #34394f; color: #c9cee0; box-shadow: 0 2px 0 #1a1c28; }
+#speed button { width: 36px; height: 22px; font-size: 12px; border-radius: 4px; background: #34394f; color: #c9cee0; box-shadow: 0 2px 0 #1a1c28; }
 #speed button.on { background: #ffe27a; color: #3a2e10; }
 
 /* 선택 화면 */
@@ -104,7 +104,19 @@ img { image-rendering: pixelated; }
 .scard .rnd { background: repeating-linear-gradient(45deg, #2e3348 0 10px, #343a52 10px 20px); display: flex; align-items: center; justify-content: center; font-size: 40px; color: #ffe27a; }
 .scard .n { font-size: 13px; font-weight: bold; }
 .scard .d { font-size: 8.5px; color: #9aa0b8; line-height: 1.35; margin-top: 2px; min-height: 34px; }
-#speed .stg { margin-right: auto; font-size: 11px; color: #c9cee0; }
+#speed .stg { margin-right: auto; font-size: 11px; color: #c9cee0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+#speed button[data-s="0.5"] { width: 40px; }
+/* 전체 전투 로그 */
+#logBtn { margin-top: -2px; }
+#fullLog { position: absolute; inset: 0; z-index: 20; background: rgba(10,11,18,.82); display: flex; align-items: center; justify-content: center; }
+#fullLog .flbox { width: 340px; height: 600px; display: flex; flex-direction: column; background: #1e2130; border: 3px solid #ffd75e; border-radius: 10px; overflow: hidden; }
+#fullLog .flhead { display: flex; align-items: center; gap: 6px; padding: 8px; background: #262a3c; font-size: 14px; color: #ffe27a; flex: none; }
+#fullLog .flhead span { margin-right: auto; font-size: 10px; color: #9aa0b8; }
+#fullLog .flhead button { height: 30px; min-width: 52px; padding: 0 8px; font-size: 12px; border-radius: 5px; background: #34394f; color: #eef0f6; box-shadow: 0 2px 0 #14151f; }
+#fullLog .flhead #flClose { background: #ffe27a; color: #3a2e10; }
+#flList { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; padding: 6px; display: flex; flex-direction: column; gap: 2px; -webkit-user-select: text; user-select: text; }
+#flList .logl { height: auto; white-space: normal; line-height: 15px; transition: none; flex: none; }
+#flList .flt { color: #8f95ad; font-size: 10px; margin-right: 4px; font-variant-numeric: tabular-nums; }
 
 .logl .vl { color: #fff3d0; }
 .logl .stag { font-size: 9px; color: #ffe27a; background: rgba(255,226,122,.12); border-radius: 3px; padding: 0 3px; margin-left: 2px; }

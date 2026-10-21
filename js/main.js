@@ -122,11 +122,17 @@
   // ---------- 전투 ----------
   let battle = null, speed = 1, hud = [];
   const frames = [$('#f0'), $('#f1')], frameHTML = frames.map(f => f.innerHTML);
-  document.querySelectorAll('#speed button').forEach(b => b.onclick = () => {
-    if (!b.dataset.s) return;
-    speed = +b.dataset.s;
-    document.querySelectorAll('#speed button').forEach(x => x.classList.toggle('on', x === b));
-  });
+  // 배속 (0.5x/1x/2x/4x): 시뮬레이션 dt 에만 적용. 선택은 저장 (file:// 등 localStorage 불가 시 무시)
+  const SPEED_KEY = 'psweb.speed';
+  function setSpeed(v, save) {
+    const btn = [...document.querySelectorAll('#speed button')].find(x => x.dataset.s && +x.dataset.s === v);
+    if (!btn) return;
+    speed = v;
+    document.querySelectorAll('#speed button').forEach(x => { if (x.dataset.s) x.classList.toggle('on', x === btn); });
+    if (save) try { localStorage.setItem(SPEED_KEY, String(v)); } catch (e) { /* 저장 불가 환경 */ }
+  }
+  document.querySelectorAll('#speed button').forEach(b => b.onclick = () => { if (b.dataset.s) setSpeed(+b.dataset.s, true); });
+  try { const sv = parseFloat(localStorage.getItem(SPEED_KEY)); if (Number.isFinite(sv)) setSpeed(sv, false); } catch (e) { /* 무시 */ }
   $('#mute').onclick = () => {
     const enabled = Sfx.toggle();
     $('#mute').textContent = enabled ? '소리' : '끔';
@@ -140,7 +146,11 @@
   function teamLabel(t) { const m = battle.u.filter(u => u.team === t); return m.length > 1 ? m.map(u => u.def.name).join(' & ') + (pick[0] === pick[1] ? `(P${t + 1})` : '') : label(m[0]); }
   // 로그: 새 줄이 아래에서 들어오며 기존 줄을 위로 밀어 올림 (최대 3줄 표시, 위쪽은 잘림)
   const LOG_LINE = 20, LOG_KEEP = 4;
+  // 전체 전투 로그: 표시되는 모든 로그 줄을 전투 시간과 함께 기록 (최대 5000줄)
+  const FULL_LOG_MAX = 5000; let fullLog = [];
+  const fmtT = t => { const m = Math.floor(t / 60), s = t - m * 60; return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`; };
   function pushLog(cls, html) {
+    if (fullLog.length < FULL_LOG_MAX) fullLog.push({ t: battle ? battle.time : 0, cls, html });
     const log = $('#log'), el = document.createElement('div');
     el.className = 'logl' + cls; el.innerHTML = html;
     log.appendChild(el);
@@ -161,7 +171,7 @@
   function startBattle() {
     $('#select').classList.add('hidden'); $('#result').classList.add('hidden');
     $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden');
-    $('#log').innerHTML = '';
+    $('#log').innerHTML = ''; fullLog = []; $('#fullLog').classList.add('hidden');
     battle = new Battle(pick[0], pick[1], { onSkill: addLog, onVoice: addVoice, onEnd: showResult, onSystem: addSys, onStatus: addStatus }, stageId);
     $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name); // short: 하단 바용 짧은 이름
     hud = [];
@@ -194,6 +204,20 @@
     $('#result').classList.remove('hidden');
   }
   $('#again').onclick = startBattle;
+  $('#logBtn').onclick = () => {
+    const L = $('#flList');
+    L.innerHTML = fullLog.map(r => `<div class="logl${r.cls}"><span class="flt">${fmtT(r.t)}</span>${r.html}</div>`).join('') || '<div class="logl">기록 없음</div>';
+    $('#flCount').textContent = `${fullLog.length}줄${fullLog.length >= FULL_LOG_MAX ? ' (최대)' : ''}`;
+    $('#fullLog').classList.remove('hidden'); L.scrollTop = 0;
+  };
+  $('#flClose').onclick = () => $('#fullLog').classList.add('hidden');
+  $('#flCopy').onclick = () => {
+    const tmp = document.createElement('div');
+    const text = fullLog.map(r => { tmp.innerHTML = r.html; return `[${fmtT(r.t)}] ${tmp.textContent}`; }).join('\n');
+    const done = ok => { $('#flCopy').textContent = ok ? '복사됨' : '실패'; setTimeout(() => { $('#flCopy').textContent = '복사'; }, 1200); };
+    const fallback = () => { try { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); done(ok); } catch (e) { done(false); } };
+    try { if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback); else fallback(); } catch (e) { fallback(); }
+  };
   $('#reselect').onclick = () => {
     battle = null;
     $('#result').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden');

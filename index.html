@@ -37,7 +37,7 @@
       <div id="log"></div>
       <div id="speed">
         <span id="stageName" class="stg"></span><span class="lbl">배속</span>
-        <button data-s="1" class="on">1x</button><button data-s="2">2x</button><button data-s="4">4x</button>
+        <button data-s="0.5">0.5x</button><button data-s="1" class="on">1x</button><button data-s="2">2x</button><button data-s="4">4x</button>
         <button id="mute" type="button">소리</button>
       </div>
     </div>
@@ -73,6 +73,15 @@
         <div id="winSub"></div>
         <button id="again" class="main">다시 싸우기</button>
         <button id="reselect" class="sub">다시 고르기</button>
+        <button id="logBtn" class="sub">전투 로그</button>
+      </div>
+    </div>
+
+    <!-- 전체 전투 로그 -->
+    <div id="fullLog" class="hidden">
+      <div class="flbox">
+        <div class="flhead"><b>전투 로그</b><span id="flCount"></span><button id="flCopy" type="button">복사</button><button id="flClose" type="button">닫기</button></div>
+        <div id="flList"></div>
       </div>
     </div>
   </div>
