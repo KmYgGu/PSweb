@@ -3,6 +3,8 @@
  * ========================================================= */
 const W = 360, H = 640;
 const AR = { x: 12, y: 120, w: 336, h: 410 };
+// 기본 공격 = 충돌(부딪힘) 피해: ATK x BUMP_K, 각자 atkRate 쿨타임. 근접 공격 = 무기 공격(사거리 < MELEE_RANGE 캐릭터만, 사거리 안에서 자동)
+const BUMP_K = 0.85, MELEE_RANGE = 80; // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
 const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
 const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
@@ -404,7 +406,7 @@ class Battle {
     if (this.over) { u.moving = false; return; }
     this.updateStatuses(u, dt);
     if (u.dead) return;
-    u.atkT -= dt; for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= dt;
+    u.atkT -= dt; u.bumpT = (u.bumpT || 0) - dt; for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= dt;
     const noAct = u.blocked('blocksAct'), noMove = u.blocked('blocksMove');
     if (noAct && noMove) { u.moving = false; return; }
     if (u.action) { if (!noAct) this.updateAction(u, e, dt); return; }
@@ -444,7 +446,7 @@ class Battle {
     if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
-    if (!noAct && !u.def.noBasic && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; } // noBasic: 기본 공격 없는 캐릭터 (블레이드)
+    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; } // 근접 공격(무기): 근접 캐릭터만. 원거리 자동 발사는 없음
   }
 
   // ---------- 상태이상 ----------
@@ -750,10 +752,8 @@ class Battle {
     a.boost = Math.max(a.boost, 0.45); b.boost = Math.max(b.boost, 0.45); // 충돌 직후 가속
     if (impact > 420) this.shake(1.5);
     for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
-    // 충돌 타격: 근접 캐릭터는 부딪히는 순간 공격 쿨이 거의 찼으면 즉시 공격
-    for (const [u, e] of ally ? [] : [[a, b], [b, a]]) {
-      if (u.st.range < 80 && !u.def.noBasic && !u.stun && !u.action && u.atkT < 0.5 / u.atkRate) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
-    }
+    // 기본 공격 = 충돌 피해: 모든 캐릭터, 상대와 부딪히면 각자 쿨타임(1/atkRate)마다 (아군 제외)
+    for (const [u, e] of ally ? [] : [[a, b], [b, a]]) this.bumpAttack(u, e);
     if (!ally) for (const u of [a, b]) if (u.ghostChain) window.ghostBump(u, this); // 고스트 온 연계
     if (this.time - this.lastBump > 0.25) {
       this.lastBump = this.time;
@@ -1011,6 +1011,15 @@ class Battle {
     if (!u.barrier || u.dead) return false;
     const g = this.barrierGeom(u), rx = p.x - g.cx, ry = p.y - g.cy, dn = rx * g.nx + ry * g.ny, dtn = rx * g.tx + ry * g.ty;
     return Math.abs(dtn) < g.hw && dn < 5 && dn > -12 && (p.vx * g.nx + p.vy * g.ny) < 0;
+  }
+  // 기본 공격(충돌): ATK x BUMP_K. 기본 공격 속성/상태이상 유지. 무기 공격과 독립된 쿨타임(bumpT)
+  bumpAttack(u, e) {
+    if (u.dead || e.dead || this.over || this.freeze || u.stun || (u.bumpT || 0) > 0) return;
+    u.bumpT = 1 / u.atkRate;
+    if (this.emit('attack', u, e, { bump: true })) { this.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정
+    const atk = { ...(u.def.attack || {}), delivery: 'melee', applies: u.def.attackApplies, basic: true, bump: true, color: '#fff3c8' };
+    const bd = this.damage(u, e, u.st.atk * BUMP_K, atk);
+    if (bd > 0) this.resEvent(u, 'basicHit');
   }
   basicAttack(u, e) {
     if (this.emit('attack', u, e)) { this.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정

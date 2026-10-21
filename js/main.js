@@ -75,7 +75,7 @@
     return `<div class="res"><span class="wk">약점</span> ${weak || '-'}</div>
       <div class="res"><span class="rs">저항</span> ${res || '-'}</div>
       <div class="res"><span class="sr">상태저항</span> ${sr || '-'}</div>
-      <div class="res"><span class="ba">기본공격</span> ${hitTag(c.attack) || '-'}</div>`;
+      <div class="res"><span class="ba">기본공격</span> 충돌 ${hitTag({ ...(c.attack || {}), delivery: null }) || '-'} · ${(c.stats && c.stats.range != null ? c.stats.range : STAT_DEFAULTS.range) < 80 ? '근접 무기 공격' : '무기 없음(스킬)'}</div>`;
   }
   function fmt(sd, v) { return sd.fmt ? sd.fmt(v) : Math.round(v); }
   function duoStats(c) { // 2인 팀: 파라가스 / 브로리 / (LSS) 를 같은 바 스타일로 나란히

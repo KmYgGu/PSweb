@@ -184,7 +184,8 @@
     match: () => false,
     init(b) { b.bladeObj = { big: [], traps: [] }; },
     on(b, ev, a, c) {
-      if ((ev === 'attack' || ev === 'skill') && a && a.bladeStealth) endStealth(b, a, ev === 'attack' ? null : null); // 공격/스킬 → 은신 해제
+      if (ev === 'attack' && a && a.bladeStealth && c && !c.dead && !c.airborne) { markAndThrow(b, a, c, a.bladeStealth.slot); return false; } // 은신 중 충돌 = 접촉 → 표식 (충돌 피해는 그대로)
+      if (ev === 'skill' && a && a.bladeStealth) endStealth(b, a, null); // 스킬 → 은신 해제
       if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { c.air.t = c.air.dur; c.bladeRide = null; c.buffs = c.buffs.filter(q => q.type !== 'bladeRideSpd'); b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
       return false;
     },
@@ -247,7 +248,6 @@
     stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0.08 },
     attack: { element: 'ice', delivery: 'ranged' },
     resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
-    noBasic: true, // 기본 공격 없음 (스킬로만 공격)
     // 탑승 중인 큰 칼날은 몸 뒤(아래)에 그림 — 캐릭터가 칼날 위에 올라탄 모습
     drawUnder(ctx, u, b) { if (u.air && u.air.ride) drawBigBlade(ctx, 0, 2, 0.7, Math.sin(b.time * 3) * 0.08); },
     skills: [
