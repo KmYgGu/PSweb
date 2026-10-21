@@ -1,0 +1,273 @@
+/* =========================================================
+ * 블레이드 (거대한 하늘색 수정 칼날을 쓰는 원거리 캐릭터)
+ *  스킬: 블레이드 탑승 / 스플릿블레이드 / 폭풍의 칼날 / 표식
+ *  - 칼날 연출은 절차적으로 그림 (몸 스프라이트는 assets/Blade)
+ *  - 기본 AI 보조: 거리 유지(카이팅) — def.kite
+ * ========================================================= */
+(() => {
+  const TAU = Math.PI * 2;
+  const CY = '#7fe0ff', CY2 = '#d8faff', CYD = '#2f9cc8', HUB = '#8a5a3a', HUBR = '#c8303a';
+
+  // ---------- 칼날 그리기 ----------
+  // 큰 칼날: 고리(손잡이) + 서로 반대로 휜 수정 날 2개 (참고 그림 형태)
+  function drawBigBlade(ctx, x, y, s, rot, alpha = 1) {
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(rot); ctx.scale(s, s); ctx.globalAlpha *= alpha;
+    for (const k of [1, -1]) {
+      ctx.save(); ctx.scale(k, k);
+      ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(6, -4); ctx.quadraticCurveTo(30, -10, 40, 14); ctx.quadraticCurveTo(26, 0, 6, 4); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = CY2; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(8, -3); ctx.quadraticCurveTo(29, -8, 39, 12); ctx.stroke();
+      ctx.strokeStyle = CYD; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(10, 1); ctx.quadraticCurveTo(24, -2, 32, 8); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.strokeStyle = HUB; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.stroke();
+    ctx.strokeStyle = HUBR; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(0, 0, 6, -0.4, 0.4); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, 6, Math.PI - 0.4, Math.PI + 0.4); ctx.stroke();
+    ctx.restore();
+  }
+  // 작은 칼날 (투사체/함정): 짧은 초승달 조각
+  function drawShard(ctx, x, y, ang, s = 1, alpha = 1) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s); ctx.globalAlpha *= alpha;
+    ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.quadraticCurveTo(0, -6, 9, -1); ctx.quadraticCurveTo(1, -1, -7, 3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = CY2; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-6, 2); ctx.quadraticCurveTo(0, -5, 8, -1); ctx.stroke();
+    ctx.restore();
+  }
+  const shardDraw = (ctx, p) => drawShard(ctx, p.x, p.y, p.spin != null ? p.spin : Math.atan2(p.vy, p.vx), 1.15);
+  const iceHit = (b, x, y) => { b.sparks(x, y, CY2, 6, 140); b.glow(x, y, 14, CY, 0.2); };
+  const hitO = (slot, extra) => ({ element: slot.element || 'ice', delivery: slot.delivery || 'ranged', pierce: slot.pierce || 0, applies: slot.applies || null, ...extra });
+  const L = b => b.bladeObj || (b.bladeObj = { big: [], traps: [] });
+
+  // 직선 투사체 (유도 없음)
+  function throwShard(b, u, ang, spd, dmg, slot, o = {}) {
+    b.proj.push({ x: u.x + Math.cos(ang) * 8, y: u.y - 18 - b.airZ(u) + Math.sin(ang) * 6, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, spd, src: u, dmg, kind: 'magic', homing: false, noAirLock: true,
+      life: o.life || 1.0, trail: 0, r: 10, hit: hitO(slot, o.hit), draw: shardDraw, onHit: t => iceHit(b, t.x, t.y - 18) });
+  }
+
+  // ---------- 1. 블레이드 탑승 ----------
+  SKILLS.bladeRide = {
+    desc: '거대한 칼날에 올라타 공중 상태가 됩니다(지상 효과·근접 공격 무시). 피해를 받으면 즉시 내려옵니다. 이동 경로에 작은 칼날이 일정 간격으로 생겨(최대 3개) 무작위 방향으로 날아갔다가 잠시 후 되돌아옵니다(닿은 상대에게 피해).',
+    canUse: (u, e, d, b) => !u.airborne && !u.bladeSplit && (d < 150 || b.threatTo(u)),
+    use(u, e, b, slot) {
+      const dur = slot.dur || 3;
+      u.air = { t: 0, dur, h: slot.h || 16, ride: true };
+      u.bladeRide = { slot, next: slot.gap || 0.6, n: 0 };
+      b.text(u.x, u.y - 64, '탑승!', CY2, 10); b.ring(u.x, u.y, 4, 26, 0.3, CY);
+    },
+  };
+  function spawnRideShard(b, u, R) {
+    const slot = R.slot, a = rand(0, TAU), spd = slot.outSpd || 300;
+    b.proj.push({ x: u.x, y: u.y - 10, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, spd, src: u, dmg: u.st.atk * (slot.mult || 0.6), kind: 'magic', homing: false, noAirLock: true,
+      life: 3.2, trail: 0, r: 10, pierce: true, bladeBack: { t: slot.out || 0.45, owner: u, spd: slot.backSpd || 360 }, spin: 0, hit: hitO(slot), draw: shardDraw, onHit: t => iceHit(b, t.x, t.y - 18) });
+    R.n++; b.sparks(u.x, u.y - 10, CY, 4, 80);
+  }
+
+  // ---------- 2. 스플릿블레이드 ----------
+  SKILLS.splitBlade = {
+    desc: '제자리에 멈춰 큰 칼날을 조종합니다. 칼날은 벽·캐릭터·장애물에 튕기며 지나간 자리에 칼날 함정을 남깁니다(상대가 밟으면 피해, 일정 시간 후 소멸). 튕길 때마다 칼날이 작아지고, 사라지면 다시 움직일 수 있습니다.',
+    canUse: (u, e, d) => !u.bladeSplit && !u.airborne && d > 50 && d < 240 && !e.dead,
+    use(u, e, b, slot) {
+      const a = Math.atan2(e.y - u.y, e.x - u.x), spd = slot.spd || 300;
+      const B = { u, slot, x: u.x + Math.cos(a) * 16, y: u.y - 4 + Math.sin(a) * 10, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, s: 1, rot: 0, t: 0, trail: 0, hitT: new Map() };
+      L(b).big.push(B); u.bladeSplit = B;
+      b.text(u.x, u.y - 64, '스플릿!', CY2, 10);
+      const st = { type: 'bladeSplit', t: 0 };
+      st.step = (dt) => { st.t += dt; if (!u.bladeSplit || st.t > (slot.maxT || 6) + 0.5) { u.action = null; if (u.bladeSplit) { u.bladeSplit.dead = true; u.bladeSplit = null; } } };
+      u.action = st;
+    },
+  };
+  function stepBig(b, B, dt) {
+    const S = B.slot, u = B.u, R = 18 * B.s;
+    B.t += dt; B.rot += dt * 14;
+    if (u.dead || B.t > (S.maxT || 6)) { B.dead = true; return; }
+    let nx = B.x + B.vx * dt, ny = B.y + B.vy * dt, bounced = false;
+    const p = b.clampPos(nx, ny, R);
+    if (Math.abs(p.x - nx) > 0.01) { B.vx = -B.vx; bounced = true; nx = p.x; }
+    if (Math.abs(p.y - ny) > 0.01) { B.vy = -B.vy; bounced = true; ny = p.y; }
+    if (!bounced && b.blockAt(nx, ny + 4, R * 0.6)) { // 장애물(건물)
+      if (!b.blockAt(B.x, ny + 4, R * 0.6)) B.vx = -B.vx; else if (!b.blockAt(nx, B.y + 4, R * 0.6)) B.vy = -B.vy; else { B.vx = -B.vx; B.vy = -B.vy; }
+      bounced = true; nx = B.x; ny = B.y;
+    }
+    for (const o of b.u) { // 캐릭터에 튕김 (상대면 피해)
+      if (o.dead || o === u || o.airborne || o.hidden) continue;
+      const dx = B.x - o.x, dy = B.y - (o.y - 4), d = Math.hypot(dx, dy);
+      if (d < R + 15 * (o.size || 1) && (B.hitT.get(o) || 0) <= B.t) {
+        const vn = (B.vx * dx + B.vy * dy) / (d || 1); if (vn < 0) { B.vx -= 2 * vn * dx / (d || 1); B.vy -= 2 * vn * dy / (d || 1); }
+        B.hitT.set(o, B.t + 0.35); bounced = true;
+        if (o.team !== u.team) { b.damage(u, o, u.st.atk * (S.mult || 1.0) * Math.max(0.5, B.s), hitO(S)); iceHit(b, o.x, o.y - 18); }
+      }
+    }
+    B.x = nx; B.y = ny;
+    if (b.balls && b.balls.length) b.pushBalls(B.x, B.y, R + 4, 120); // 축구장: 공을 참
+    if (bounced) {
+      B.s *= S.shrink || 0.8; b.sparks(B.x, B.y, CY2, 8, 160); b.ring(B.x, B.y, 3, 18 * B.s + 8, 0.25, CY);
+      if (B.s < (S.minS || 0.35)) { B.dead = true; b.burst(B.x, B.y, CY, 12); return; }
+    }
+    B.trail += Math.hypot(B.vx, B.vy) * dt;
+    const T = L(b).traps, own = T.filter(q => q.u === u && !q.dead);
+    if (B.trail >= (S.trapGap || 26)) {
+      B.trail = 0;
+      if (own.length >= (S.trapMax || 10)) own[0].dead = true;
+      else if (T.filter(q => !q.dead).length >= 24) T.find(q => !q.dead).dead = true; // 전체 상한 (다인 팀/빌린 스킬)
+      T.push({ u, x: B.x, y: B.y + 4, t: 0, dur: S.trapLife || 6, r: 11, dmg: u.st.atk * (S.trapMult || 0.7), slot: S, ang: rand(0, TAU) });
+    }
+  }
+
+  // ---------- 3. 폭풍의 칼날 ----------
+  SKILLS.bladeStorm = {
+    desc: '일정 거리를 3~5번 연속으로 순간이동하며, 착지할 때마다 사방으로 칼날을 흩뿌립니다.',
+    canUse: (u, e, d, b) => !u.airborne && !u.bladeSplit && d < 170 && !e.dead,
+    use(u, e, b, slot) {
+      const n = 3 + Math.floor(Math.random() * 3), gap = slot.gap || 0.3, D = slot.dist || 70;
+      const st = { type: 'bladeStorm', t: 0, i: 0 };
+      const hop = () => {
+        let best = null;
+        for (let k = 0; k < 12; k++) {
+          const a = rand(0, TAU), tx = u.x + Math.cos(a) * D, ty = u.y + Math.sin(a) * D * 0.8, p = b.clampPos(tx, ty, u.pad, u);
+          const off = Math.hypot(p.x - tx, p.y - ty), blocked = b.blockAt(p.x, p.y, u.pad);
+          const ed = e && !e.dead ? Math.hypot(p.x - e.x, p.y - e.y) : 100;
+          const score = -off * 3 - (blocked ? 999 : 0) - Math.abs(ed - 110) * 0.3; // 벽·장애물 회피, 상대와 적당한 거리
+          if (!best || score > best.s) best = { s: score, x: p.x, y: p.y };
+        }
+        b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.3, a: 0.45 });
+        b.streak(u.x, u.y - 18, best.x, best.y - 18, CY, 8, 0.2);
+        u.x = best.x; u.y = best.y; b.ring(u.x, u.y, 3, 24, 0.25, CY);
+        const m = slot.count || 8, off0 = rand(0, TAU);
+        for (let j = 0; j < m; j++) throwShard(b, u, off0 + j * TAU / m, slot.spd || 380, u.st.atk * (slot.mult || 0.55), slot, { life: slot.life || 0.55 });
+      };
+      st.step = (dt) => {
+        st.t -= dt; if (u.dead) { u.action = null; return; }
+        if (st.t <= 0) { if (st.i >= n) { u.action = null; return; } hop(); st.i++; st.t = gap; }
+      };
+      u.action = st;
+      b.text(u.x, u.y - 64, '폭풍의 칼날!', CY2, 10);
+    },
+  };
+
+  // ---------- 4. 표식 ----------
+  STATUS_DEFS.bladeMark = { name: '표식', color: '#7fe0ff', tint: '#7fe0ff', tintA: 0.12, particle: '#d8faff', stack: 'refresh' };
+  SKILLS.bladeMark = {
+    desc: '은신합니다(반투명, 회피율 +45%, 상태이상 저항 -30%). 은신 중 상대에게 닿으면 표식을 새기고, 상대의 현재 위치로 칼날을 여러 번 던집니다(유도 없음). 은신은 시간이 지나거나, 공격하거나, 상태이상에 걸리면 풀립니다.',
+    canUse: (u, e, d) => !u.bladeStealth && !u.airborne && !u.bladeSplit && d < 260 && !e.dead,
+    use(u, e, b, slot) {
+      const dur = slot.dur || 4;
+      u.buffs = u.buffs.filter(q => q.type !== 'invis');
+      u.buffs.push({ type: 'invis', t: dur, eva: slot.eva ?? 0.45, statusResist: slot.resDown ?? -0.3, bladeStealth: true });
+      u.atkT = Math.max(u.atkT, 0.3); // 시전 직후 기본 공격으로 바로 풀리지 않게
+      if (u.skillT) for (let i = 0; i < u.skillT.length; i++) u.skillT[i] = Math.max(u.skillT[i], 0.3);
+      u.bladeStealth = { t: dur, slot, nStat: u.statuses.filter(s => !(STATUS_DEFS[s.id] || {}).positive).length };
+      b.smoke(u.x, u.y - 18, '#a8e8ff', 8); b.text(u.x, u.y - 64, '은신', CY2, 10);
+    },
+  };
+  function endStealth(b, u, why) {
+    if (!u.bladeStealth) return; u.bladeStealth = null;
+    u.buffs = u.buffs.filter(q => !q.bladeStealth);
+    b.smoke(u.x, u.y - 18, '#a8e8ff', 5); if (why) b.text(u.x, u.y - 60, why, '#c8f0ff', 9);
+  }
+  function markAndThrow(b, u, e, slot) {
+    endStealth(b, u, null);
+    b.applyStatus(e, 'bladeMark', slot.markDur || 4, u);
+    b.text(e.x, e.y - 70, '표식!', CY2, 12);
+    const n = slot.throws || 5, gap = slot.throwGap || 0.18;
+    for (let i = 0; i < n; i++) b.later(0.12 + i * gap, () => {
+      if (u.dead || e.dead || b.over) return;
+      const tx = e.x, ty = e.y - 18 - b.airZ(e), a = Math.atan2(ty - (u.y - 18 - b.airZ(u)), tx - u.x); // 던지는 순간의 현재 위치 (유도 없음)
+      throwShard(b, u, a, slot.spd || 520, u.st.atk * (slot.mult || 0.7), slot, { life: 1.0 });
+    });
+  }
+
+  // ---------- 엔진 훅 ----------
+  STAGE_HOOKS.push({
+    match: () => false,
+    init(b) { b.bladeObj = { big: [], traps: [] }; },
+    on(b, ev, a, c) {
+      if ((ev === 'attack' || ev === 'skill') && a && a.bladeStealth) endStealth(b, a, ev === 'attack' ? null : null); // 공격/스킬 → 은신 해제
+      if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { c.air.t = c.air.dur; c.bladeRide = null; b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
+      return false;
+    },
+    step(b, dt) {
+      const O = L(b);
+      for (const u of b.u) {
+        if (u.bladeRide) {
+          const R = u.bladeRide;
+          if (u.dead || !u.air || !u.air.ride) u.bladeRide = null;
+          else if (R.n < (R.slot.max || 3)) { R.next -= dt; if (R.next <= 0) { R.next = R.slot.gap || 0.6; spawnRideShard(b, u, R); } }
+        }
+        if (u.bladeStealth) {
+          const S = u.bladeStealth; S.t -= dt;
+          const nBad = u.statuses.filter(s => !(STATUS_DEFS[s.id] || {}).positive).length;
+          if (u.dead || S.t <= 0 || !u.buff('invis')) endStealth(b, u, S.t <= 0 ? '은신 해제' : null);
+          else if (nBad > S.nStat) endStealth(b, u, '은신 풀림');
+          else {
+            u.atkT = Math.max(u.atkT, 0.2); // 은신 중엔 기본 공격 보류 (접촉 표식이 목적)
+            if (u.skillT) for (let i = 0; i < u.skillT.length; i++) u.skillT[i] = Math.max(u.skillT[i], 0.2); // 스킬도 보류 (은신 유지)
+            const e = b.enemy(u);
+            if (e && !e.dead && !u.blocked('blocksMove') && !u.action) { // 은신 중엔 상대에게 접근
+              u.dir = Math.atan2(e.y - u.y, e.x - u.x);
+              if (dist(u, e) < 15 * ((u.size || 1) + (e.size || 1)) + 8 && !e.airborne) markAndThrow(b, u, e, S.slot);
+            }
+          }
+        } else if (u.def.kite && !u.dead && !u.action && !b.over && !u.blocked('blocksMove')) { // 카이팅: 거리 유지
+          const e = b.enemy(u);
+          if (e && !e.dead) {
+            const K = u.def.kite, d = dist(u, e), away = Math.atan2(u.y - e.y, u.x - e.x);
+            let want = null;
+            if (d < K.min) want = away; else if (d > K.max) want = away + Math.PI;
+            if (want != null) { let df = Math.atan2(Math.sin(want - u.dir), Math.cos(want - u.dir)); u.dir = fixAngle(u.dir + clamp(df, -K.turn * dt, K.turn * dt)); }
+          }
+        }
+      }
+      // 되돌아오는 작은 칼날
+      for (const p of b.proj) if (p.bladeBack) {
+        const K = p.bladeBack; p.spin = (p.spin || 0) + dt * 16;
+        if (K.t > 0) { K.t -= dt; if (K.t <= 0) p.hitSet = null; continue; }
+        const o = K.owner; if (o.dead) { p.life = 0; continue; }
+        const tx = o.x, ty = o.y - 18 - b.airZ(o), d = Math.hypot(tx - p.x, ty - p.y);
+        if (d < 12) { p.life = 0; continue; }
+        p.vx = (tx - p.x) / d * K.spd; p.vy = (ty - p.y) / d * K.spd;
+      }
+      for (const B of O.big) if (!B.dead) stepBig(b, B, dt);
+      for (const B of O.big) if (B.dead && B.u.bladeSplit === B) B.u.bladeSplit = null;
+      O.big = O.big.filter(B => !B.dead);
+      for (const T of O.traps) {
+        T.t += dt; if (T.t >= T.dur || T.u.dead) { T.dead = true; continue; }
+        for (const o of b.u) {
+          if (o.dead || o.team === T.u.team || o.airborne || o.hidden) continue;
+          if (Math.hypot(o.x - T.x, (o.y - T.y) / 0.7) < T.r + 8 * (o.size || 1)) {
+            T.dead = true; b.damage(T.u, o, T.dmg, hitO(T.slot)); iceHit(b, T.x, T.y - 6); break;
+          }
+        }
+      }
+      O.traps = O.traps.filter(T => !T.dead);
+    },
+    drawUnder(ctx, b, preview) {
+      if (preview || !b.bladeObj) return;
+      for (const T of b.bladeObj.traps) { const k = 1 - T.t / T.dur; drawShard(ctx, T.x, T.y, T.ang, 1, 0.5 + 0.5 * Math.min(1, k * 3)); }
+    },
+    drawOver(ctx, b) {
+      if (!b.bladeObj) return;
+      for (const u of b.u) if (u.air && u.air.ride && !u.dead) drawBigBlade(ctx, u.x, u.y - b.airZ(u) + 2, 0.7, Math.sin(b.time * 3) * 0.08, u.buff('invis') ? 0.35 : 1);
+      for (const B of b.bladeObj.big) drawBigBlade(ctx, B.x, B.y - 6, B.s * 0.8, B.rot);
+    },
+  });
+
+  // ---------- 캐릭터 ----------
+  CHARACTERS.push({
+    id: 'blade', name: '블레이드', gender: 'female', color: '#5ac8f0',
+    // 원거리·저체력 (평균 근처): HP 760 / ATK 33 / 사거리 130
+    stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0.08 },
+    attack: { element: 'ice', delivery: 'ranged' }, projectile: 'magic',
+    resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
+    kite: { min: 110, max: 190, turn: 6 }, // 거리 유지 AI
+    skills: [
+      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 5, throwGap: 0.18, mult: 0.7, spd: 520, element: 'ice', delivery: 'ranged' },
+      { id: 'splitBlade', name: '스플릿블레이드', cd: 14, spd: 300, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeStorm', name: '폭풍의 칼날', cd: 11, dist: 70, gap: 0.3, count: 8, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeRide', name: '블레이드 탑승', cd: 12, dur: 3, h: 16, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
+    ],
+    sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
+    portrait: 'assets/Blade/portrait.png',
+    // 대사: 임시(placeholder) — 사용자가 교체 가능
+    lines: {
+      skill: { '블레이드 탑승': ['올라타자!'], '스플릿블레이드': ['갈라져라!'], '폭풍의 칼날': ['폭풍처럼!'], '표식': ['찾았다.'] },
+      event: { battleStart: ['칼날이 당신을 겨눠요.', '시작할까요?'], win: ['깔끔하게 끝났네요.'], lose: ['칼날이… 무뎌졌어…'], lowHp: ['아직이에요!'] },
+    },
+  });
+})();

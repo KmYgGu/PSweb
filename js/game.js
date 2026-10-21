@@ -516,7 +516,7 @@ class Battle {
       if (!u.air.sfx) { u.air.sfx = 1; playSfx('jump'); }
       u.air.t += dt;
       if (u.air.fling) { const F = u.air.fling, k = easeInOut(clamp(u.air.t / u.air.dur, 0, 1)); u.x = F.x0 + (F.x1 - F.x0) * k; u.y = F.y0 + (F.y1 - F.y0) * k; }
-      if (u.air.t >= u.air.dur) { u.air = null; u.padCd = this.time; this.landShock(u); }
+      if (u.air.t >= u.air.dur) { const ride = u.air.ride; u.air = null; u.padCd = this.time; if (!ride) this.landShock(u); } // ride(블레이드 탑승): 착지 충격 없음
       return;
     }
     for (const p of this.stage.pads || []) {
@@ -542,10 +542,10 @@ class Battle {
       if (this.knockdown(u, e, LS.stun, LS.chance ?? 1)) this.stats.knocks++;
     }
   }
-  airZ(u) { return u.air ? Math.sin(Math.PI * clamp(u.air.t / u.air.dur, 0, 1)) * u.air.h : 0; }
+  airZ(u) { if (u.air && u.air.ride) return u.air.h * clamp(Math.min(u.air.t, u.air.dur - u.air.t) / 0.15, 0, 1); return u.air ? Math.sin(Math.PI * clamp(u.air.t / u.air.dur, 0, 1)) * u.air.h : 0; }
   // 명중 판정 (향후 명중/회피 스탯 확장용 훅)
   accuracy(src, o) { return src.st.acc || 0; }   // TODO: 명중 스탯
-  evasion(tgt, o) { return tgt.st.eva || 0; }    // TODO: 회피 스탯
+  evasion(tgt, o) { let v = tgt.st.eva || 0; for (const b of tgt.buffs) if (b.eva) v += b.eva; return v; } // 버프 eva (블레이드 은신 등)    // TODO: 회피 스탯
   hitCheck(src, tgt, o) {
     if (o.dot || o.reflected) return { hit: true };
     if (tgt.airborne) {
