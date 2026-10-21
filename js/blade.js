@@ -24,9 +24,14 @@
     for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.arc(0, 0, 6, k * Math.PI / 2 - 0.3, k * Math.PI / 2 + 0.3); ctx.stroke(); }
     ctx.restore();
   }
-  // 작은 칼날 (투사체/함정): 같은 모양의 작은 4날 칼날
-  function drawShard(ctx, x, y, ang, s = 1, alpha = 1) { drawBigBlade(ctx, x, y, 0.32 * s, ang, alpha); }
-  const shardDraw = (ctx, p) => { p.spin = (p.spin || 0) + 0.35; drawShard(ctx, p.x, p.y, p.spin, 1.1); };
+  // 작은 칼날 (투사체/함정): 가늘고 휜 하늘색 수정 칼날 (나이프형, 첫 버전 모양)
+  function drawShard(ctx, x, y, ang, s = 1, alpha = 1) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(s, s); ctx.globalAlpha *= alpha;
+    ctx.fillStyle = CY; ctx.beginPath(); ctx.moveTo(-7, 3); ctx.quadraticCurveTo(0, -6, 9, -1); ctx.quadraticCurveTo(1, -1, -7, 3); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = CY2; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-6, 2); ctx.quadraticCurveTo(0, -5, 8, -1); ctx.stroke();
+    ctx.restore();
+  }
+  const shardDraw = (ctx, p) => drawShard(ctx, p.x, p.y, p.spin != null ? p.spin : Math.atan2(p.vy, p.vx), 1.15); // 던진 칼날: 진행 방향, 되돌아오는 칼날: 회전
   const iceHit = (b, x, y) => { b.sparks(x, y, CY2, 6, 140); b.glow(x, y, 14, CY, 0.2); };
   const hitO = (slot, extra) => ({ element: slot.element || 'ice', delivery: slot.delivery || 'ranged', pierce: slot.pierce || 0, applies: slot.applies || null, ...extra });
   const L = b => b.bladeObj || (b.bladeObj = { big: [], traps: [] });
@@ -34,7 +39,7 @@
   // 직선 투사체 (유도 없음)
   function throwShard(b, u, ang, spd, dmg, slot, o = {}) {
     b.proj.push({ x: u.x + Math.cos(ang) * 8, y: u.y - 18 - b.airZ(u) + Math.sin(ang) * 6, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, spd, src: u, dmg, kind: 'magic', homing: false, noAirLock: true,
-      life: o.life || 1.0, trail: 0, r: 10, hit: hitO(slot, o.hit), draw: shardDraw, onHit: t => iceHit(b, t.x, t.y - 18) });
+      life: o.life || 1.0, trail: 0, r: o.r || 10, hit: hitO(slot, o.hit), draw: shardDraw, onHit: t => iceHit(b, t.x, t.y - 18) });
   }
 
   // ---------- 1. 블레이드 탑승 ----------
@@ -131,7 +136,7 @@
         b.streak(u.x, u.y - 18, best.x, best.y - 18, CY, 8, 0.2);
         u.x = best.x; u.y = best.y; b.ring(u.x, u.y, 3, 24, 0.25, CY);
         const m = slot.count || 8, off0 = rand(0, TAU);
-        for (let j = 0; j < m; j++) throwShard(b, u, off0 + j * TAU / m, slot.spd || 380, u.st.atk * (slot.mult || 0.55), slot, { life: slot.life || 0.55 });
+        for (let j = 0; j < m; j++) throwShard(b, u, off0 + j * TAU / m, slot.spd || 380, u.st.atk * (slot.mult || 0.55), slot, { life: slot.life || 0.55, r: slot.hitR || 14 }); // 판정 반경 10 → 14
       };
       st.step = (dt) => {
         st.t -= dt; if (u.dead) { u.action = null; return; }
@@ -145,12 +150,12 @@
   // ---------- 4. 표식 ----------
   STATUS_DEFS.bladeMark = { name: '표식', color: '#7fe0ff', tint: '#7fe0ff', tintA: 0.12, particle: '#d8faff', stack: 'refresh' };
   SKILLS.bladeMark = {
-    desc: '은신합니다(반투명, 회피율 +45%, 상태이상 저항 -30%). 은신 중 상대에게 닿으면 표식을 새기고, 제자리에 멈춰 상대의 현재 위치로 칼날 8개를 빠르게 연속으로 던집니다(유도 없음). 은신은 시간이 지나거나, 공격하거나, 상태이상에 걸리면 풀립니다.',
+    desc: '은신합니다(반투명, 회피율 +45%, 이동 속도 x1.4, 상태이상 저항 -30%). 은신 중 상대에게 닿으면 표식을 새기고, 제자리에 멈춰 상대의 현재 위치로 칼날 8개를 빠르게 연속으로 던집니다(유도 없음). 은신은 시간이 지나거나, 스킬을 쓰거나, 상태이상에 걸리면 풀립니다.',
     canUse: (u, e, d) => !u.bladeStealth && !u.airborne && !u.bladeSplit && d < 260 && !e.dead,
     use(u, e, b, slot) {
       const dur = slot.dur || 4;
       u.buffs = u.buffs.filter(q => q.type !== 'invis');
-      u.buffs.push({ type: 'invis', t: dur, eva: slot.eva ?? 0.45, statusResist: slot.resDown ?? -0.3, bladeStealth: true });
+      u.buffs.push({ type: 'invis', t: dur, eva: slot.eva ?? 0.45, statusResist: slot.resDown ?? -0.3, spdMul: slot.spdMul || 1.4, bladeStealth: true }); // 은신: 회피↑, 저항↓, 이동 속도 x1.4 (은신 해제 시 함께 제거)
       u.bladeStealth = { t: dur, slot, nStat: u.statuses.filter(s => !(STATUS_DEFS[s.id] || {}).positive).length };
       b.smoke(u.x, u.y - 18, '#a8e8ff', 8); b.text(u.x, u.y - 64, '은신', CY2, 10);
     },
@@ -231,7 +236,6 @@
     },
     drawOver(ctx, b) {
       if (!b.bladeObj) return;
-      for (const u of b.u) if (u.air && u.air.ride && !u.dead) drawBigBlade(ctx, u.x, u.y - b.airZ(u) + 2, 0.7, Math.sin(b.time * 3) * 0.08, u.buff('invis') ? 0.35 : 1);
       for (const B of b.bladeObj.big) drawBigBlade(ctx, B.x, B.y - 6, B.s * 0.8, B.rot);
     },
   });
@@ -241,12 +245,15 @@
     id: 'blade', name: '블레이드', gender: 'female', color: '#5ac8f0',
     // 원거리·저체력 (평균 근처): HP 760 / ATK 33 / 사거리 130
     stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0.08 },
-    attack: { element: 'ice', delivery: 'ranged' }, projectile: 'magic',
+    attack: { element: 'ice', delivery: 'ranged' },
     resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
+    noBasic: true, // 기본 공격 없음 (스킬로만 공격)
+    // 탑승 중인 큰 칼날은 몸 뒤(아래)에 그림 — 캐릭터가 칼날 위에 올라탄 모습
+    drawUnder(ctx, u, b) { if (u.air && u.air.ride) drawBigBlade(ctx, 0, 2, 0.7, Math.sin(b.time * 3) * 0.08); },
     skills: [
-      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, spdMul: 1.4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
       { id: 'splitBlade', name: '스플릿블레이드', cd: 14, spd: 600, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
-      { id: 'bladeStorm', name: '폭풍의 칼날', cd: 11, dist: 70, gap: 0.3, count: 8, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeStorm', name: '폭풍의 칼날', cd: 11, dist: 70, gap: 0.3, count: 8, hitR: 14, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
       { id: 'bladeRide', name: '블레이드 탑승', cd: 12, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
     ],
     sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },

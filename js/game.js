@@ -444,7 +444,7 @@ class Battle {
     if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
-    if (!noAct && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
+    if (!noAct && !u.def.noBasic && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; } // noBasic: 기본 공격 없는 캐릭터 (블레이드)
   }
 
   // ---------- 상태이상 ----------
@@ -752,7 +752,7 @@ class Battle {
     for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
     // 충돌 타격: 근접 캐릭터는 부딪히는 순간 공격 쿨이 거의 찼으면 즉시 공격
     for (const [u, e] of ally ? [] : [[a, b], [b, a]]) {
-      if (u.st.range < 80 && !u.stun && !u.action && u.atkT < 0.5 / u.atkRate) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
+      if (u.st.range < 80 && !u.def.noBasic && !u.stun && !u.action && u.atkT < 0.5 / u.atkRate) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
     }
     if (!ally) for (const u of [a, b]) if (u.ghostChain) window.ghostBump(u, this); // 고스트 온 연계
     if (this.time - this.lastBump > 0.25) {
