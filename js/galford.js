@@ -2,7 +2,7 @@
  * 갈포드 (사무라이 스피리츠 닌자) + 허스키 포피
  *  - 포피(강아지)는 유닛이 아니라 스킬 연출/투사체 전용
  *  - 스킬: 전기 형태 발사, 강아지 낙하, 동반 낙하, 분신술, 더블 메가 스트라이크 헤즈, 플라즈마 독
- *  - 상태 'resistDown'(저항 감소): 모든 상태이상 저항 -40% (game.js statusResist 에서 반영, 중복 없이 갱신)
+ *  - 상태 'resistDown'(저항 감소): 마비를 제외한 모든 상태이상 저항 -25% (game.js statusResist 에서 반영, 중복 없이 갱신)
  * ========================================================= */
 (() => {
   const TAU = Math.PI * 2;
@@ -15,7 +15,8 @@
   // ---------- 저항 감소 디버프 ----------
   STATUS_DEFS.resistDown = {
     name: '저항 감소', color: '#c8a0ff', tint: '#a080ff', tintA: 0.14, particle: '#d8c0ff',
-    statusResistMod: -0.4,         // 모든 상태이상 저항 -40% (확률 x1.4, 지속시간 x1.2)
+    statusResistMod: -0.25,        // 상태이상 저항 -25% (확률 x1.25, 지속시간 x1.125)
+    statusResistExclude: ['paralysis'], // 마비에는 적용되지 않음
     noResistScale: true,           // 자기 자신은 저항 감소의 영향을 받지 않음
   };
 
@@ -62,6 +63,12 @@
     ctx.restore();
   }
 
+  // 포피는 한 마리: 같은 sharedCd 슬롯끼리 쿨타임 공유 (시전한 스킬의 쿨타임을 양쪽에 적용). 빌린 스킬(패스트푸드점 등)은 시전자 슬롯 기준이라 안전
+  function shareCd(u, slot) {
+    if (!slot || !slot.sharedCd || !u.skills || !u.skillT) return;
+    u.skills.forEach((s, i) => { if (s !== slot && s.sharedCd === slot.sharedCd) u.skillT[i] = Math.max(u.skillT[i] || 0, slot.cd || 0); });
+  }
+
   // ---------- 1. 전기 형태 발사 ----------
   SKILLS.galShock = {
     desc: '전기 덩어리를 상대에게 발사합니다. 적중 시 마비.',
@@ -80,9 +87,10 @@
 
   // ---------- 2. 강아지 낙하 ----------
   SKILLS.dogDrop = {
-    desc: '포피가 하늘에서 상대 위로 떨어집니다. 적중 시 저항 감소 (모든 상태이상 저항 -40%).',
+    desc: '포피가 하늘에서 상대 위로 떨어집니다. 적중 시 저항 감소 (마비 제외 모든 상태이상 저항 -25%). 포피는 한 마리라 플라즈마 독과 쿨타임 공유.',
     canUse: (u, e, d) => d < 300 && !e.dead,
     use(u, e, b, slot) {
+      shareCd(u, slot);
       const t = slot.fall || 0.6, q = b.predict(e, t * 0.6), r = slot.r || 34;
       b.telegraphCircle(q.x, q.y, r, t, '#d8e4ff');
       b.text(u.x, u.y - 60, '포피!', '#e8f0ff', 10);
@@ -125,7 +133,7 @@
 
   // ---------- 4. 분신술 ----------
   SKILLS.galClone = {
-    desc: '앞뒤에 분신을 세웁니다(둘 중 하나가 진짜, 무작위). 잠시 둘 다 멈춰 서 있고, 상대가 분신을 공격하면 반격! 진짜를 공격하면 깜짝 놀라 반격 실패.',
+    desc: '앞뒤에 분신을 세웁니다(둘 중 하나가 진짜, 무작위). 잠시 둘 다 멈춰 서 있고, 상대가 분신을 공격하면 그 공격을 회피(순간이동)! 진짜를 공격하면 깜짝 놀라 0.8초간 굳습니다.',
     canUse: (u, e, d) => d < 170 && !u.airborne && !u.galClone && !e.dead,
     use(u, e, b, slot) {
       const off = slot.off || 42, dur = slot.dur || 2.4;
@@ -149,19 +157,13 @@
   function cloneIntercept(b, src, tgt, o) {
     const C = tgt.galClone; if (!C || !src || src.team === tgt.team || o.reflected || o.galCounter) return undefined;
     const slot = C.slot;
-    if (Math.random() < (slot.fakeChance ?? 0.5)) { // 분신을 공격함 → 사실 진짜는 반대편에 있었다
+    if (Math.random() < (slot.fakeChance ?? 0.5)) { // 분신을 공격함 → 진짜는 반대편: 회피 (반격 없음)
       const ox = tgt.x, oy = tgt.y; tgt.x = C.x; tgt.y = C.y; tgt.galClone = null;
       if (tgt.action && tgt.action.type === 'galClone') tgt.action = null;
       b.smoke(ox, oy - 18, '#c8d8ff', 12); b.text(ox, oy - 60, '분신!', '#c8d8ff', 11);
-      b.later(0.15, () => {
-        if (tgt.dead || src.dead || b.over) return;
-        const p = clampP(b, src.x - (src.x > tgt.x ? -1 : 1) * 22, src.y, tgt);
-        b.smoke(tgt.x, tgt.y - 18, '#c8d8ff', 6); tgt.x = p.x; tgt.y = p.y; tgt.facing = src.x > tgt.x ? 1 : -1;
-        b.text(tgt.x, tgt.y - 64, '반격!', ELEC2, 12);
-        b.damage(tgt, src, tgt.st.atk * (slot.mult || 1.8), { element: 'elec', delivery: 'melee', big: true, galCounter: true });
-        b.slashFx(src.x, src.y - 18, tgt.facing, '#e8f4ff', 1.3); elecBurst(b, src.x, src.y - 18, 0.9); b.hitstop(0.08);
-        b.stats.galCounter = (b.stats.galCounter || 0) + 1;
-      });
+      b.smoke(tgt.x, tgt.y - 18, '#c8d8ff', 5); b.text(tgt.x, tgt.y - 64, '회피!', '#e8f0ff', 11);
+      b.fx.push({ type: 'after', x: ox, y: oy, def: tgt.fdef, back: !!tgt.lookUp, facing: tgt.facing, t: 0, dur: 0.3, a: 0.5 });
+      b.stats.galDodge = (b.stats.galDodge || 0) + 1;
       return true;
     }
     // 진짜를 공격함 → 깜짝! (반격 실패, 피해는 그대로)
@@ -170,6 +172,7 @@
     b.text(tgt.x, tgt.y - 66, '!', '#ffffff', 16);
     b.later(0.06, () => b.text(tgt.x + 14, tgt.y - 56, '헉!', '#fff2a0', 11));
     b.shake(1); tgt.galShake = 0.35;
+    b.later(0.3, () => { if (!tgt.dead && !b.over) { b.applyStatus(tgt, 'stun', slot.surpriseStun || 0.8, src, { noResistScale: true }); b.text(tgt.x, tgt.y - 76, '굳음…', '#c8d0e0', 9); } }); // 놀라서 굳음 (확실한 손해)
     b.stats.galSurprise = (b.stats.galSurprise || 0) + 1;
     return undefined;
   }
@@ -220,9 +223,10 @@
 
   // ---------- 6. 플라즈마 독 ----------
   SKILLS.plasmaDog = {
-    desc: '전기를 두른 포피가 상대에게 돌진합니다. 갈포드는 반대 방향으로 살짝 뒤로 뛰어 물러납니다.',
+    desc: '전기를 두른 포피가 상대에게 돌진합니다. 갈포드는 반대 방향으로 살짝 뒤로 뛰어 물러납니다. 강아지 낙하와 쿨타임 공유.',
     canUse: (u, e, d) => d > 30 && d < 260 && !e.dead,
     use(u, e, b, slot) {
+      shareCd(u, slot);
       const a = Math.atan2(e.y - 18 - (u.y - 18), e.x - u.x), face = e.x >= u.x ? 1 : -1;
       b.proj.push({ x: u.x + face * 14, y: u.y - 14, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, spd: 520, src: u, tgt: e, homing: true, dmg: u.st.atk * (slot.mult || 1.8), kind: 'magic', life: 1.2, trail: 0, r: 16, face,
         hit: hitO(slot, { big: true }),
@@ -271,15 +275,15 @@
     // 기존 캐릭터 평균 근처 (HP ~870 / ATK ~35 / SPD ~275 / DEF ~18)
     stats: { hp: 860, atk: 34, spd: 290, range: 50, atkRate: 1.05, def: 16, crit: 0.08 },
     attack: { element: 'slash', delivery: 'melee' },
-    resist: { elec: 0.6, fire: 1.15 },
-    statusResist: { paralysis: 0.5 },
+    resist: { fire: 1.15 },
+    statusResist: { paralysis: 0.2 },
     skills: [
       { id: 'galMega', name: '더블 메가 스트라이크 헤즈', cd: 16, hits: 4, gap: 0.11, mult: 0.5, finMult: 2.6, air: 0.85, h: 90, element: 'elec', delivery: 'melee', pierce: 0.2 },
-      { id: 'galClone', name: '분신술', cd: 13, dur: 2.4, off: 42, mult: 1.8, fakeChance: 0.5 },
+      { id: 'galClone', name: '분신술', cd: 13, dur: 2.4, off: 42, fakeChance: 0.5, surpriseStun: 0.8 },
       { id: 'galDrop', name: '동반 낙하', cd: 11, dur: 0.75, h: 80, r: 40, mult: 2.0, element: 'blunt', delivery: 'melee', applies: [{ status: 'resistDown', duration: 5 }] },
-      { id: 'plasmaDog', name: '플라즈마 독', cd: 9, mult: 1.8, hop: 46, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 1.6, chance: 0.5 }] },
-      { id: 'dogDrop', name: '강아지 낙하', cd: 9, fall: 0.6, r: 34, mult: 1.6, element: 'blunt', delivery: 'ranged', applies: [{ status: 'resistDown', duration: 5 }] },
-      { id: 'galShock', name: '전기 형태 발사', cd: 6, mult: 1.4, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 2.5, chance: 0.8 }] },
+      { id: 'plasmaDog', name: '플라즈마 독', cd: 9, sharedCd: 'poppy', mult: 1.8, hop: 46, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 1.6, chance: 0.5 }] },
+      { id: 'dogDrop', name: '강아지 낙하', cd: 9, sharedCd: 'poppy', fall: 0.6, r: 34, mult: 1.6, element: 'blunt', delivery: 'ranged', applies: [{ status: 'resistDown', duration: 5 }] },
+      { id: 'galShock', name: '전기 형태 발사', cd: 6, mult: 1.4, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 2.5, chance: 0.5 }] },
     ],
     sprite: { src: 'assets/Galford/front.png', back: 'assets/Galford/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Galford/portrait.png',

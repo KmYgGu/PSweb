@@ -685,7 +685,7 @@ class Battle {
     return clamp(r, -0.6, 0.9); // 음수 = 저항 감소 디버프 (갈포드): 확률·지속시간 증가
   }
   // 상태이상 저항 보정 (statusResistMod: 음수 = 저항 감소). 대상 상태 자신은 제외
-  statusResistMod(u, id) { let m = 0; for (const s of u.statuses) { const d = STATUS_DEFS[s.id]; if (d && d.statusResistMod && s.id !== id) m += d.statusResistMod; } return m; }
+  statusResistMod(u, id) { let m = 0; for (const s of u.statuses) { const d = STATUS_DEFS[s.id]; if (d && d.statusResistMod && s.id !== id && !(d.statusResistExclude && d.statusResistExclude.includes(id))) m += d.statusResistMod; } return m; }
   // applies: [{ status, duration, chance=1, power }]  → 저항: 확률 x(1-r), 지속시간 x(1-r/2)
   applyList(src, tgt, list) {
     if (!list || tgt.dead) return;
