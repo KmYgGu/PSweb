@@ -59,7 +59,7 @@ function pxLine(x0, y0, x1, y1, k) {
  */
 const CHARACTERS = [
   {
-    id: 'swordsman', name: '검사', color: '#7fa6e0',
+    id: 'swordsman', name: '검사', gender: 'male', color: '#7fa6e0',
     stats: { hp: 795, atk: 40, spd: 280, range: 50, atkRate: 0.95, def: 25 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { slash: 0.8, elec: 1.3, dark: 1.2 },
@@ -71,7 +71,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'archer', name: '궁수', color: '#7cc47a',
+    id: 'archer', name: '궁수', gender: 'female', color: '#7cc47a',
     stats: { hp: 965, atk: 37, spd: 260, range: 130, atkRate: 1.1, def: 10 },
     attack: { element: 'slash', delivery: 'ranged', pierce: 0.3 },
     resist: { fire: 1.3, blunt: 1.2, ranged: 0.85 },
@@ -85,7 +85,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'mage', name: '마법사', color: '#b08ce8',
+    id: 'mage', name: '마법사', gender: 'male', color: '#b08ce8',
     stats: { hp: 1050, atk: 47, spd: 225, range: 120, atkRate: 0.8, def: 5 },
     attack: { element: 'fire', delivery: 'ranged' },
     resist: { fire: 0.5, ice: 1.4, slash: 1.15 },
@@ -99,7 +99,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'tank', name: '탱커', color: '#a9b4c2',
+    id: 'tank', name: '탱커', gender: 'male', color: '#a9b4c2',
     stats: { hp: 840, atk: 28, spd: 200, range: 46, atkRate: 0.8, def: 40 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { slash: 0.75, blunt: 0.8, elec: 1.4 },
@@ -115,7 +115,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'assassin', name: '암살자', color: '#d27a9a',
+    id: 'assassin', name: '암살자', gender: 'female', color: '#d27a9a',
     stats: { hp: 630, atk: 27, spd: 360, range: 44, atkRate: 1.5, crit: 0.2, def: 10 },
     attack: { element: 'dark', delivery: 'melee', pierce: 0.4 },
     resist: { dark: 0.5, light: 1.5 },
@@ -129,7 +129,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'lancer', name: '창병', color: '#e0a060',
+    id: 'lancer', name: '창병', gender: 'male', color: '#e0a060',
     stats: { hp: 780, atk: 37, spd: 250, range: 72, atkRate: 0.9, def: 35 },
     attack: { element: 'slash', delivery: 'melee', pierce: 0.35 },
     resist: { slash: 0.85, fire: 1.25, ranged: 0.85 },
@@ -142,7 +142,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'priest', name: '성직자', color: '#f0d77a',
+    id: 'priest', name: '성직자', gender: 'female', color: '#f0d77a',
     stats: { hp: 890, atk: 27, spd: 230, range: 115, atkRate: 0.95, def: 15 },
     attack: { element: 'light', delivery: 'ranged' },
     resist: { light: 0.5, dark: 1.5 },
@@ -156,7 +156,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'berserker', name: '광전사', color: '#e07a5a',
+    id: 'berserker', name: '광전사', gender: 'male', color: '#e07a5a',
     stats: { hp: 1150, atk: 42, spd: 270, range: 50, atkRate: 1.0, def: 20 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { fire: 0.8, blunt: 0.85, ice: 1.35 },
@@ -171,7 +171,7 @@ const CHARACTERS = [
   },
   // ===== 첫 정식 캐릭터 =====
   {
-    id: 'reinhardt', name: '라인하르트', color: '#b8b8c0',
+    id: 'reinhardt', name: '라인하르트', gender: 'male', color: '#b8b8c0',
     stats: { hp: 1000, atk: 28, spd: 215, range: 54, atkRate: 0.75, def: 30 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { elec: 1.3, slash: 0.9, blunt: 0.85, fire: 0.9 },
@@ -204,7 +204,7 @@ const CHARACTERS = [
     },
   },
   {
-    id: 'evelyn', name: '이블린', color: '#e0b860',
+    id: 'evelyn', name: '이블린', gender: 'female', color: '#e0b860',
     stats: { hp: 660, atk: 25, spd: 330, range: 60, atkRate: 0.92, def: 12, crit: 0.12 },
     attack: { element: 'fire', delivery: 'melee' },
     resist: { fire: 0.75, ice: 1.3, blunt: 1.1 },
@@ -224,6 +224,59 @@ const CHARACTERS = [
     ],
     sprite: { src: 'assets/evelyn/front.png', back: 'assets/evelyn/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/evelyn/portrait.png',
+    lines: {},
+  },
+  {
+    id: 'kidomusha', name: '태도 귀무사', gender: 'female', color: '#c8303a',
+    stats: { hp: 840, atk: 35, spd: 305, range: 58, atkRate: 1.05, def: 18, crit: 0.1 },
+    attack: { element: 'slash', delivery: 'melee' },
+    resist: { slash: 0.9, light: 1.25 },
+    // 오니화 게이지: 적중(dealt)·피격(damaged) 시 충전. 가득 차면 오니화 (README '태도 귀무사')
+    resources: {
+      oni: { name: '오니화', max: 100, display: 'bar', color: '#e8304a', gain: { dealt: 7, damaged: 6 } },
+    },
+    // oni: 오니화 상태 설정. drain = 초당 게이지 감소, echoDelay = 2회 공격 간격, selfK = 적중 피해 대비 자해 비율
+    oni: { res: 'oni', drain: 9, echoDelay: 0.11, echoMult: 0.8, selfK: 0.12, selfMin: 2,
+      form: { id: 'kidomusha@oni', name: '태도 귀무사', color: '#c8303a', sprite: { src: 'assets/oni/oni_front.png', back: 'assets/oni/oni_back.png', scale: 0.56, foot: 2, faces: { front: 'left', back: 'left' } }, portrait: 'assets/oni/oni_portrait.png' } },
+    skills: [
+      { id: 'ghostOn', name: '고스트 온', cd: 8, mult: 1.0, finMult: 4.2, reps: 6, window: 1.2, trackChance: 0.5, element: 'slash', delivery: 'melee' },
+      { id: 'spirit', name: '혼령', cd: 6, cost: { oni: 25 }, mult: 1.3, air: { dur: 1.0, h: 44, range: 90 }, element: 'slash', delivery: 'melee' },
+    ],
+    sprite: { src: 'assets/oni/front.png', back: 'assets/oni/back.png', scale: 0.56, foot: 2, faces: { front: 'left', back: 'left' } },
+    portrait: 'assets/oni/portrait.png',
+    lines: {},
+  },
+  {
+    id: 'duck', name: '오리', gender: 'male', color: '#ffd84a',
+    stats: { hp: 750, atk: 32, spd: 345, range: 48, atkRate: 1.2, def: 12, crit: 0.1 },
+    attack: { element: 'blunt', delivery: 'melee' },
+    resist: { elec: 1.15 },
+    traits: ['waterproof'], // 패시브 '오리': 물 관련 불이익(감속·산소·속성 약화) 면역
+    skills: [
+      { id: 'quack', name: '꽥꽥!', cd: 7, range: 150, flinch: 0.7 },
+      { id: 'peck', name: '쪼기', cd: 5, hits: 5, mult: 0.6, gap: 0.08, element: 'slash', delivery: 'melee', dispel: true },
+      { id: 'flap', name: '푸드덕!', cd: 9, dur: 1.4, h: 34 },
+    ],
+    sprite: { src: 'assets/duck/front.png', back: 'assets/duck/back.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } },
+    // 상황별 스프라이트 (game.js drawUnit): fly = 공중(푸드덕), quack/peck = 스킬 중, swim = 물 위, hurt = 피격
+    poses: { fly: { id: 'duck@fly', name: '오리', color: '#ffd84a', sprite: { src: 'assets/duck/fly.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } } }, quack: { id: 'duck@quack', name: '오리', color: '#ffd84a', sprite: { src: 'assets/duck/quack.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } } }, peck: { id: 'duck@peck', name: '오리', color: '#ffd84a', sprite: { src: 'assets/duck/peck.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } } }, swim: { id: 'duck@swim', name: '오리', color: '#ffd84a', sprite: { src: 'assets/duck/swim.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } } }, hurt: { id: 'duck@hurt', name: '오리', color: '#ffd84a', sprite: { src: 'assets/duck/hurt.png', scale: 1.6, foot: 1, faces: { front: 'left', back: 'left' } } } },
+    portrait: 'assets/duck/portrait.png',
+    lines: {},
+  },
+  {
+    id: 'mystic', name: '신비술사', gender: 'female', color: '#c070e0',
+    stats: { hp: 940, atk: 45, spd: 250, range: 115, atkRate: 0.95, def: 8, crit: 0.08 },
+    attack: { element: 'dark', delivery: 'ranged' },
+    projectile: 'magic',
+    resist: { dark: 0.7, light: 1.25 },
+    skills: [
+      { id: 'mysticBall', name: '미스틱 볼', cd: 8, out: 0.75, spd: 260, backSpd: 300, control: 2.0, wallMult: 2.0, wallCd: 0.4, element: 'dark', delivery: 'ranged' },
+      { id: 'positioning', name: '포지셔닝', cd: 9, delay: 3.0 },
+    ],
+    // 패시브 (js/mystic.js): 리플레이스(피격 시 20%·내부 쿨 4초 위치 교환 + 해로운 상태 넘기기), 리스트레인트(적중 시 20% 봉인 2초)
+    passives: { replace: { chance: 0.2, icd: 4 }, restraint: { chance: 0.2, dur: 2 } },
+    sprite: { src: 'assets/mistic/front.png', back: 'assets/mistic/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'left' } },
+    portrait: 'assets/mistic/portrait.png',
     lines: {},
   },
 ];

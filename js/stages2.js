@@ -17,9 +17,9 @@
     init(b) {
       const T = b.stage.race; if (!T) return;
       b.race = T;
-      const a = T.startAng + 0.12;
       b.u.forEach((u, i) => {
-        const k = i === 0 ? 0.3 : 0.7, rx = T.rxi + (T.rxo - T.rxi) * k, ry = T.ryi + (T.ryo - T.ryi) * k;
+        const a = T.startAng + 0.12 - (u.n > 1 ? u.slot * 0.2 : 0); // 2인 팀: 두 번째는 살짝 뒤에서 출발
+        const k = u.team === 0 ? 0.3 : 0.7, rx = T.rxi + (T.rxo - T.rxi) * k, ry = T.ryi + (T.ryo - T.ryi) * k;
         u.x = T.cx + Math.cos(a) * rx; u.y = T.cy + Math.sin(a) * ry;
         u.lap = { a0: T.startAng, next: 1, prog: 0 };
       });
@@ -31,6 +31,17 @@
       const T = b.race; if (!T) return;
       for (const u of b.u) {
         if (u.dead) continue;
+        if (T.board) { // 중앙 전광판: 단단한 벽 (타원)
+          const r = 11 + u.pad, dx = u.x - T.cx, dy = u.y - T.cy, k = (dx / (T.board.rx + r)) ** 2 + (dy / (T.board.ry + r)) ** 2;
+          if (k < 1) {
+            const sc = 1 / Math.sqrt(Math.max(k, 1e-4)); u.x = T.cx + dx * sc; u.y = T.cy + dy * sc;
+            let nx = dx / (T.board.rx + r) ** 2, ny = dy / (T.board.ry + r) ** 2; const n = Math.hypot(nx, ny) || 1; nx /= n; ny /= n;
+            const ds = u.action && ['dash', 'chase', 'charge', 'combo'].includes(u.action.type);
+            b.wallImpact && b.wallImpact(u, nx, ny);
+            if (ds) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); } else reflect(u, nx, ny, T.board.bounceRnd ?? 0.3);
+            if (b.time - (u.wallT || -1) > 0.12) { u.wallT = b.time; b.dust(u.x, u.y); }
+          }
+        }
         // 잔디: 이동 가능하지만 감속 (grassSpd), 은은한 풀잎 파티클
         const grass = !RACE.onRoad(T, u.x, u.y);
         u.terrainMul = grass ? (T.grassSpd ?? 0.8) : 1;
@@ -100,7 +111,7 @@
       b.u.forEach(u => {
         if (!u.lap) return;
         ctx.strokeStyle = TEAM_COL[u.team]; ctx.lineWidth = 2; ctx.globalAlpha = 0.9;
-        const rr = u.team ? 1.18 : 0.82;
+        const rr = (u.team ? 1.18 : 0.82) + (u.n > 1 ? (u.team ? 1 : -1) * u.slot * 0.12 : 0);
         ctx.beginPath(); ctx.ellipse(cx, cy, rx * rr, ry * rr, 0, -Math.PI / 2, -Math.PI / 2 + u.lap.prog * TAU); ctx.stroke();
         const a = -Math.PI / 2 + u.lap.prog * TAU; ctx.fillStyle = TEAM_COL[u.team];
         ctx.beginPath(); ctx.arc(cx + Math.cos(a) * rx * rr, cy + Math.sin(a) * ry * rr, 3, 0, TAU); ctx.fill();
@@ -184,6 +195,7 @@
         const nx = dx / d, ny = dy / d;
         u.x = qx + nx * r; u.y = qy + ny * r;
         const dash = u.action && (u.action.type === 'dash' || u.action.type === 'chase' || u.action.type === 'charge' || u.action.type === 'combo');
+        b.wallImpact && b.wallImpact(u, nx, ny);
         if (dash) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); } else reflect(u, nx, ny, 0.25);
         if (s.side && b.time - (u.winT || -1) > 0.15) { // 창문 충돌 피해
           u.winT = b.time;
@@ -247,6 +259,15 @@
       if (!L.length || b.over) return;
       b.stats.trainElim++;
       let loser, winner, txt;
+      if (b.multi) { // 다인 팀: 팀원이 남아 있으면 계속, 팀 전멸 시 패배
+        for (const u of L) { u.dead = true; u.hidden = true; u.deadT = 9; }
+        b.hooks.onSystem && b.hooks.onSystem(L.map(u => u.def.name).join(', ') + ' 지하철에 실려 떠났습니다!');
+        const al = [b.teamAlive(0), b.teamAlive(1)];
+        if (al[0] && al[1]) { L.forEach(u => b.allyDown(u)); return; }
+        if (!al[0] && !al[1]) { b.stats.trainBoth++; winner = [...L].sort((p, q) => q.hp / q.maxHp - p.hp / p.maxHp)[0]; txt = label => `모두 지하철에 실려 탈락! 체력 비율로 ${label(winner)} 승리!`; b.endType = 'trainDraw'; }
+        else { const wt = al[0] ? 0 : 1; winner = b.teamBest(wt); loser = L.find(u => u.team !== wt); txt = label => `${label(loser)} 지하철에 실려 탈락! ${label(winner)} 승리!`; b.endType = 'train'; }
+        b.over = true; b.winner = winner; b.resultText = txt; return;
+      }
       if (L.length === 1) { loser = L[0]; winner = b.enemy(loser); txt = label => `${label(loser)} 지하철에 실려 탈락! ${label(winner)} 승리!`; b.endType = 'train'; }
       else { // 둘 다 탑승: 남은 체력 비율이 높은 쪽 승리
         b.stats.trainBoth++;

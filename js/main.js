@@ -5,10 +5,11 @@
   const RES = 2; // 내부 해상도 배율 (글자 선명도)
 
   function fit() {
-    const s = Math.min(innerWidth / W, innerHeight / H);
+    const r = document.getElementById('wrap').getBoundingClientRect(); // 100dvh 기준 (모바일 주소창 제외한 실제 보이는 높이)
+    const s = Math.min((r.width || innerWidth) / W, (r.height || innerHeight) / H);
     stage.style.transform = `scale(${s}) translate(${-W / 2}px, ${-H / 2}px)`;
   }
-  addEventListener('resize', fit); fit();
+  addEventListener('resize', fit); window.visualViewport && visualViewport.addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 200)); fit();
 
   // ---------- 선택 화면 ----------
   const pick = [null, null];
@@ -83,8 +84,15 @@
     const st = { ...STAT_DEFAULTS, ...c.stats };
     const stats = STAT_DEFS.map(sd => `<div class="stat"><span class="k">${sd.label}</span><span class="bar"><i style="width:${Math.min(100, st[sd.key] / sd.max * 100)}%;background:${c.color}"></i></span><span class="v">${fmt(sd, st[sd.key])}</span></div>`).join('');
     const skills = (c.skills || []).map(sl => `<div class="skill"><b>${sl.name}</b> <span class="cd">(쿨타임 ${sl.cd}초)</span> ${hitTag(sl)}<br>${(SKILLS[sl.id] || {}).desc || ''}${(sl.applies || []).map(a => ` <span style="color:${STATUS_DEFS[a.status].color}">[${STATUS_DEFS[a.status].name}${a.chance != null && a.chance < 1 ? ' ' + Math.round(a.chance * 100) + '%' : ''}]</span>`).join('')}</div>`).join('');
-    return tag + `<div class="top"><img src="${Sprites.get(c).portrait}" alt=""><div class="n">${c.name}</div></div>${stats}${resistHTML(c)}
-      <div class="skills"><div class="sh">스킬 ${c.skills.length}개</div>${skills}</div>`;
+    const skl = list => (list || []).map(sl => `<div class="skill"><b>${sl.name}</b> <span class="cd">(쿨타임 ${sl.cd}초)</span> ${hitTag(sl)}<br>${(SKILLS[sl.id] || {}).desc || ''}</div>`).join('');
+    let extra = '';
+    if (c.partner) { // 2인 팀 (파라가스 & 브로리): 파트너 / 변신 스킬도 표시
+      const p = c.partner, ps = { ...STAT_DEFAULTS, ...p.stats };
+      extra += `<div class="skills duoinfo"><div class="sh">함께 출전: <b style="color:${p.color}">${p.name}</b> (체력 ${ps.hp} · 공격력 ${ps.atk} · 사거리 ${ps.range})</div>${skl(p.skills)}</div>`;
+    }
+    if (c.lss) extra += `<div class="skills duoinfo"><div class="sh">${c.lss.desc || ''}</div>${skl(c.lss.skills)}</div>`;
+    return tag + `<div class="top"><img src="${Sprites.get(c).portrait}" alt=""><div class="n">${c.name}${c.partner ? `<span class="duo-tag">+ ${c.partner.name}</span>` : ''}</div></div>${stats}${resistHTML(c)}
+      <div class="skills"><div class="sh">스킬 ${c.skills.length}개</div>${skills}</div>${extra}`;
   }
   function refresh() {
     document.querySelectorAll('.slot').forEach((s, i) => { s.classList.toggle('active', i === active); s.innerHTML = slotHTML(i); });
@@ -99,20 +107,30 @@
     $('#hint').textContent = pick[0] && pick[1] ? '준비 완료! 전투를 시작하세요 (같은 캐릭터끼리도 가능)' : `P${active + 1} 캐릭터를 고르세요`;
   }
   refresh();
-  Sprites.preload(CHARACTERS).then(() => {
+  Sprites.preload([...CHARACTERS, ...CHARACTERS.filter(c => c.oni).map(c => c.oni.form), ...CHARACTERS.flatMap(c => Object.values(c.poses || {})), ...CHARACTERS.flatMap(c => c.extraDefs || [])]).then(() => {
     document.querySelectorAll('.card').forEach(el => { el.querySelector('img').src = Sprites.get(CHARACTERS.find(c => c.id === el.dataset.id)).portrait; });
     refresh();
   });
 
   // ---------- 전투 ----------
-  let battle = null, speed = 1, disp = [0, 0], lag = [0, 0], lagHold = [0, 0];
-  const frames = [$('#f0'), $('#f1')];
+  let battle = null, speed = 1, hud = [];
+  const frames = [$('#f0'), $('#f1')], frameHTML = frames.map(f => f.innerHTML);
   document.querySelectorAll('#speed button').forEach(b => b.onclick = () => {
+    if (!b.dataset.s) return;
     speed = +b.dataset.s;
     document.querySelectorAll('#speed button').forEach(x => x.classList.toggle('on', x === b));
   });
+  $('#mute').onclick = () => {
+    const enabled = Sfx.toggle();
+    $('#mute').textContent = enabled ? '소리' : '끔';
+    $('#mute').classList.toggle('off', !enabled);
+  };
+  stage.addEventListener('click', e => {
+    if (e.target.closest('button, .card, .scard, .slot')) Sfx.play('ui');
+  });
 
   function label(u) { return pick[0] === pick[1] ? `${u.def.name}(P${u.team + 1})` : u.def.name; }
+  function teamLabel(t) { const m = battle.u.filter(u => u.team === t); return m.length > 1 ? m.map(u => u.def.name).join(' & ') + (pick[0] === pick[1] ? `(P${t + 1})` : '') : label(m[0]); }
   // 로그: 새 줄이 아래에서 들어오며 기존 줄을 위로 밀어 올림 (최대 3줄 표시, 위쪽은 잘림)
   const LOG_LINE = 20, LOG_KEEP = 4;
   function pushLog(cls, html) {
@@ -139,22 +157,31 @@
     $('#log').innerHTML = '';
     battle = new Battle(pick[0], pick[1], { onSkill: addLog, onVoice: addVoice, onEnd: showResult, onSystem: addSys, onStatus: addStatus }, stageId);
     $('#stageName').textContent = '🗺 ' + STAGE_DEFS[stageId].name;
-    battle.u.forEach((u, i) => {
-      disp[i] = lag[i] = u.maxHp; lagHold[i] = 0;
-      frames[i].querySelector('img').src = Sprites.get(u.def).portrait;
-      frames[i].querySelector('.nm').textContent = label(u);
-      const rb = frames[i].querySelector('.resbars'); rb.innerHTML = ''; // 자원 바 (display: 'bar')
+    hud = [];
+    [0, 1].forEach(i => {
+      const mem = battle.u.filter(u => u.team === i), f = frames[i], face = mem[mem.length - 1];
+      f.innerHTML = frameHTML[i]; f.classList.toggle('duo', mem.length > 1); f.dataset.form = '';
+      f.querySelector('img').src = Sprites.get(face.def).portrait;
+      if (mem.length > 1) { // 2인 팀: 한 프레임 안에 작은 체력 바 2줄
+        f.querySelector('.info').innerHTML = mem.map((u, k) => `<div class="drow" data-k="${k}"><div class="dl"><span class="dn">${label(u)}</span><span class="dh"></span></div><div class="hpbar sm"><div class="lag"></div><div class="fill"></div></div></div>`).join('');
+        mem.forEach((u, k) => { const row = f.querySelectorAll('.drow')[k]; hud.push({ u, f, face, row, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: row.querySelector('.fill'), lagEl: row.querySelector('.lag'), num: row.querySelector('.dh') }); });
+        return;
+      }
+      const u = mem[0];
+      f.querySelector('.nm').textContent = label(u);
+      const rb = f.querySelector('.resbars'); rb.innerHTML = ''; // 자원 바 (display: 'bar')
       if (battle.race) rb.insertAdjacentHTML('beforeend', `<div class="resb lap" data-k="__lap" title="랩 진행" style="color:#f0f0f0"><div class="rf" style="background:repeating-linear-gradient(90deg,#f4f4f4 0 4px,#9aa0a8 4px 8px)"></div></div>`);
       for (const [k, R] of Object.entries(u.def.resources || {})) if (R.display === 'bar') rb.insertAdjacentHTML('beforeend', `<div class="resb" data-k="${k}" title="${R.name}" style="color:${R.color}"><div class="rf" style="background:${R.color}"></div></div>`);
+      hud.push({ u, f, face: u, single: true, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: f.querySelector('.fill'), lagEl: f.querySelector('.lag'), num: f.querySelector('.hpnum') });
     });
     window.__battle = battle;
   }
   function showResult(w) {
-    $('#winImg').src = Sprites.get(w.def).portrait;
+    $('#winImg').src = Sprites.get(w.fdef).portrait;
     $('#winImg').style.borderColor = TEAM_COL[w.team];
-    const fl = battle.fallen, rt = battle.resultText && battle.resultText(label);
-    $('#winTxt').textContent = rt || (fl ? `${label(fl)} 크레바스에 추락! ${label(w)} 승리!` : `${label(w)} 승리!`);
-    $('#winTxt').style.fontSize = (fl || rt) ? '17px' : '';
+    const fl = battle.fallen, rt = battle.resultText && battle.resultText(label), duo = battle.u.filter(u => u.team === w.team).length > 1;
+    $('#winTxt').textContent = rt || (fl ? `${label(fl)} 크레바스에 추락! ${teamLabel(w.team)} 승리!` : `${teamLabel(w.team)} 승리!`);
+    $('#winTxt').style.fontSize = (fl || rt || duo) ? '17px' : '';
     $('#winSub').textContent = `${STAGE_DEFS[stageId].name} · 전투 시간 ${battle.time.toFixed(1)}초 · 남은 체력 ${Math.ceil(w.hp)}/${w.maxHp}`;
     $('#result').classList.remove('hidden');
   }
@@ -167,19 +194,21 @@
   };
 
   function updateHud(dt) {
-    battle.u.forEach((u, i) => {
-      disp[i] += (u.hp - disp[i]) * Math.min(1, dt * 12);
-      if (u.hp < lag[i]) { lagHold[i] += dt; if (lagHold[i] > 0.35) lag[i] += (u.hp - lag[i]) * Math.min(1, dt * 4); }
-      else { lag[i] = u.hp; lagHold[i] = 0; }
-      if (Math.abs(lag[i] - u.hp) < 0.5) lagHold[i] = 0;
-      const f = frames[i], r = disp[i] / u.maxHp;
-      const fill = f.querySelector('.fill');
-      fill.style.width = (r * 100) + '%';
-      fill.style.backgroundColor = r > 0.5 ? '#6fd38a' : r > 0.2 ? '#f2c94c' : '#ef6b5b';
-      f.querySelector('.lag').style.width = (lag[i] / u.maxHp * 100) + '%';
-      f.querySelector('.hpnum').textContent = `${Math.ceil(u.hp)} / ${u.maxHp}`;
-      f.querySelectorAll('.resb').forEach(el => { if (el.dataset.k === '__lap') { el.firstChild.style.width = ((u.lap ? u.lap.prog : 0) * 100) + '%'; return; } const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
-    });
+    for (const H of hud) {
+      const u = H.u, f = H.f;
+      H.disp += (u.hp - H.disp) * Math.min(1, dt * 12);
+      if (u.hp < H.lag) { H.hold += dt; if (H.hold > 0.35) H.lag += (u.hp - H.lag) * Math.min(1, dt * 4); }
+      else { H.lag = u.hp; H.hold = 0; }
+      if (Math.abs(H.lag - u.hp) < 0.5) H.hold = 0;
+      const r = H.disp / u.maxHp;
+      H.fill.style.width = (r * 100) + '%';
+      H.fill.style.backgroundColor = r > 0.5 ? '#6fd38a' : r > 0.2 ? '#f2c94c' : '#ef6b5b';
+      H.lagEl.style.width = (H.lag / u.maxHp * 100) + '%';
+      H.num.textContent = H.single ? `${Math.ceil(u.hp)} / ${u.maxHp}` : `${Math.ceil(u.hp)}`;
+      if (H.row) H.row.classList.toggle('down', u.dead);
+      if (u === H.face) { const fd = H.face.fdef; if (f.dataset.form !== fd.id) { f.dataset.form = fd.id; f.querySelector('img').src = Sprites.get(fd).portrait; } } // 오니화/변신 초상화
+      if (H.single) f.querySelectorAll('.resb').forEach(el => { if (el.dataset.k === '__lap') { el.firstChild.style.width = ((u.lap ? u.lap.prog : 0) * 100) + '%'; return; } const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
+    }
     $('#timer').textContent = battle.time.toFixed(1) + 's';
   }
 

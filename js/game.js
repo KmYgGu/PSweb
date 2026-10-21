@@ -8,7 +8,9 @@ const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '
 const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const playSfx = (name, o) => { if (window.Sfx) Sfx.play(name, o); };
 // 스프라이트 좌우 배율: sprite.faces = { front: 'left'|'right', back: ... } (원본이 바라보는 방향). 없으면 원본은 오른쪽을 본다고 가정
+const waterImmune = (u, z) => !!(z && (z.water || z.id === 'water') && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'
 const spriteSX = (def, back, facing) => { const F = def.sprite && def.sprite.faces; if (!F) return facing; return facing * (((back ? F.back : F.front) || 'right') === 'left' ? -1 : 1); };
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 // 너무 수평/수직인 각도 방지 (벽에 붙어 미끄러지는 현상 방지)
@@ -42,12 +44,14 @@ const easeOut = t => 1 - Math.pow(1 - t, 3);
 const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
 class Unit {
-  constructor(def, team) {
-    this.def = def; this.team = team;
+  constructor(def, team, slot = 0, n = 1) {
+    this.def = def; this.team = team; this.slot = slot; this.n = n; // slot: 팀 내 순번, n: 팀 인원 (파라가스&브로리 = 2)
+    this.gender = def.gender || 'male'; this.form = null; // form: 변신 정의 (전설의 슈퍼사이어인 등)
     this.st = { ...STAT_DEFAULTS, ...def.stats };
     this.maxHp = this.st.hp; this.hp = this.maxHp;
     this.x = team === 0 ? AR.x + 70 : AR.x + AR.w - 70;
-    this.y = AR.y + AR.h / 2 + (team === 0 ? 50 : -50);
+    this.y = AR.y + AR.h / 2 + (team === 0 ? 50 : -50) + (n > 1 ? (slot ? 1 : -1) * 34 : 0);
+    if (n > 1) this.x += (slot ? -1 : 1) * (team === 0 ? 14 : -14);
     this.facing = team === 0 ? 1 : -1;
     this.atkT = rand(0.6, 0.9);
     this.skills = def.skills || [];
@@ -74,20 +78,25 @@ class Unit {
   get stun() { return this.blocked('blocksAct'); }
   get airborne() { return !!this.air; } // 공중 상태 (트램펄린 등)
   mult(k) { let m = 1; for (const b of this.buffs) if (b[k] != null) m *= b[k]; return m; }
-  get speed() { return this.st.spd * this.mult('spdMul') * this.smult('spdMul') * (1 + this.boost) * ((this.zone && this.zone.spdMul) || 1) * ((this.barrier && this.barrier.spdMul) || 1) * (this.terrainMul || 1); }
+  get speed() { return this.st.spd * this.mult('spdMul') * this.smult('spdMul') * (1 + this.boost) * ((this.zone && !waterImmune(this, this.zone) && this.zone.spdMul) || 1) * ((this.barrier && this.barrier.spdMul) || 1) * (this.terrainMul || 1); }
   get atkRate() { return this.st.atkRate * this.mult('atkRateMul'); }
   get reach() { return this.st.range + 20 + this.pad; }
-  get pad() { return 15 * ((this.def.size || 1) - 1); } // 큰 캐릭터 추가 반경
+  get pad() { return 15 * (this.size - 1); } // 큰 캐릭터 추가 반경
+  get size() { return (this.form && this.form.size) || this.def.size || 1; } // 충돌 반경 배율 (변신 시 form.size)
+  get fdef() { return this.form || (this.oni && this.def.oni ? this.def.oni.form : this.def); } // 현재 스프라이트 정의
 }
 
 class Battle {
   constructor(defA, defB, hooks = {}, stageId = 'arena') {
-    this.u = [new Unit(defA, 0), new Unit(defB, 1)];
+    // 팀 구성: def.partner 가 있으면 [partner, def] 2인 팀 (파라가스 & 브로리). 그 외는 기존 1v1 그대로
+    const squad = d => d.partner ? [d.partner, d] : [d], A = squad(defA), B = squad(defB);
+    this.u = [...A.map((d, i) => new Unit(d, 0, i, A.length)), ...B.map((d, i) => new Unit(d, 1, i, B.length))];
+    this.multi = this.u.length > 2;
     this.stageId = STAGE_DEFS[stageId] ? stageId : 'arena';
     this.stage = STAGE_DEFS[this.stageId];
     this.buildings = (this.stage.buildings || []).map((b, i) => makeBuilding(b, i));
     this.rules = { bumpDmg: 8, bumpSpeedK: 0.03, projK: 0.6, meleeK: 0.5, strongMin: 60, ...(this.stage.buildingRules || {}) };
-    if (this.stage.spawns) this.u.forEach((u, i) => { u.x = this.stage.spawns[i].x; u.y = this.stage.spawns[i].y; });
+    if (this.stage.spawns) this.u.forEach(u => { const s = this.stage.spawns[u.team]; u.x = s.x + (u.n > 1 ? (u.slot ? -1 : 1) * (u.team ? -12 : 12) : 0); u.y = s.y + (u.n > 1 ? (u.slot ? 1 : -1) * 32 : 0); });
     this.u.forEach(u => { this.resolveBuildings(u, true); u.zone = this.zoneAt(u.x, u.y); });
     this.balls = []; this.initBalls();
     this.iceSegs = [];
@@ -101,13 +110,30 @@ class Battle {
     this.shakeT = 0; this.shakeA = 0; this.hooks = hooks;
     this.stats = { lands: 0, shockHits: 0, knocks: 0 };
     this.endType = null; this.resultText = null;
+    this.play = AR; // 실제 이동 가능 영역 (스테이지 훅이 좁힐 수 있음: 아이돌 무대 등)
     for (const h of STAGE_HOOKS) h.init && h.init(this); // 스테이지 확장 훅 (js/stages2.js)
+    if (this.multi) this.u.forEach(u => { if (u.n > 1) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; this.resolveBuildings(u, true); } });
   }
-  enemy(u) { return this.u[1 - u.team]; }
+  // 상대: 1v1 이면 유일한 상대. 다인 팀이면 가장 가까운 '살아있는' 상대 (히스테리시스: 새 후보가 25% 이상 가까워야 교체)
+  enemy(u) {
+    const es = this.u.filter(o => o.team !== u.team);
+    if (es.length === 1) return es[0];
+    const live = es.filter(o => !o.dead && !o.hidden);
+    if (!live.length) return es[0];
+    if (live.length === 1) return (u.tgtU = live[0]);
+    let best = live[0]; for (const o of live) if (dist(u, o) < dist(u, best)) best = o;
+    const cur = u.tgtU && live.includes(u.tgtU) ? u.tgtU : null;
+    if (!cur || dist(u, best) < dist(u, cur) * 0.75) u.tgtU = best;
+    return u.tgtU;
+  }
+  foes(u) { return this.u.filter(o => o.team !== u.team && !o.dead); }      // 살아있는 상대 전원
+  allies(u) { return this.u.filter(o => o !== u && o.team === u.team && !o.dead); } // 살아있는 아군 (자신 제외)
+  teamAlive(t) { return this.u.some(o => o.team === t && !o.dead); }
+  teamBest(t) { const L = this.u.filter(o => o.team === t); return L.filter(o => !o.dead).sort((a, c) => c.hp / c.maxHp - a.hp / a.maxHp)[0] || L[L.length - 1]; } // 승자 대표 (살아있는 쪽, 체력 비율 높은 쪽)
   // ---------- 대사 ----------
   // def.lines = { skill: { 스킬명: [..] }, event: { 이벤트: [..] }, cd?: { 이벤트: 초 } }. 같은 대사 연속 방지, 이벤트별/캐릭터별 쿨다운
   line(u, kind, key) {
-    const L = u.def.lines, arr = L && L[kind] && L[kind][key];
+    const L = (u.form && u.form.lines) || u.def.lines, arr = L && L[kind] && L[kind][key];
     if (!arr || !arr.length) return null;
     u.voice = u.voice || { last: {}, prev: {}, any: -9 };
     const force = kind === 'skill' || key === 'win' || key === 'lose' || key === 'fallCrevasse' || key === 'battleStart';
@@ -128,7 +154,7 @@ class Battle {
   clampPos(x, y, pad = 0, u = null) {
     for (const h of STAGE_HOOKS) if (h.noClamp && u && h.noClamp(this, u)) return { x, y };
     for (const h of STAGE_HOOKS) if (h.clamp) { const p = h.clamp(this, x, y, pad); x = p.x; y = p.y; }
-    x = clamp(x, AR.x + 14 + pad, AR.x + AR.w - 14 - pad); y = clamp(y, AR.y + 26 + pad, AR.y + AR.h - 8 - pad * 0.5);
+    const P = this.play || AR; x = clamp(x, P.x + 14 + pad, P.x + P.w - 14 - pad); y = clamp(y, P.y + 26 + pad, P.y + P.h - 8 - pad * 0.5);
     const C = this.stage && this.stage.circle;
     if (C) { const R = this.circleR() - 12 - pad, dx = x - C.cx, dy = y - C.cy, d = Math.hypot(dx, dy); if (d > R) { x = C.cx + dx / d * R; y = C.cy + dy / d * R; } }
     return { x, y };
@@ -151,7 +177,7 @@ class Battle {
     if (dot > 0) { // 법선 기준 반사
       vx -= 2 * dot * nx; vy -= 2 * dot * ny;
       u.dir = Math.atan2(vy, vx) + rand(-0.25, 0.25);
-      if (this.time - (u.wallT || -1) > 0.12) { u.wallT = this.time; this.dust(u.x, u.y); this.ring(u.x + nx * 10, u.y, 2, 10, 0.2, '#f0e8e0'); }
+      if (this.time - (u.wallT || -1) > 0.12) { u.wallT = this.time; this.dust(u.x, u.y); this.ring(u.x + nx * 10, u.y, 2, 10, 0.2, '#f0e8e0'); playSfx('wall'); }
     }
   }
   // ---------- 볼풀 ----------
@@ -246,7 +272,7 @@ class Battle {
     for (let i = 0; i < n; i++) this.step(dt / n);
   }
   step(dt) {
-    if (!this.started) { this.started = true; this.u.forEach(u => this.say(u, 'battleStart')); }
+    if (!this.started) { this.started = true; this.u.forEach(u => this.say(u, 'battleStart')); playSfx('start'); }
     this.time += dt;
     if (!this.fever && this.time >= RAMP_START) { this.fever = true; this.hooks.onSystem && this.hooks.onSystem('전투가 격렬해집니다! (피해량 점점 증가)'); }
     for (const t of this.timers) t.t -= dt;
@@ -255,7 +281,11 @@ class Battle {
     due.forEach(t => t.fn());
 
     for (const u of this.u) this.updateUnit(u, dt);
-    this.collide(this.u[0], this.u[1]);
+    for (let i = 0; i < this.u.length; i++) for (let j = i + 1; j < this.u.length; j++) this.collide(this.u[i], this.u[j]);
+    if (this.buildings.some(bl => bl.life != null)) { // 임시 지형 (브로리 지반 격파): 수명이 다하면 복구
+      for (const bl of this.buildings) if (bl.life != null) { bl.life -= dt; if (bl.life <= 0) { this.smoke(bl.x + bl.w / 2, bl.y + bl.h / 2, '#9a8a78', 10); this.dust(bl.x + bl.w / 2, bl.y + bl.h / 2); } }
+      this.buildings = this.buildings.filter(bl => bl.life == null || bl.life > 0);
+    }
     for (const u of this.u) { this.updateAir(u, dt); if (!u.airborne) this.resolveBuildings(u); this.circleWall(u); if (!u.airborne) this.updateTerrain(u, dt); }
     this.updateBalls(dt);
     for (const h of STAGE_HOOKS) h.step && h.step(this, dt);
@@ -284,14 +314,19 @@ class Battle {
     if (u.buffs.length > (u.nBuffs || 0)) this.say(u, 'buffed'); // 새 버프 감지
     for (const b of u.buffs) b.t -= dt;
     u.buffs = u.buffs.filter(b => b.t > 0); u.nBuffs = u.buffs.length;
+    if (u.def.oni) this.updateOni(u, dt);
+    if (u.poseT > 0) u.poseT -= dt;
+    if (u.ghostChain) window.ghostTick(u, this, dt);
+    if (u.spirit) { u.spirit.t -= dt; if (Math.random() < dt * 10) this.parts.push({ x: u.x + rand(-8, 8), y: u.y - rand(4, 34), vx: rand(-8, 8), vy: rand(-40, -15), life: 0.6, max: 0.6, color: '#c8d4ff', size: 2, soft: true }); if (u.spirit.t <= 0) window.spiritEnd(u, this); }
     u.hamSwing = Math.max(0, (u.hamSwing || 0) - dt);
     if (u.barrier) this.updateBarrier(u, dt);
     if (u.counter) { u.counter.t -= dt; if (u.counter.t <= 0) { u.counter = null; if (!u.dead) { this.resEvent(u, 'counterFail'); this.text(u.x, u.y - 60, '+매듭', '#ffb070', 8); } } }
     if (u.pull && !u.dead) { // 와이어에 끌려감
-      const P = u.pull, s = P.src, R = 15 * ((u.def.size || 1) + (s.def.size || 1)) + 4, d = dist(u, s);
+      const P = u.pull, s = P.src, R = 15 * (u.size + s.size) + 4, d = dist(u, s);
       P.t -= dt; if (d > R) { const k = Math.min(d - R, 640 * dt); u.x += (s.x - u.x) / d * k; u.y += (s.y - u.y) / d * k; const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
       if (P.t <= 0 || d <= R) u.pull = null;
     }
+    if (u.push && !u.dead) this.pushStep(u, dt); // 넉백 (파라가스 데드☆퍼니셔 등)
     { // 격투게임식 방향: 상대 위치 기준 (히스테리시스)
       const e0 = this.enemy(u), HY = 10, HX = 8;
       if (!u.dead && e0) {
@@ -310,7 +345,8 @@ class Battle {
     if (noAct && noMove) { u.moving = false; return; }
     if (u.action) { if (!noAct) this.updateAction(u, e, dt); return; }
     const d = dist(u, e);
-    for (let i = 0; i < u.skills.length && !noAct; i++) {
+    const noSkill = u.blocked('blocksSkill'); // 봉인: 스킬 사용 불가 (패시브는 동작)
+    for (let i = 0; i < u.skills.length && !noAct && !noSkill; i++) {
       const slot = u.skills[i], sk = SKILLS[slot.id];
       if (!sk || u.skillT[i] > 0) continue;
       if (!this.canPay(u, slot)) continue;
@@ -318,7 +354,7 @@ class Battle {
       if (!ok) continue;
       u.skillT[i] = slot.cd;
       this.pay(u, slot);
-      const vl = this.line(u, 'skill', slot.name);
+      const vl = sk.say ? sk.say(u, e, this, slot) : this.line(u, 'skill', slot.name); // sk.say: 동적 대사 (예: '기를 낮추거라 <상대>!')
       this.hooks.onSkill && this.hooks.onSkill(u, slot.name, vl);
       if (vl) this.bubble(u, vl);
       sk.use(u, e, this, slot);
@@ -340,7 +376,7 @@ class Battle {
     u.moving = true; u.walk += dt * Math.min(sp, 160) * 0.15;
     this.bounceWalls(u);
     u.trailT -= dt;
-    if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.def, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
+    if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
     if (!noAct && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
@@ -371,6 +407,7 @@ class Battle {
     if (id === 'stun') this.later(0, () => { if (!s.knock) this.say(tgt, 'stunned'); });
     if (!d.positive) this.say(tgt, 'debuffed'); // 해로운 상태이상 (positive: true 면 제외)
     this.hooks.onStatus && this.hooks.onStatus(tgt, d.name, d.color);
+    playSfx(id === 'stun' ? 'stun' : d.positive ? 'buff' : 'status', { element: id });
     this.text(tgt.x, tgt.y - 84, d.name + '!', d.color, 11);
     this.shock(tgt.x, tgt.y - 18, 6, 30, d.color, 0.35, 3);
     return s;
@@ -396,16 +433,20 @@ class Battle {
   }
   debrisIce(x, y) { for (let i = 0; i < 24; i++) { const a = rand(0, 6.28), sp = rand(40, 150); this.parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, g: 300, life: rand(0.4, 0.8), max: 0.8, color: ['#e8f8ff', '#bfe6f8', '#9fd0ea'][i % 3], size: rand(1.5, 3.5) }); } }
   fall(u, side) {
-    this.say(u, 'fallCrevasse'); this.say(this.enemy(u), 'win');
+    this.say(u, 'fallCrevasse');
     u.dead = true; u.fallen = { t: 0, side, x: u.x, y: u.y }; u.action = null; u.statuses = [];
-    this.over = true; this.winner = this.enemy(u); this.fallen = u;
     this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 크레바스에 추락!');
+    if (this.teamAlive(u.team)) { this.allyDown(u); this.hitstop(0.12); return; } // 팀원이 남아 있으면 계속
+    this.say(this.enemy(u), 'win');
+    this.over = true; this.winner = this.teamBest(1 - u.team); this.fallen = u;
     this.hitstop(0.2);
+    playSfx('ko');
   }
   // ---------- 트램펄린 / 공중 ----------
   updateAir(u, dt) {
     if (u.dead) return;
     if (u.air) {
+      if (!u.air.sfx) { u.air.sfx = 1; playSfx('jump'); }
       u.air.t += dt;
       if (u.air.fling) { const F = u.air.fling, k = easeInOut(clamp(u.air.t / u.air.dur, 0, 1)); u.x = F.x0 + (F.x1 - F.x0) * k; u.y = F.y0 + (F.y1 - F.y0) * k; }
       if (u.air.t >= u.air.dur) { u.air = null; u.padCd = this.time; this.landShock(u); }
@@ -420,6 +461,7 @@ class Battle {
     }
   }
   landShock(u) { // 착지 충격파: 범위 내 상대를 넘어뜨리고 기절
+    playSfx('land');
     const LS = this.stage.landShock || { r: 0 };
     this.stats.lands++;
     this.shock(u.x, u.y, 6, LS.r || 22, '#fff4d0', 0.45, 3);
@@ -427,10 +469,11 @@ class Battle {
     for (let i = 0; i < 6; i++) this.dust(u.x + rand(-1, 1) * (LS.r || 20) * 0.6, u.y + rand(-1, 1) * (LS.r || 20) * 0.35);
     if (!LS.r) return;
     this.shake(1.5);
-    const e = this.enemy(u);
-    if (e.dead || e.airborne || Math.hypot(e.x - u.x, (e.y - u.y) / 0.7) > LS.r) return;
-    this.stats.shockHits++;
-    if (this.knockdown(u, e, LS.stun, LS.chance ?? 1)) this.stats.knocks++;
+    for (const e of this.foes(u)) {
+      if (e.airborne || Math.hypot(e.x - u.x, (e.y - u.y) / 0.7) > LS.r) continue;
+      this.stats.shockHits++;
+      if (this.knockdown(u, e, LS.stun, LS.chance ?? 1)) this.stats.knocks++;
+    }
   }
   airZ(u) { return u.air ? Math.sin(Math.PI * clamp(u.air.t / u.air.dur, 0, 1)) * u.air.h : 0; }
   // 명중 판정 (향후 명중/회피 스탯 확장용 훅)
@@ -439,6 +482,7 @@ class Battle {
   hitCheck(src, tgt, o) {
     if (o.dot || o.reflected) return { hit: true };
     if (tgt.airborne) {
+      if (o.airHit) return { hit: true }; // 공중 추격 공격 (고스트 온)
       if (o.delivery === 'melee') return { hit: false, label: '회피' }; // 공중: 근접은 항상 빗나감
       if (o.delivery === 'ranged') return { hit: true, sure: true, label: '명중' }; // 원거리는 항상 명중
     }
@@ -456,7 +500,7 @@ class Battle {
     if (!z && prev && prev.splash) this.splash(u.x, u.y, prev.splash, 0.5);
     if (z && z.splash && (u.moving || u.action)) { u.rippleT -= dt; if (u.rippleT <= 0) { u.rippleT = 0.16; this.fx.push({ type: 'ripple', x: u.x, y: u.y + 1, t: 0, dur: 0.7 }); } }
     if (this.over) return;
-    if (z && z.oxygen) {
+    if (z && z.oxygen && !waterImmune(u, z)) {
       const O = z.oxygen;
       if (u.o2 == null) u.o2 = O.max;
       u.o2Max = O.max; u.o2Regen = O.regen;
@@ -475,11 +519,18 @@ class Battle {
     }
   }
   splash(x, y, color, k = 1) {
+    playSfx('splash');
     this.fx.push({ type: 'ripple', x, y, t: 0, dur: 0.6, big: true });
     for (let i = 0; i < 14 * k; i++) { const a = rand(Math.PI, Math.PI * 2), s = rand(40, 110); this.parts.push({ x, y: y - 2, vx: Math.cos(a) * s * 0.7, vy: Math.sin(a) * s, g: 360, life: rand(0.3, 0.55), max: 0.55, color, size: rand(1.5, 3) }); }
   }
 
   // ---------- 건물 ----------
+  // 장애물 충돌음: 법선(n, 장애물→캐릭터) 방향으로 실제로 파고드는 속도가 있을 때만 (반사 전에 호출)
+  wallImpact(u, nx, ny) {
+    const a = u.action, dash = (a && ['dash', 'chase', 'charge', 'combo'].includes(a.type)) || !!u.push;
+    const imp = -(Math.cos(u.dir) * nx + Math.sin(u.dir) * ny) * (u.speed || 0);
+    if (dash || imp > 40) playSfx('wall');
+  }
   blockAt(x, y, pad = 0) {
     for (const b of this.buildings) if (!b.dead && x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad) return b;
     return null;
@@ -503,6 +554,7 @@ class Battle {
         }
         u.x += nx * pen; u.y += ny * pen;
         if (spawn) continue;
+        this.wallImpact(u, nx, ny);
         const a = u.action;
         if (a && (a.type === 'dash' || a.type === 'chase')) { // 돌진: 강한 충돌
           this.hitBuilding(b, 90, true, u.x - nx * 10, u.y - 14);
@@ -524,6 +576,7 @@ class Battle {
   }
   hitBuilding(b, dmg, strong, x, y) {
     if (!b || b.dead) return;
+    if (b.solid) { b.hitT = 0.15; for (let i = 0; i < 3; i++) this.parts.push({ x: x ?? b.x + b.w / 2, y: y ?? b.y, vx: rand(-60, 60), vy: rand(-90, -30), g: 360, life: 0.4, max: 0.4, color: ['#8a7a68', '#b0a088'][i % 2], size: rand(1.5, 2.5) }); return; } // 파괴 불가 임시 지형
     b.hp -= dmg; b.hitT = 0.15;
     for (let i = 0; i < 4; i++) this.parts.push({ x: x ?? b.x + b.w / 2, y: y ?? b.y, vx: rand(-60, 60), vy: rand(-90, -30), g: 360, life: 0.45, max: 0.45, color: ['#a89878', '#c8b898', '#8a7a68'][i % 3], size: rand(1.5, 2.5) });
     if (strong && dmg >= this.rules.strongMin) b.hp = 0;
@@ -550,7 +603,7 @@ class Battle {
     if (o.dot || o.reflected) return 1;
     const r = tgt.def.resist || {};
     let m = 1;
-    if (tgt.zone && tgt.zone.resist && o.element && tgt.zone.resist[o.element] != null) m *= tgt.zone.resist[o.element]; // 지형 보정
+    if (tgt.zone && !waterImmune(tgt, tgt.zone) && tgt.zone.resist && o.element && tgt.zone.resist[o.element] != null) m *= tgt.zone.resist[o.element]; // 지형 보정
     if (o.element && r[o.element] != null) m *= r[o.element];
     if (o.delivery && r[o.delivery] != null) m *= r[o.delivery];
     for (const b of tgt.buffs) if (b.resist && o.element && b.resist[o.element] != null) m *= b.resist[o.element];
@@ -575,7 +628,7 @@ class Battle {
 
   bounceWalls(u) {
     for (const h of STAGE_HOOKS) if (h.noClamp && h.noClamp(this, u)) return;
-    const pd = u.pad, L = AR.x + 14 + pd, R = AR.x + AR.w - 14 - pd, T = AR.y + 26 + pd, B = AR.y + AR.h - 8 - pd * 0.5;
+    const P = this.play || AR, pd = u.pad, L = P.x + 14 + pd, R = P.x + P.w - 14 - pd, T = P.y + 26 + pd, B = P.y + P.h - 8 - pd * 0.5;
     let vx = Math.cos(u.dir), vy = Math.sin(u.dir), hit = false;
     const sides = [];
     if (u.x < L) { sides.push('left'); }
@@ -591,20 +644,21 @@ class Battle {
       // 핀볼 느낌: 반사각을 상대 쪽으로 살짝 꺾음 (최대 0.8rad) → 충돌 빈도 증가
       let ang = Math.atan2(vy, vx) + rand(-0.25, 0.25);
       const e = this.enemy(u);
-      if (e && !e.dead) {
+      if (e && !e.dead && !u.ghostChain) { // 고스트 온 무작위 이동 중엔 적 방향 보정 없음
         const toE = Math.atan2(e.y - u.y, e.x - u.x);
         let diff = Math.atan2(Math.sin(toE - ang), Math.cos(toE - ang));
         const tx = Math.cos(toE), ty = Math.sin(toE);
         if (tx * vx >= -0.05 && ty * vy >= -0.05 || Math.abs(diff) < 1.2) ang += clamp(diff, -0.8, 0.8);
       }
-      u.dir = fixAngle(ang); this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); }
+      u.dir = fixAngle(ang); this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); }
   }
 
   collide(a, b) {
     if (a.airborne || b.airborne) return; // 공중이면 지상 충돌 없음
+    if (a.spirit || b.spirit) return; // 혼령: 통과
     const isRush = u => u.action && (u.action.type === 'dash' || u.action.type === 'charge');
     if (a.dead || b.dead || isRush(a) || isRush(b)) return;
-    const d = dist(a, b), R = 15 * ((a.def.size || 1) + (b.def.size || 1));
+    const d = dist(a, b), R = 15 * (a.size + b.size), ally = a.team === b.team; // 아군끼리: 튕기기만 (충돌 공격/연계 없음)
     if (d >= R || d < 0.01) return;
     const nx = (b.x - a.x) / d, ny = (b.y - a.y) / d;
     const push = (R - d) / 2 + 0.5;
@@ -627,14 +681,16 @@ class Battle {
     if (impact > 420) this.shake(1.5);
     for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
     // 충돌 타격: 근접 캐릭터는 부딪히는 순간 공격 쿨이 거의 찼으면 즉시 공격
-    for (const [u, e] of [[a, b], [b, a]]) {
+    for (const [u, e] of ally ? [] : [[a, b], [b, a]]) {
       if (u.st.range < 80 && !u.stun && !u.action && u.atkT < 0.5 / u.atkRate) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; }
     }
+    if (!ally) for (const u of [a, b]) if (u.ghostChain) window.ghostBump(u, this); // 고스트 온 연계
     if (this.time - this.lastBump > 0.25) {
       this.lastBump = this.time;
       const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2 - 16;
       this.ring(mx, my + 14, 4, 20, 0.25, '#f4ecd8');
       this.burst(mx, my, '#fff3c8', 8);
+      playSfx(impact > 420 && !ally ? 'bumpHard' : 'bump');
     }
   }
 
@@ -651,18 +707,20 @@ class Battle {
     }
   }
   actionStep(u, e, dt, a) {
+    if (a.step) { a.step(dt); return; } // 커스텀 액션 (캐릭터 파일 정의)
     if (a.type === 'wind') {
       a.t -= dt;
       if (a.t <= 0) { u.action = null; a.next && a.next(); }
     } else if (a.type === 'chase') {
       a.t += dt;
+      if (a.e && !a.e.dead) e = a.e; // 시전 시 대상 고정 (다인 팀)
       const d = dist(u, e), st = Math.min(d, a.spd * dt);
       const ang = Math.atan2(e.y - u.y, e.x - u.x);
       u.x += Math.cos(ang) * st; u.y += Math.sin(ang) * st;
-      if (Math.random() < 0.7) this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.def, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
-      if (d < 28 || a.t >= a.dur) {
+      if (Math.random() < 0.7) this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
+      if (d < (a.reach || 28) || a.t >= a.dur) { // a.reach: 큰 캐릭터용 접촉 거리 (기본 28)
         u.action = null; u.dir = fixAngle(ang + Math.PI + rand(-0.7, 0.7));
-        if (d < 34 && !e.dead) a.onTouch && a.onTouch();
+        if (d < (a.reach || 28) + 6 && !e.dead) a.onTouch && a.onTouch();
       }
     } else if (a.type === 'combo') { // 2연타: 후퇴 → 재접근 → 2타
       a.t += dt; const C = a.C, canMove = !u.blocked('blocksMove');
@@ -688,25 +746,33 @@ class Battle {
       const p = Math.min(1, a.t / a.dur), k = easeOut(p);
       u.x = a.sx + (a.tx - a.sx) * k; u.y = a.sy + (a.ty - a.sy) * k;
       u.facing = a.tx >= a.sx ? 1 : -1;
-      if (Math.random() < 0.7) this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.def, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
+      if (Math.random() < 0.7) this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.25 });
       if (!a.touched && !e.dead && dist(u, e) < 28) { a.touched = true; a.onTouch && a.onTouch(); }
       if (p >= 1) { u.action = null; u.dir = fixAngle(Math.atan2(a.ty - a.sy, a.tx - a.sx) + Math.PI + rand(-0.6, 0.6)); if (!a.touched && dist(u, e) < 34) a.onTouch && a.onTouch(); }
     }
   }
 
   // ---------- 라인하르트: 돌진 ----------
-  charge(u, ang, spd, slot) { u.action = { type: 'charge', ang, spd, t: 0, slot, pin: false, trail: '#ffc88a' }; u.dir = ang; }
+  // o: 추가 옵션 { trail, tgt(미리 붙잡은 대상), pin, maxT, onImpact(e, w) } — 브로리 암반이 재사용
+  charge(u, ang, spd, slot, o = {}) { u.action = { type: 'charge', ang, spd, t: 0, slot, pin: false, trail: '#ffc88a', ...o }; u.dir = ang; if (o.tgt && o.pin) this.pinUnit(u, o.tgt, u.action, true); }
+  pinUnit(u, e, a, quiet) { // 돌진 접촉 → 제압 (붙잡은 대상은 a.tgt 로 고정)
+    a.pin = true; a.tgt = e; e.action = null; this.say(u, 'pinned'); this.say(e, 'pinnedBySomeone');
+    e.statuses = e.statuses.filter(s => s.id !== 'pin');
+    this.applyStatus(e, 'pin', 3, u); // 안전장치 3초 (벽 충돌 시 해제)
+    if (!quiet) { this.shock(e.x, e.y - 18, 6, 34, '#ffc88a', 0.3, 4); this.hitstop(0.06); }
+  }
   chargeStep(u, e, dt, a) {
     a.t += dt;
     const cx = Math.cos(a.ang), cy = Math.sin(a.ang), st = a.spd * dt;
-    const R = 15 * ((u.def.size || 1) + (e.def.size || 1));
-    if (!a.pin && !a.missed && (e.counter || e.evadeT > this.time) && dist(u, e) < R + 6) { a.missed = true; if (e.counter) this.counterTrigger(e, u); }
-    if (!a.pin && !a.missed && !e.dead && !e.airborne && !e.fallen && dist(u, e) < R + 6) { // 접촉 → 제압
-      a.pin = true; e.action = null; this.say(u, 'pinned'); this.say(e, 'pinnedBySomeone');
-      e.statuses = e.statuses.filter(s => s.id !== 'pin');
-      const s = this.applyStatus(e, 'pin', 3, u); // 안전장치 3초 (벽 충돌 시 해제)
-      this.shock(e.x, e.y - 18, 6, 34, '#ffc88a', 0.3, 4); this.hitstop(0.06);
+    if (!a.pin && !a.missed) for (const f of this.foes(u)) { // 경로상의 상대 (다인 팀이면 먼저 닿은 쪽)
+      if (dist(u, f) >= 15 * (u.size + f.size) + 6) continue;
+      if (f.counter || f.evadeT > this.time) { a.missed = true; if (f.counter) this.counterTrigger(f, u); break; }
+      if (f.airborne || f.fallen) continue;
+      this.pinUnit(u, f, a); break;
     }
+    if (a.pin && (!a.tgt || a.tgt.dead)) a.pin = false;
+    e = a.tgt || e;
+    const R = 15 * (u.size + e.size);
     const lead = a.pin ? R - 2 : 0;
     const nx = u.x + cx * st, ny = u.y + cy * st, fx = nx + cx * lead, fy = ny + cy * lead;
     const cu = this.clampPos(nx, ny, u.pad), cf = this.clampPos(fx, fy, a.pin ? e.pad : u.pad);
@@ -716,18 +782,18 @@ class Battle {
     const bl = this.blockAt(fx, fy - 4, 9 + (a.pin ? e.pad : u.pad));
     if (bl) wall = { x: fx, y: fy - 4, bl };
     if (!wall && this.balls.length) this.pushBalls(fx, fy, 22, 240 * dt * 8); // 공을 밀어냄
-    if (wall) return this.chargeImpact(u, e, a, wall, a.pin ? cf : cu);
+    if (wall) return this.chargeImpact(u, a.pin ? e : null, a, wall, a.pin ? cf : cu);
     u.x = nx; u.y = ny;
     if (a.pin && !e.dead) { e.x = fx; e.y = fy; e.kx = e.ky = 0; e.facing = -Math.sign(cx) || e.facing; }
     if (Math.random() < 0.5) this.dust(u.x, u.y);
-    if (a.t > 2.5) { u.action = null; if (a.pin) this.releasePin(e); }
+    if (a.t > (a.maxT || 2.5)) { u.action = null; if (a.pin) this.releasePin(e); }
   }
   releasePin(e) { e.statuses = e.statuses.filter(s => s.id !== 'pin'); }
   chargeImpact(u, e, a, w, front) {
     u.action = null; u.dir = fixAngle(a.ang + Math.PI + rand(-0.6, 0.6));
     // 얼음벽: 균열 / 크레바스
     if (this.iceSegs.length && !w.bl) {
-      const fu = a.pin ? e : u, pd = fu.pad, L = AR.x + 14 + pd, Rr = AR.x + AR.w - 14 - pd, T = AR.y + 26 + pd, B = AR.y + AR.h - 8 - pd * 0.5;
+      const P = this.play || AR, fu = a.pin ? e : u, pd = fu.pad, L = P.x + 14 + pd, Rr = P.x + P.w - 14 - pd, T = P.y + 26 + pd, B = P.y + P.h - 8 - pd * 0.5;
       const side = front.x <= L + 0.5 ? 'left' : front.x >= Rr - 0.5 ? 'right' : front.y <= T + 0.5 ? 'top' : front.y >= B - 0.5 ? 'bottom' : null;
       const seg = side && this.segAt(side, front);
       if (seg && seg.dead) { if (a.pin) this.releasePin(e); this.fall(fu, side); return; }
@@ -744,6 +810,7 @@ class Battle {
       this.glow(w.x, w.y - 14, 60, '#ffb36b', 0.45);
       this.debris(w.x, w.y, 34); this.sparks(w.x, w.y - 14, '#fff0c8', 30, 280);
       this.hitstop(0.18); this.shake(3.5); this.zoomAt(w.x, w.y, 0.06);
+      if (a.onImpact) a.onImpact(e, w);
     } else {
       this.stats.wallStops = (this.stats.wallStops || 0) + 1;
       this.dust(u.x, u.y); this.dust(u.x, u.y); this.ring(w.x, w.y, 3, 18, 0.25, '#f0e8d8'); this.shake(1);
@@ -752,8 +819,31 @@ class Battle {
     }
   }
   // ---------- 범용 자원 (게이지/표식) ----------
+  updateOni(u, dt) { // 오니화: 게이지 가득 → 변신, 서서히 감소, 0이면 복귀
+    const O = u.def.oni, R = u.def.resources[O.res], v = u.res[O.res] || 0;
+    if (!u.oni && v >= R.max) {
+      u.oni = true; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화!');
+      this.shock(u.x, u.y, 6, 60, '#ff4a5a', 0.5, 5); this.glow(u.x, u.y - 22, 50, '#ff4a5a', 0.6); this.embers(u.x, u.y, '#ff6a7a', 16); this.hitstop(0.08);
+    } else if (u.oni) {
+      u.res[O.res] = Math.max(0, v - O.drain * dt);
+      if (Math.random() < dt * 8) this.parts.push({ x: u.x + rand(-10, 10), y: u.y - rand(10, 40), vx: rand(-10, 10), vy: rand(-50, -20), life: 0.6, max: 0.6, color: '#ff5a6a', size: 2, glow: true });
+      if (u.res[O.res] <= 0) { u.oni = false; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화 해제'); this.smoke(u.x, u.y - 18, '#ff8a96', 8); }
+    }
+  }
+  // 이로운 효과 해제: 버프(nodispel 제외), 방벽, 혼령, 반격 자세, beneficial 상태. 해제된 이름 목록 반환
+  dispel(src, tgt) {
+    const out = [], NAMES = { shield: '철벽 방패', invis: '은신', rage: '광폭화', garrote: '교살 자세' };
+    const keep = tgt.buffs.filter(b => b.nodispel); for (const b of tgt.buffs) if (!b.nodispel) out.push(NAMES[b.type] || b.name || b.type); tgt.buffs = keep;
+    if (tgt.barrier) { this.burst(tgt.x, tgt.y - 20, '#bfe3ff', 12); tgt.barrier = null; out.push('방벽'); }
+    if (tgt.spirit) { tgt.spirit = null; this.smoke(tgt.x, tgt.y - 18, '#c8d4ff', 6); out.push('혼령'); }
+    if (tgt.counter) { tgt.counter = null; out.push('반격 자세'); }
+    const bs = tgt.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].beneficial); if (bs.length) { tgt.statuses = tgt.statuses.filter(s => !bs.includes(s)); for (const s of bs) out.push(STATUS_DEFS[s.id].name); }
+    if (out.length) this.stats.dispels = (this.stats.dispels || 0) + 1;
+    return [...new Set(out)];
+  }
   gainRes(u, id, amt) {
     const R = u.def.resources && u.def.resources[id]; if (!R) return;
+    if (u.oni && u.def.oni && u.def.oni.res === id && amt !== 'max' && amt > 0) return; // 오니화 중 충전 불가
     const before = u.res[id] || 0;
     u.res[id] = clamp(amt === 'max' ? R.max : before + amt, 0, R.max);
     if (R.display === 'pips' && u.res[id] > before) this.text(u.x, u.y - 70 - u.pad * 2, R.name + ' ' + u.res[id], R.color, 9);
@@ -793,7 +883,7 @@ class Battle {
     this.stats.counters = (this.stats.counters || 0) + 1;
     this.resEvent(u, 'counterSuccess');
     const e = src || this.enemy(u), a = Math.atan2(u.y - e.y, u.x - e.x) + (Math.random() < 0.5 ? 1.3 : -1.3);
-    this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.def, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.35, a: 0.5 });
+    this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.35, a: 0.5 });
     const p = this.clampPos(u.x + Math.cos(a) * 26, u.y + Math.sin(a) * 26, u.pad); u.x = p.x; u.y = p.y;
     this.text(u.x, u.y - 52, '회피', '#ffe0a0', 12);
     this.ring(u.x, u.y - 16, 4, 30, 0.3, '#ffd08a'); this.glow(u.x, u.y - 18, 34, '#ff9a4a', 0.35);
@@ -850,16 +940,19 @@ class Battle {
         const a = Math.atan2(e.y - u.y, e.x - u.x) + (Math.random() < 0.5 ? -1 : 1) * rand(0.7, 1.6);
         this.shoot(u, { angle: a, spd: 560, dmg: u.st.atk, kind: u.def.projectile || 'arrow', hit: atk });
         this.text(u.x, u.y - 50, '?', '#e0b8ff', 12);
-      } else this.proj.push({ x: u.x + u.facing * 10, y: u.y - 18, tgt: e, src: u, spd: 560, dmg: u.st.atk, kind: u.def.projectile || 'arrow', homing: true, life: 2.5, trail: 0, hit: atk });
+      } else {
+        this.proj.push({ x: u.x + u.facing * 10, y: u.y - 18, tgt: e, src: u, spd: 560, dmg: u.st.atk, kind: u.def.projectile || 'arrow', homing: true, life: 2.5, trail: 0, hit: atk });
+        playSfx('shot');
+      }
     } else {
       this.later(0.08, () => {
-        if (miss) { this.slashFx(u.x - u.facing * 18, u.y - 18, -u.facing, '#e0b8ff', 0.8); this.text(u.x, u.y - 50, '빗나감', '#e0b8ff', 10); return; }
+        if (miss) { this.slashFx(u.x - u.facing * 18, u.y - 18, -u.facing, '#e0b8ff', 0.8); this.text(u.x, u.y - 50, '빗나감', '#e0b8ff', 10); playSfx('whiff'); return; }
         if (!u.dead && !u.stun && dist(u, e) <= u.reach + 12) {
           const bd = this.damage(u, e, u.st.atk, atk);
           if (bd > 0) this.resEvent(u, 'basicHit');
           if (u.def.combo && !u.action && !u.dead && !e.dead) u.action = { type: 'combo', phase: 0, t: 0, ang: Math.atan2(u.y - e.y, u.x - e.x), C: u.def.combo, atk, trail: '#ffc890' };
           this.slashFx(e.x - u.facing * 4, e.y - 18, u.facing, '#ffffff', 1);
-        } else this.slashFx(u.x + u.facing * 18, u.y - 18, u.facing, '#ffffff', 0.8);
+        } else { this.slashFx(u.x + u.facing * 18, u.y - 18, u.facing, '#ffffff', 0.8); playSfx('whiff'); }
         const bl = this.blockAt(u.x + u.facing * 20, u.y - 4, 8); // 근처 건물도 타격
         if (bl) this.hitBuilding(bl, u.st.atk * this.rules.meleeK, false, u.x + u.facing * 16, u.y - 14);
       });
@@ -868,37 +961,55 @@ class Battle {
 
   shoot(u, o) {
     this.proj.push({ x: u.x + u.facing * 10, y: u.y - 18, vx: Math.cos(o.angle) * o.spd, vy: Math.sin(o.angle) * o.spd, src: u, dmg: o.dmg, kind: o.kind, homing: false, life: 1.6, trail: 0, piercesBarrier: !!o.piercesBarrier, hit: o.hit || { applies: o.applies } });
+    playSfx('shot');
   }
 
+  // 투사체: 상대 팀 전원과 충돌 판정 (p.hitAlly(o) 가 true 면 아군도 맞음 — 파라가스 초음파/브로리 기탄)
+  //  p.r: 충돌 반경, p.onHitUnit(o): 커스텀 적중 처리(피해 직접), p.cancel: 닿은 상대 팀 투사체 소멸, p.fizzle(): 수명 종료 시
   updateProj(dt) {
     for (const p of this.proj) {
       p.life -= dt;
+      if (p.life <= 0 && p.fizzle) { p.fizzle(p); p.fizzle = null; continue; } // 수명 종료 (커스텀 투사체만)
       const e = this.enemy(p.src);
-      if (e.airborne && !e.dead) { p.homing = true; p.tgt = e; } // 공중 대상: 원거리 필중
+      if (e.airborne && !e.dead && !p.noAirLock) { p.homing = true; p.tgt = e; } // 공중 대상: 원거리 필중
       if (p.homing) {
-        const tx = p.tgt.x, ty = p.tgt.y - 18 - this.airZ(p.tgt), d = Math.hypot(tx - p.x, ty - p.y);
-        p.vx = (tx - p.x) / (d || 1) * p.spd; p.vy = (ty - p.y) / (d || 1) * p.spd;
+        if (!p.tgt || p.tgt.dead) p.tgt = e; // 대상이 쓰러지면 남은 상대에게
+        if (!p.tgt.dead) {
+          const tx = p.tgt.x, ty = p.tgt.y - 18 - this.airZ(p.tgt), d = Math.hypot(tx - p.x, ty - p.y);
+          p.vx = (tx - p.x) / (d || 1) * p.spd; p.vy = (ty - p.y) / (d || 1) * p.spd;
+        }
       }
       p.x += p.vx * dt; p.y += p.vy * dt;
       const C = this.stage.circle;
-      if (C && Math.hypot(p.x - C.cx, p.y + 14 - C.cy) > this.circleR()) { p.life = 0; this.burst(p.x, p.y, '#f0e8e0', 4); continue; }
+      if (C && Math.hypot(p.x - C.cx, p.y + 14 - C.cy) > this.circleR()) { p.life = 0; this.burst(p.x, p.y, '#f0e8e0', 4); p.fizzle && p.fizzle(p); continue; }
       if (this.balls.length) for (const ball of this.balls) { const dx = ball.x - p.x, dy = ball.y - (p.y + 14); if (dx * dx + dy * dy < 64) { const sp = Math.hypot(p.vx, p.vy) || 1; ball.vx += p.vx / sp * 160; ball.vy += p.vy / sp * 160; ball.z = 5; } }
-      if (!p.piercesBarrier && this.barrierBlocks(e, p)) { p.life = 0; this.barrierHit(e, p.dmg, p.x, p.y); continue; } // 방벽
+      const bar = !p.piercesBarrier && this.u.find(o => o.team !== p.src.team && this.barrierBlocks(o, p));
+      if (bar) { p.life = 0; this.barrierHit(bar, p.dmg, p.x, p.y); continue; } // 방벽
       const bl = this.blockAt(p.x, p.y + 14);
       if (bl && p.pierce) { if (!(p.hitB || (p.hitB = new Set())).has(bl)) { p.hitB.add(bl); this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y); } }
       else if (bl) { // 건물이 투사체를 막음
         p.life = 0; this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y);
-        this.burst(p.x, p.y, PROJ_COL[p.kind] || '#e8e0c8', 4); continue;
+        this.burst(p.x, p.y, PROJ_COL[p.kind] || '#e8e0c8', 4); p.fizzle && p.fizzle(p); continue;
+      }
+      if (p.cancel) for (const q of this.proj) { // 데덴탄: 상대 투사체 상쇄
+        if (q === p || q.life <= 0 || q.src.team === p.src.team || Math.hypot(q.x - p.x, q.y - p.y) > (p.r || 12) + 6) continue;
+        q.life = 0; this.burst(q.x, q.y, '#c8ffb0', 8); this.ring(q.x, q.y, 3, 18, 0.25, '#b8ff9a'); this.stats.cancels = (this.stats.cancels || 0) + 1;
       }
       p.trail += dt;
-      if (p.kind !== 'arrow' && p.trail > 0.016) { p.trail = 0; this.parts.push({ x: p.x, y: p.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, max: 0.3, color: PROJ_COL[p.kind] || '#a8d8ff', size: p.kind === 'arrowG' ? 2.5 : 2, glow: true }); }
-      if (!e.dead && !p.done && Math.hypot(e.x - p.x, e.y - 18 - this.airZ(e) - p.y) < (p.pierce ? 18 : 12)) {
-        if (p.pierce) p.done = true; else p.life = 0;
-        const pd = this.damage(p.src, e, p.dmg, { ...(p.hit || {}), viaProj: true });
-        if (pd > 0 && p.onHit) p.onHit(e);
+      if (!p.draw && p.kind !== 'arrow' && p.trail > 0.016) { p.trail = 0; this.parts.push({ x: p.x, y: p.y, vx: rand(-10, 10), vy: rand(-10, 10), life: 0.3, max: 0.3, color: PROJ_COL[p.kind] || '#a8d8ff', size: p.kind === 'arrowG' ? 2.5 : 2, glow: true }); }
+      if (!p.done) for (const o of this.u) {
+        if (o.dead || o === p.src || o.hidden || (o.team === p.src.team && !(p.hitAlly && p.hitAlly(o)))) continue;
+        if (p.hitSet && p.hitSet.has(o)) continue;
+        if (Math.hypot(o.x - p.x, o.y - 18 - this.airZ(o) - p.y) >= (p.r || (p.pierce ? 18 : 12)) + (p.r ? o.pad * 0.6 : 0)) continue;
+        if (p.pierce) (p.hitSet || (p.hitSet = new Set())).add(o); else p.life = 0;
+        if (p.onHitUnit) p.onHitUnit(o, p);
+        else {
+          const pd = this.damage(p.src, o, p.dmg, { ...(p.hit || {}), viaProj: true });
+          if (pd > 0 && p.onHit) p.onHit(o);
+        }
         const c = PROJ_COL[p.kind] || '#e8e0c8';
-        this.burst(p.x, p.y, c, 5);
-        if (p.kind !== 'arrow') this.glow(p.x, p.y, 18, c, 0.25);
+        if (!p.draw) { this.burst(p.x, p.y, c, 5); if (p.kind !== 'arrow') this.glow(p.x, p.y, 18, c, 0.25); }
+        if (!p.pierce) break;
       }
       if (p.x < AR.x - 20 || p.x > AR.x + AR.w + 20 || p.y < AR.y - 40 || p.y > AR.y + AR.h + 20) p.life = 0;
     }
@@ -909,7 +1020,7 @@ class Battle {
   damage(src, tgt, amount, o = {}) {
     if (tgt.dead || this.over) return 0;
     if ((tgt.counter || tgt.evadeT > this.time) && src !== tgt && !o.dot && !o.reflected) { // 반격 회피
-      if (tgt.counter) this.counterTrigger(tgt, src); else this.text(tgt.x, tgt.y - 52, '회피', '#ffe0a0', 10);
+      if (tgt.counter) this.counterTrigger(tgt, src); else { this.text(tgt.x, tgt.y - 52, '회피', '#ffe0a0', 10); playSfx('whiff'); }
       return 0;
     }
     if (tgt.barrier && o.delivery === 'ranged' && !o.viaProj && !o.piercesBarrier && !o.dot && !o.reflected) { // 비투사체 원거리: 정면이면 방벽이 흡수
@@ -917,7 +1028,7 @@ class Battle {
       if (df < 1.2) { const g = this.barrierGeom(tgt); this.barrierHit(tgt, amount, g.cx, g.cy); return 0; }
     }
     const hc = this.hitCheck(src, tgt, o);
-    if (!hc.hit) { this.text(tgt.x, tgt.y - 48 - this.airZ(tgt), hc.label, '#c8d8ff', 11); return 0; }
+    if (!hc.hit) { this.text(tgt.x, tgt.y - 48 - this.airZ(tgt), hc.label, '#c8d8ff', 11); playSfx('whiff'); return 0; }
     if (hc.sure) this.text(tgt.x + 8, tgt.y - 58 - this.airZ(tgt), hc.label, '#9ff0ff', 9);
     let dmg = amount, crit = !!o.crit;
     if (!crit && !o.noCrit && Math.random() < src.st.crit) crit = true;
@@ -928,7 +1039,7 @@ class Battle {
     // 속성 / 전달 방식 배율
     const em = this.elemMult(tgt, o);
     dmg *= em;
-    dmg *= tgt.mult('dmgTaken') * tgt.smult('dmgTaken') * src.smult('dmgDealt');
+    dmg *= tgt.mult('dmgTaken') * tgt.smult('dmgTaken') * src.smult('dmgDealt') * src.mult('dmgDealt'); // 버프 dmgDealt (아이돌 무대 팬심 등)
     for (const s of [...tgt.statuses]) { const d = STATUS_DEFS[s.id]; if (d && d.onDamaged) dmg *= d.onDamaged(tgt, this, s, o) ?? 1; }
     dmg *= 1 + Math.max(0, this.time - RAMP_START) * RAMP_RATE; // 장기전 방지: RAMP_START초 이후 피해 점증
     dmg = Math.max(1, Math.round(dmg * rand(0.85, 1.15)));
@@ -937,6 +1048,13 @@ class Battle {
       this.text(tgt.x + rand(-8, 8), tgt.y - 36, String(dmg), o.color || '#b8f08a', 9);
       if (tgt.hp <= 0) this.kill(tgt, src);
       return dmg;
+    }
+    if (src !== tgt) { this.resEvent(src, 'dealt'); this.resEvent(tgt, 'damaged'); }
+    if (src.oni && src !== tgt && !o.reflected && !o.selfHit) { // 오니화: 모든 공격 2회 + 적중마다 자해
+      const O = src.def.oni;
+      if (!o.oniEcho) this.later(O.echoDelay, () => { if (!tgt.dead && !src.dead && !this.over) { this.slashFx(tgt.x + rand(-6, 6), tgt.y - 18 - this.airZ(tgt), -src.facing, '#ff6a7a', 1); this.damage(src, tgt, amount * O.echoMult, { ...o, oniEcho: true, applies: null }); } });
+      const sd = Math.max(O.selfMin, Math.round(dmg * O.selfK));
+      if (src.hp > 1) { src.hp = Math.max(1, src.hp - sd); this.text(src.x + rand(-6, 6), src.y - 44, String(sd), '#ff6a7a', 9); }
     }
     tgt.flash = 0.12;
     const a = Math.atan2(tgt.y - src.y, tgt.x - src.x), kb = o.big ? 7 : 3;
@@ -948,6 +1066,7 @@ class Battle {
     if (wk) this.text(tgt.x + rand(-4, 4), tgt.y - 56, wk.label, wk.color, wk === ELEMENT_FX.weak ? 10 : 9);
     this.burst(tgt.x, tgt.y - 18, crit ? '#ffe27a' : '#ffd9c8', big ? 10 : 5);
     if (big) this.shake(2.5);
+    playSfx(big ? 'big' : crit ? 'crit' : (o.viaProj || o.delivery === 'ranged') ? 'projHit' : 'melee', { element: o.element, dmg, crit });
     const sh = tgt.buff('shield');
     if (sh && sh.reflect && !o.reflected) this.damage(tgt, src, dmg / sh.dmgTaken * sh.reflect, { reflected: true, noCrit: true, color: '#bfe3ff' });
     const ls = src.buffs.reduce((s, b) => s + (b.lifesteal || 0), 0);
@@ -955,12 +1074,24 @@ class Battle {
     if (tgt.hp > 0 && !tgt.lowSaid && tgt.hp < tgt.maxHp * 0.3) { tgt.lowSaid = true; this.say(tgt, 'lowHp'); }
     if (tgt.hp <= 0) this.kill(tgt, src);
     else if (o.applies) this.applyList(src, tgt, o.applies);
+    if (src !== tgt && src.team !== tgt.team && !tgt.dead && !src.dead && !this.over && !o.reflected) { // 캐릭터 패시브 훅: def.onHit(공격 적중) / def.onHurt(피격)
+      if (src.def.onHit) src.def.onHit(src, tgt, this, dmg, o);
+      if (tgt.def.onHurt) tgt.def.onHurt(tgt, src, this, dmg, o);
+    }
     return dmg;
   }
   kill(tgt, src) {
     if (tgt.dead) return;
     tgt.hp = 0; tgt.dead = true; tgt.action = null; tgt.statuses = [];
-    this.over = true; this.winner = this.enemy(tgt);
+    if (this.teamAlive(tgt.team)) { // 다인 팀: 팀원이 남아 있으면 계속 (팀 전멸 시 패배)
+      this.say(tgt, 'lose');
+      this.burst(tgt.x, tgt.y - 16, tgt.def.color, 20); this.glow(tgt.x, tgt.y - 18, 50, tgt.def.color, 0.5);
+      this.shock(tgt.x, tgt.y, 6, 60, tgt.def.color, 0.5, 5); this.hitstop(0.15); this.shake(2.5);
+      this.hooks.onSystem && this.hooks.onSystem(tgt.def.name + ' 쓰러짐!');
+      this.allyDown(tgt);
+      return;
+    }
+    this.over = true; this.winner = src && src.team !== tgt.team && !src.dead ? src : this.teamBest(1 - tgt.team);
     const w = this.winner; if (w.def.lines && w.def.lines.event && w.def.lines.event.kill) this.say(w, 'kill'); else this.say(w, 'win');
     this.say(tgt, 'lose');
     this.burst(tgt.x, tgt.y - 16, tgt.def.color, 26);
@@ -968,6 +1099,25 @@ class Battle {
     this.shock(tgt.x, tgt.y, 6, 70, tgt.def.color, 0.6, 6);
     this.hitstop(0.25);
     this.shake(3);
+    playSfx('ko');
+  }
+  // 팀원 쓰러짐: 붙잡고 있던 대상 해제 + 남은 팀원의 def.onAllyDown 훅 (브로리 → 전설의 슈퍼사이어인)
+  allyDown(d) {
+    for (const o of this.u) if (o.action && o.action.tgt === d) { if (o.action.pin) this.releasePin(d); o.action = null; }
+    for (const a of this.allies(d)) a.def.onAllyDown && a.def.onAllyDown(a, d, this);
+  }
+  // 넉백: 지정 방향으로 미끄러져 밀려남. 벽/장애물에 막히면 정지(+onWall)
+  knockback(tgt, ang, spd, dur, onWall) { if (tgt.dead || tgt.airborne || tgt.climb || tgt.inTrain) return; tgt.action = null; tgt.push = { ang, spd, t: dur, dur, onWall }; }
+  pushStep(u, dt) {
+    const P = u.push, k = P.spd * (0.35 + 0.65 * P.t / P.dur) * dt, c = Math.cos(P.ang), s = Math.sin(P.ang);
+    P.t -= dt;
+    const nx = u.x + c * k, ny = u.y + s * k, q = this.clampPos(nx, ny, u.pad, u), bl = this.blockAt(nx, ny - 4, 9 + u.pad);
+    if (bl || Math.abs(q.x - nx) > 0.3 || Math.abs(q.y - ny) > 0.3) {
+      u.push = null; playSfx('wall'); this.dust(u.x, u.y); this.ring(u.x + c * 12, u.y - 6, 2, 14, 0.25, '#f0e8d8');
+      u.dir = fixAngle(P.ang + Math.PI + rand(-0.6, 0.6)); P.onWall && P.onWall(bl); return;
+    }
+    u.x = q.x; u.y = q.y; if (Math.random() < 0.6) this.dust(u.x, u.y);
+    if (P.t <= 0 || u.climb || u.airborne) u.push = null;
   }
   heal(u, amt, quiet) {
     if (u.dead) return;
@@ -1004,7 +1154,7 @@ class Battle {
   chase(u, e, spd, dur, onTouch, trail) { u.action = { type: 'chase', e, spd, dur, t: 0, onTouch, trail }; }
   // 이동 예측 위치 (직선 가정, 경기장 안으로 제한)
   predict(e, t) { if (e.action || e.stun > 0) return { x: e.x, y: e.y }; return this.clampPos(e.x + Math.cos(e.dir) * e.speed * t, e.y + Math.sin(e.dir) * e.speed * t); }
-  dash(u, tx, ty, dur, onTouch, trail) { u.action = { type: 'dash', sx: u.x, sy: u.y, tx, ty, dur, t: 0, onTouch, touched: false, trail }; }
+  dash(u, tx, ty, dur, onTouch, trail) { u.action = { type: 'dash', sx: u.x, sy: u.y, tx, ty, dur, t: 0, onTouch, touched: false, trail }; playSfx('dash'); }
   shake(a) { this.shakeA = Math.max(this.shakeT > 0 ? this.shakeA : 0, a); this.shakeT = 0.18; }
   text(x, y, txt, color, size) { this.texts.push({ x, y, txt, color, size, t: 0, dur: 0.9 }); }
   telegraphLine(x1, y1, x2, y2, w, dur, color) { this.tele.push({ type: 'line', x1, y1, x2, y2, w, dur, color, t: 0 }); }
@@ -1015,6 +1165,7 @@ class Battle {
   pillar(x, y, color) { this.fx.push({ type: 'pillar', x, y, color, t: 0, dur: 1.0 }); for (let i = 0; i < 14; i++) this.spark(x + rand(-12, 12), y - rand(0, 30), color, -50); }
   meteor(x, y, dur) { this.fx.push({ type: 'meteor', x, y, t: 0, dur }); }
   explosion(x, y, r) {
+    playSfx('boom');
     this.areaBuildings(x, y, r * 1.1, 160, true);
     this.shock(x, y, 8, r * 1.5, '#ffcf8a', 0.55, 9);
     this.shock(x, y, 4, r, '#fff0c8', 0.35, 4);
@@ -1254,6 +1405,7 @@ const Render = (() => {
     for (const [rx, ry, w, h, c] of b.rubble) { ctx.fillStyle = ['#8a7e70', '#a69a88', '#6a6058'][c]; ctx.fillRect(Math.round(rx - w / 2), Math.round(ry - h / 2), Math.round(w), Math.round(h)); }
   }
   function drawBuilding(ctx, b) {
+    if (b.draw) return b.draw(ctx, b); // 임시 지형 (지반 격파 암반 등) 커스텀 그리기
     const H = 14, s = b.style % 3, j = b.hitT > 0 ? Math.round(rand(-1, 1)) : 0;
     const x = b.x + j, y = b.y;
     ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x + 4, y + 4, b.w, b.h);
@@ -1341,16 +1493,22 @@ const Render = (() => {
 
   function drawUnit(ctx, u, b) {
     if (u.hidden) return;
-    let s = Sprites.get(u.def);
-    if (s.back && u.lookUp) s = s.back; // 상대보다 아래에 있으면 뒷모습
-    const sx = spriteSX(u.def, !!(s.back === undefined && u.lookUp && Sprites.get(u.def).back), u.facing);
+    let fdef = u.fdef; // 오니화/변신 스프라이트
+    const PZ = u.form ? u.form.poses : u.def.poses; // 상황별 스프라이트 (오리 등)
+    if (PZ && !u.dead) { const k = u.air && u.air.fly ? 'fly' : u.poseT > 0 ? u.pose : u.flash > 0.05 ? 'hurt' : (u.zone && u.zone.splash && !u.air) ? 'swim' : null; if (k && PZ[k]) fdef = PZ[k]; }
+    let s = Sprites.get(fdef);
+    const TB = u.air && u.air.tumble; // 공중에서 굴러감: 앞/뒷모습 번갈아
+    const wantBack = TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
+    if (s.back && wantBack) s = s.back; // 상대보다 아래에 있으면 뒷모습
+    const sx = spriteSX(u.def, !!(s.back === undefined && wantBack && Sprites.get(fdef).back), u.facing);
     let alpha = 1;
+    if (u.spirit) alpha = 0.5 + 0.08 * Math.sin(b.time * 6); // 혼령: 반투명
     if (u.buff('invis')) alpha = 0.35;
     if (u.dead) alpha = Math.max(0, 1 - u.deadT / 1.2);
     const F = u.fallen; // 크레바스 추락 애니메이션
     let fk = 1, fox = 0, foy = 0;
     if (F) {
-      const n = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[F.side];
+      const n = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[F.side] || [0, 0]; // 'hole' = 제자리 추락
       const p = Math.min(1, u.deadT * 3); fox = n[0] * 20 * easeOut(p); foy = n[1] * 20 * easeOut(p);
       fk = Math.max(0, 1 - Math.max(0, u.deadT - 0.15) / 1.1); alpha = Math.min(1, fk * 1.4);
     }
@@ -1366,7 +1524,7 @@ const Render = (() => {
     if (!F) {
       const sk = 1 - z / 70;
       ctx.globalAlpha = 0.35 * alpha * sk; ctx.fillStyle = '#000';
-      const zs = u.def.size || 1; ctx.beginPath(); ctx.ellipse(x, y + 2, 14 * sk * zs, 5 * sk * zs, 0, 0, 6.28); ctx.fill();
+      const zs = u.size; ctx.beginPath(); ctx.ellipse(x, y + 2, 14 * sk * zs, 5 * sk * zs, 0, 0, 6.28); ctx.fill();
       ctx.globalAlpha = 0.75 * alpha * sk; ctx.strokeStyle = TEAM_COL[u.team]; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.ellipse(x, y + 2, 16 * sk * zs, 6 * sk * zs, 0, 0, 6.28); ctx.stroke();
     }
@@ -1379,11 +1537,13 @@ const Render = (() => {
     if (u.swing > 0 && !frozen) rot = Math.sin((u.swing / 0.2) * Math.PI) * 0.25;
     if (u.dead && !F) rot = Math.min(1, u.deadT * 3) * 1.4;
     if (u.air && u.air.spin) rot = u.air.t * 16; // 튕겨나가며 회전
+    if (TB) rot = 1.25 + Math.sin(u.air.t * 18) * 0.35; // 눕혀진 채 빙글빙글
     const kn = !u.dead && u.statuses.find(s => s.knock); // 넘어짐 (충격파 기절)
     if (kn) { const el = kn.dur - kn.t, up = kn.t; rot = (u.knockSide || 1) * sx * Math.PI / 2 * Math.min(1, el * 8, up * 6); ctx.translate(0, -2); }
     ctx.scale(sx, 1);
     ctx.rotate(rot);
     const fr = u.moving && !stone ? Math.floor(u.walk * s.fps / 6) : 0;
+    if (u.def.drawUnder && !u.dead) u.def.drawUnder(ctx, u, b, s); // 캐릭터별 몸 뒤 장식 (브로리 오라 등)
     if (u.def.hammer && u.lookUp) drawHammer(ctx, u, b);
     Sprites.draw(ctx, s, fr, false);
     if (u.def.hammer && !u.lookUp) drawHammer(ctx, u, b);
@@ -1619,6 +1779,7 @@ const Render = (() => {
   }
   function drawProj(ctx, p) {
     ctx.save();
+    if (p.draw) { p.draw(ctx, p, glowAt); ctx.restore(); return; } // 커스텀 투사체 (브로리 기탄 등)
     if (p.kind === 'wire') { // 와이어: 손에서 끝까지 이어진 실
       const f = p.from; ctx.restore(); ctx.save();
       if (f) { ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ffb070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke();
@@ -1703,6 +1864,8 @@ const Render = (() => {
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04); ctx.stroke();
       } else ctx.fillRect(Math.round(p.x - p.size / 2), Math.round(p.y - p.size / 2), Math.ceil(p.size), Math.ceil(p.size));
     }
+    ctx.globalAlpha = 1;
+    for (const h of STAGE_HOOKS) h.drawTop && h.drawTop(ctx, b); // 최상단 레이어 (아이돌 무대 관객/중계 화면 등; 글자 HUD 아래)
     ctx.globalAlpha = 1;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const t of b.texts) if (t.bubble) { // 말풍선 (캐릭터를 따라감, 화면 안으로 보정)

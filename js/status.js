@@ -22,6 +22,11 @@ const STATUS_DEFS = {
     name: '기절', color: '#ffe27a', blocksMove: true, blocksAct: true,
     onApply(u) { u.action = null; },
   },
+  // 움찔: 꽥꽥!에 놀라 잠깐 멈춤 (이동·행동 불가, 짧음)
+  flinch: {
+    name: '움찔', color: '#fff2a0', blocksMove: true, blocksAct: true, tint: '#ffffff', tintA: 0.12,
+    onApply(u) { u.action = null; },
+  },
   // 제압: 라인하르트 돌진에 붙잡힘. 벽 충돌 시 해제 (타이머는 안전장치)
   pin: {
     name: '제압', color: '#ffb36b', tint: '#ff9a4a', tintA: 0.18, blocksMove: true, blocksAct: true, stack: 'ignore',
@@ -62,6 +67,19 @@ const STATUS_DEFS = {
       s.next = (s.next ?? rand(0.2, 0.6)) - dt;
       if (s.next <= 0) { s.next = rand(0.7, 1.3); s.freeze = 0.4; b.zap(u.x, u.y - 20); }
     },
+  },
+  // 조종: 신비술사 미스틱 볼. 스스로 이동 불가, 신비술사가 움직인 만큼 똑같이 끌려다님 (벽에 부딪히면 큰 피해; js/mystic.js)
+  control: {
+    name: '조종', color: '#d890ff', tint: '#b070ff', tintA: 0.22, particle: '#e0b0ff', blocksMove: true,
+  },
+  // 봉인: 신비술사 리스트레인트. 스킬 사용 불가 (기본 공격·이동·패시브는 가능). 머리 위 자물쇠 표시
+  seal: {
+    name: '봉인', color: '#a8a0ff', tint: '#6a60c0', tintA: 0.15, blocksSkill: true,
+  },
+  // 기 저하: 파라가스 '기를 낮추거라'. 주는 피해 감소 (= 공격력 디버프). 브로리도 맞으면 걸림
+  kiDown: {
+    name: '기 저하', color: '#9fe0c8', tint: '#4a8a78', tintA: 0.22, particle: '#b8f0dc',
+    dmgDealt: 0.7,
   },
   // 새 상태 예) 화상
   // burn: { name: '화상', color: '#ff9a5a', tint: '#ff7a3a', tintA: 0.25, particle: '#ffb07a', tick: 0.4,

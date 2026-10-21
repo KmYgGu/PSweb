@@ -1,7 +1,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { width: 100%; height: 100%; background: #12131c; overflow: hidden; }
 body { font-family: "Galmuri11", "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; color: #eef0f6; -webkit-user-select: none; user-select: none; }
-#wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+#wrap { position: fixed; left: 0; top: 0; width: 100%; height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; }
 #stage { position: absolute; left: 50%; top: 50%; width: 360px; height: 640px; transform-origin: 0 0; overflow: hidden; background: #1e2130; box-shadow: 0 0 40px rgba(0,0,0,.5); }
 #cv { position: absolute; left: 0; top: 0; width: 360px; height: 640px; image-rendering: pixelated; image-rendering: crisp-edges; }
 .hidden { display: none !important; }
@@ -114,3 +114,28 @@ img { image-rendering: pixelated; }
 .resb .rf { position: absolute; top: 0; bottom: 0; left: 0; width: 0; transition: width .15s ease-out; }
 .right .resb .rf { left: auto; right: 0; }
 .resb.full .rf { box-shadow: 0 0 4px currentColor inset; }
+
+/* ===== 선택 화면 레이아웃: 화면 높이에 맞춤 (상단 고정 / 목록 스크롤 / 하단 버튼 고정) ===== */
+#select, #stageSel { height: 100%; overflow: hidden; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+#select > h1, #select > .slots, #select > .hint, #stageSel > h1, #stageSel > .vsline { flex: none; }
+#select .slot { height: 236px; }
+#select .grid, #stageSel .sgrid { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; align-content: start; padding: 2px 2px 6px; }
+#select .btns, #stageSel .btns { flex: none; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
+#select .btns button, #stageSel .btns button { height: 50px; min-height: 48px; }
+#stageSel .sgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-x: hidden; }
+#select .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); overflow-x: hidden; }
+.scard { min-width: 0; }
+.scard img, .scard .rnd { max-width: 100%; height: auto; aspect-ratio: 92 / 112; }
+
+/* ===== 2인 팀 HUD (파라가스 & 브로리): 한 프레임에 작은 체력 바 2줄 ===== */
+.frame.duo .info { padding-top: 1px; }
+.drow { margin-bottom: 4px; }
+.drow .dl { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; font-size: 10px; line-height: 12px; }
+.right .drow .dl { flex-direction: row-reverse; }
+.drow .dn { font-weight: bold; text-shadow: 0 1px 0 #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.drow .dh { font-size: 9px; color: #c9cee0; font-variant-numeric: tabular-nums; }
+.hpbar.sm { height: 7px; border-width: 1px; border-radius: 3px; margin-top: 1px; }
+.drow.down { opacity: .45; }
+.drow.down .dn { text-decoration: line-through; }
+.duo-tag { display: block; font-size: 10px; color: #c9b0ff; font-weight: normal; }
+.duoinfo { margin-top: 6px; border-top: 1px dashed rgba(255,255,255,.08); padding-top: 3px; }
