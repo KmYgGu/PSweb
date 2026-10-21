@@ -280,6 +280,7 @@ class Battle {
   }
   step(dt) {
     if (!this.started) { this.started = true; this.u.forEach(u => this.say(u, 'battleStart')); playSfx('start'); }
+    if (this.freeze) { this.frozenStep(dt); return; } // 전투 정지 (엑조디아 연출 등): 유닛/투사체/스킬/상태/해저드 모두 멈춤
     this.time += dt;
     if (!this.fever && this.time >= RAMP_START) { this.fever = true; this.hooks.onSystem && this.hooks.onSystem('전투가 격렬해집니다! (피해량 점점 증가)'); }
     for (const t of this.timers) t.t -= dt;
@@ -313,7 +314,36 @@ class Battle {
     }
   }
 
+  // 전투 정지 중 진행: 정지 전용 타이머 + 순수 시각 효과 + 결과 처리만
+  frozenStep(dt) {
+    const F = this.freeze;
+    for (const t of F.timers) t.t -= dt;
+    const due = F.timers.filter(t => t.t <= 0);
+    F.timers = F.timers.filter(t => t.t > 0);
+    due.forEach(t => t.fn());
+    for (const h of STAGE_HOOKS) h.frozenStep && h.frozenStep(this, dt);
+    for (const p of this.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= 1 - 2 * dt; }
+    this.parts = this.parts.filter(p => p.life > 0);
+    for (const t of this.texts) t.t += dt;
+    this.texts = this.texts.filter(t => t.t < t.dur);
+    for (const f of this.fx) f.t += dt;
+    this.fx = this.fx.filter(f => f.t < f.dur);
+    this.shakeT = Math.max(0, this.shakeT - dt);
+    if (this.over) {
+      this.endT += dt;
+      if (!this.ended && this.endT > 1.3) { this.ended = true; this.hooks.onEnd && this.hooks.onEnd(this.winner); }
+    }
+  }
+  // 전투 정지 시작. winner 지정 시 승자 고정 (다른 승리/KO 판정이 덮어쓰지 못함)
+  freezeBattle(winner) {
+    if (this.freeze) return;
+    this.freeze = { timers: [], winner: winner || null };
+    this.proj = [];
+    for (const u of this.u) { u.action = null; u.push = null; u.vx = 0; u.vy = 0; u.kx = 0; u.ky = 0; u.boost = 0; }
+  }
+  freezeLater(t, fn) { if (this.freeze) this.freeze.timers.push({ t, fn }); }
   updateUnit(u, dt) {
+    if (Number.isFinite(u.hp)) u.lastHp = u.hp; else { console.warn('[battle] NaN HP 복구', u.def.id); u.hp = Number.isFinite(u.lastHp) ? u.lastHp : u.maxHp; } // 방어: HP NaN 방지
     u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt);
     u.boost *= Math.pow(0.08, dt); // 충돌 가속 감쇠 (~0.6초)
     u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
@@ -441,6 +471,7 @@ class Battle {
   }
   debrisIce(x, y) { for (let i = 0; i < 24; i++) { const a = rand(0, 6.28), sp = rand(40, 150); this.parts.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40, g: 300, life: rand(0.4, 0.8), max: 0.8, color: ['#e8f8ff', '#bfe6f8', '#9fd0ea'][i % 3], size: rand(1.5, 3.5) }); } }
   fall(u, side) {
+    if (this.freeze) return;
     this.say(u, 'fallCrevasse');
     u.dead = true; u.fallen = { t: 0, side, x: u.x, y: u.y }; u.action = null; u.statuses = [];
     this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 크레바스에 추락!');
@@ -1027,7 +1058,7 @@ class Battle {
 
   // ---------- 전투 API (스킬에서 사용) ----------
   damage(src, tgt, amount, o = {}) {
-    if (tgt.dead || this.over) return 0;
+    if (tgt.dead || this.over || this.freeze) return 0;
     if ((tgt.counter || tgt.evadeT > this.time) && src !== tgt && !o.dot && !o.reflected) { // 반격 회피
       if (tgt.counter) this.counterTrigger(tgt, src); else { this.text(tgt.x, tgt.y - 52, '회피', '#ffe0a0', 10); playSfx('whiff'); }
       return 0;
@@ -1056,6 +1087,7 @@ class Battle {
     dmg *= 1 + Math.max(0, this.time - RAMP_START) * RAMP_RATE; // 장기전 방지: RAMP_START초 이후 피해 점증
     const lpK = tgt.def.duelist ? (window.DUEL_LP_SCALE || 1) : 1; dmg *= lpK; // 듀얼리스트(LP 4000): 받는 피해를 LP 단위로 환산 (js/duel.js)
     dmg = Math.max(1, Math.round(dmg * rand(0.85, 1.15)));
+    if (!Number.isFinite(dmg)) dmg = 0; // 방어: NaN 피해 무시
     tgt.hp -= dmg;
     if (o.dot) { // 지속 피해: 조용히 표시
       this.text(tgt.x + rand(-8, 8), tgt.y - 36, String(dmg), o.color || '#b8f08a', 9);
@@ -1096,6 +1128,7 @@ class Battle {
   }
   kill(tgt, src) {
     if (tgt.dead) return;
+    if (this.freeze && (!this.freeze.allowKill || (this.freeze.winner && tgt.team === this.freeze.winner.team))) return;
     tgt.hp = 0; tgt.dead = true; tgt.action = null; tgt.statuses = [];
     if (this.teamAlive(tgt.team)) { // 다인 팀: 팀원이 남아 있으면 계속 (팀 전멸 시 패배)
       this.say(tgt, 'lose');
@@ -1106,6 +1139,7 @@ class Battle {
       return;
     }
     this.over = true; this.winner = src && src.team !== tgt.team && !src.dead ? src : this.teamBest(1 - tgt.team);
+    if (this.freeze && this.freeze.winner) this.winner = this.freeze.winner;
     const w = this.winner; if (w.def.lines && w.def.lines.event && w.def.lines.event.kill) this.say(w, 'kill'); else this.say(w, 'win');
     if (this.multi) this.u.forEach(o => { if (o !== w && o.team === w.team && !o.dead) this.say(o, 'win'); }); // 2인 팀: 생존 팀원도 승리 대사
     this.say(tgt, 'lose');
@@ -1135,7 +1169,8 @@ class Battle {
     if (P.t <= 0 || u.climb || u.airborne) u.push = null;
   }
   heal(u, amt, quiet) {
-    if (u.dead) return;
+    if (u.dead || !Number.isFinite(amt)) return; // 방어: NaN/undefined 회복량 무시
+    if (!Number.isFinite(u.hp)) u.hp = u.maxHp;
     amt = Math.round(Math.min(amt, u.maxHp - u.hp));
     if (amt <= 0) return;
     u.hp += amt; this.say(u, 'healed');

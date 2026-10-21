@@ -89,17 +89,22 @@
     const sig = D.hand.map(c => c.id).join(','); if (sig === D.handSig) return; D.handSig = sig; // 패가 바뀔 때만 검사
     if (!EXO.every(id => D.hand.some(c => c.id === id))) return;
     b.exodia = { u, t: 0 };
+    b.freezeBattle(u); // 완성 즉시 전투 전체 정지 + 승자 유희로 고정
     say(b, u, `<span class="dtag" style="background:#d8a020">엑조디아</span> 봉인된 카드 5장이 모두 모였다!`, '분노의 업화 엑조드 파이어!');
     sys(b, `${u.def.name}: 엑조디아 완성! 즉시 승리!`);
     b.say(u, 'exodia');
-    for (const f of b.foes(u)) { f.action = null; b.applyStatus(f, 'stun', 3, u); }
+    b.endType = 'exodia';
+    b.resultText = label => `엑조디아 완성! ${label(u)} 승리!`;
     b.duelFx = b.duelFx || []; b.duelFx.push({ type: 'exodia', u, t: 0, dur: 2.6 });
-    b.shake(3); b.hitstop(0.2);
-    b.later(1.3, () => { for (const f of b.foes(u)) { b.streak(u.x, u.y - 120, f.x, f.y - 18, '#ffb040', 26, 0.5); b.streak(u.x, u.y - 120, f.x, f.y - 18, '#fff0c0', 10, 0.4); b.explosion(f.x, f.y, 46); } });
-    b.later(1.7, () => {
-      b.endType = 'exodia';
-      b.resultText = label => `엑조디아 완성! ${label(u)} 승리!`;
-      for (const f of b.foes(u)) if (!b.over) b.kill(f, u);
+    b.shake(3);
+    b.freezeLater(1.3, () => { for (const f of b.foes(u)) { b.streak(u.x, u.y - 120, f.x, f.y - 18, '#ffb040', 26, 0.5); b.streak(u.x, u.y - 120, f.x, f.y - 18, '#fff0c0', 10, 0.4); b.explosion(f.x, f.y, 46); } });
+    b.freezeLater(1.7, () => {
+      if (b.over) { b.winner = u; return; }
+      b.freeze.allowKill = true;
+      for (const f of b.foes(u)) if (!f.dead) b.kill(f, u);
+      b.freeze.allowKill = false;
+      b.over = true;
+      b.winner = u; // 결과 화면 = 유희 프로필
     });
   }
 
@@ -377,7 +382,7 @@
         if (x.knock !== false) b.knockback(t, Math.atan2(t.y - u.y, t.x - u.x), 380, 0.3);
       },
       clearProjectiles(r = 120) { let n = 0; for (const p of b.proj) if (p.src && p.src.team !== u.team && Math.hypot(p.x - u.x, p.y - (u.y - 18)) < r) { p.life = 0; p.fizzle = null; n++; b.burst(p.x, p.y, '#e8f0ff', 6); } b.ring(u.x, u.y - 18, 6, r * 0.5, 0.35, '#e8f0ff'); return n; },
-      heal(lp) { const before = u.hp; b.heal(u, lp); return u.hp - before; },
+      heal(lp) { if (!Number.isFinite(lp) || lp <= 0) return 0; const before = u.hp; b.heal(u, lp); return u.hp - before; },
       payLp(n) { if (n <= 0 || u.hp <= n) return false; u.hp -= n; b.text(u.x, u.y - 50, `-${n} LP`, '#ff9ab0', 10); say(b, u, `LP ${n} 지불 <span class="dmini">남은 LP ${Math.round(u.hp)}</span>`); return true; },
       buff(x) { u.buffs = u.buffs.filter(q => q.type !== x.type); const { dur, ...rest } = x; u.buffs.push({ ...rest, t: dur || 3 }); },
       status(t, id, dur, chance = 1, power) { if (!t || t.dead) return; b.applyList(u, t, [{ status: id, duration: dur, chance, power }]); },
@@ -632,7 +637,7 @@
     say(b, u, `실크햇 공개! ${cardTag(h.c.def)} ${h.c.def.name}`);
     for (const o of H.items) if (o !== h) D.grave.push(o.c);
     D.grave.push(h.c);
-    if (h.c.def.type === 'trap') activateTrap(b, u, h.c, { src, amount: 0, hat: true }, '실크햇');
+    if (h.c.def.type === 'trap') activateTrap(b, u, h.c, { src, amount: 0, dmg: 0, hat: true }, '실크햇');
   }
 
   // ---------------- 턴 진행 ----------------
@@ -771,6 +776,10 @@
       hazStep(b, dt);
       if (b.duelSpirits) { for (const s of b.duelSpirits) { s.t += dt; s.x = s.u.x + 24; s.y = s.u.y - 44; s.face = s.u.facing; } b.duelSpirits = b.duelSpirits.filter(s => s.t < s.dur); }
       if (b.duelPops) { for (const p of b.duelPops) p.t += dt; b.duelPops = b.duelPops.filter(p => p.t < p.dur); }
+      if (b.duelFx) { for (const f of b.duelFx) f.t += dt; b.duelFx = b.duelFx.filter(f => f.t < f.dur); }
+    },
+    // 전투 정지 중: 연출(컷인)만 진행
+    frozenStep(b, dt) {
       if (b.duelFx) { for (const f of b.duelFx) f.t += dt; b.duelFx = b.duelFx.filter(f => f.t < f.dur); }
     },
     drawUnder(ctx, b, preview) {

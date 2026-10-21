@@ -251,7 +251,7 @@ const YUGI_CARDS = [
     ai: { tags: ['control'], when: S => !S.lightSword && S.oppHasSkills, score: S => (S.oppSkillSoon < 2 ? 10 : 0) + (S.d < 130 ? 6 : -6) } },
   { id: 'Y32', name: '체력 증강제 슈퍼 Z', type: 'trap', text: '[강제 발동] LP 100 이상 피해를 받으면: 그 피해로 잃은 LP의 2배를 회복.',
     trigger: { on: 'damaged', when: (ctx, ev) => ev.dmg >= 100 },
-    effect(ctx, ev) { ctx.heal(Math.round(ev.dmg * 2)); },
+    effect(ctx, ev) { const d = Number(ev.dmg) || 0; if (d > 0) ctx.heal(Math.round(d * 2)); },
     ai: { priority: 0, forced: true, score: S => (S.myHpR < 0.7 ? 8 : -4) + (S.oppSkillSoon < 2 ? 6 : 0) } },
   { id: 'Y33', name: '커스 오브 드래곤', type: 'monster', level: 5, atk: 2000, def: 1500, element: 'fire', sprite: 'curseDragon', shout: '지옥의 화염!',
     text: '[릴리스 1] 전방 화염 브레스 (ATK×0.9) + 불탄 자리가 4초간 불길로 남음 (0.5초마다 소량 피해).',
