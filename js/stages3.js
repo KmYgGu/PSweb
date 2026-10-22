@@ -36,6 +36,11 @@
       b.tw = { T, btns: T.buttons.map(p => ({ ...p, pressT: 0, cdT: 0, down: false })), hatch: { open: 0, phase: 'closed', t: 0 } };
       b.stats.hatchTriggers = 0; b.stats.hatchFalls = 0; b.stats.hatchDodges = 0;
     },
+    solidAt(b, x, y, pad) { // 열린 해치 = 벽 (파괴 불가)
+      const tw = b.tw; if (!tw || tw.hatch.open <= tw.T.wallAt) return null; const h = tw.T.hatch; y += 4;
+      if (x >= h.x - pad && x <= h.x + h.w + pad && y >= h.y - pad && y <= h.y + h.h + pad) return tw.solidRef || (tw.solidRef = { stageSolid: 'hatch', hit: (d, s, hx, hy) => b.sparks(hx ?? x, hy ?? y, '#e8d8a0', 6, 140) });
+      return null;
+    },
     onHatch(T, u) { const h = T.hatch; return u.x > h.x && u.x < h.x + h.w && u.y > h.y && u.y < h.y + h.h; },
     step(b, dt) {
       const tw = b.tw; if (!tw) return;
@@ -144,6 +149,15 @@
       crowd.sort((a, c) => a.y - c.y);
       b.st2 = { S, segs, crowd };
       b.stats.fenceBroken = 0; b.stats.crowdHit = 0;
+    },
+    solidAt(b, x, y, pad) { // 철망 칸 (blockAt 좌표: 발 y-4 기준)
+      const sb = b.st2; if (!sb) return null; y += 4;
+      for (const s of sb.segs) {
+        if (s.broken) continue;
+        const vx = s.x1 - s.x0, vy = s.y1 - s.y0, L2 = vx * vx + vy * vy, t = clamp(((x - s.x0) * vx + (y - s.y0) * vy) / L2, 0, 1);
+        if (Math.hypot(x - (s.x0 + vx * t), y - (s.y0 + vy * t)) <= pad) return s.solidRef || (s.solidRef = { stageSolid: 'fence', hit: (dmg, strong, hx, hy) => { s.hitT = -9; STREET.hitSeg(b, s, strong ? Math.max(dmg, sb.S.dashDmg) * (dmg >= 150 ? 2 : 1) : dmg * 0.5, hx ?? x, hy ?? y); } });
+      }
+      return null;
     },
     hitSeg(b, s, dmg, x, y) {
       if (s.broken || b.time - s.hitT < 0.15) return;

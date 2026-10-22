@@ -44,7 +44,7 @@
 
   // ---------- 1. 블레이드 탑승 ----------
   SKILLS.bladeRide = {
-    desc: '거대한 칼날에 올라타 공중 상태가 되고 이동 속도가 크게 증가합니다(x2.2, 지상 효과·근접 공격 무시). 피해를 받으면 즉시 내려옵니다. 이동 경로에 작은 칼날이 일정 간격으로 생겨(최대 3개) 무작위 방향으로 날아갔다가 잠시 후 되돌아옵니다(닿은 상대에게 피해).',
+    desc: '거대한 칼날에 올라타 공중 상태가 되고 이동 속도가 크게 증가합니다(x2.2, 지상 효과·근접 공격 무시). 탑승한 칼날은 계속 회전하며 닿은 상대에게 피해(ATK x0.7, 대상별 0.4초 간격)를 줍니다 — 주는 피해로는 내리지 않고, 피해를 받으면 즉시 내려옵니다. 이동 경로에 작은 칼날이 일정 간격으로 생겨(최대 3개) 무작위 방향으로 날아갔다가 잠시 후 되돌아옵니다(닿은 상대에게 피해).',
     canUse: (u, e, d, b) => !u.airborne && !u.bladeSplit && (d < 150 || b.threatTo(u)),
     use(u, e, b, slot) {
       const dur = slot.dur || 3;
@@ -195,7 +195,18 @@
         if (u.bladeRide) {
           const R = u.bladeRide;
           if (u.dead || !u.air || !u.air.ride) { u.bladeRide = null; u.buffs = u.buffs.filter(q => q.type !== 'bladeRideSpd'); }
-          else if (R.n < (R.slot.max || 3)) { R.next -= dt; if (R.next <= 0) { R.next = R.slot.gap || 0.6; spawnRideShard(b, u, R); } }
+          else {
+            if (R.n < (R.slot.max || 3)) { R.next -= dt; if (R.next <= 0) { R.next = R.slot.gap || 0.6; spawnRideShard(b, u, R); } }
+            // 회전 칼날 접촉 피해: 대상별 쿨타임. 주는 피해로는 하차하지 않음 (받는 피해만 하차)
+            R.hitCd = R.hitCd || new Map();
+            for (const o of b.foes(u)) {
+              if (o.dead || o.airborne || (R.hitCd.get(o) || 0) > b.time) continue;
+              if (dist(u, o) > 15 * ((u.size || 1) + (o.size || 1)) + 8) continue;
+              R.hitCd.set(o, b.time + (R.slot.touchCd || 0.4));
+              const dmg = b.damage(u, o, u.st.atk * (R.slot.touchMult || 0.7), { element: 'ice', delivery: 'ranged', color: '#bff4ff' });
+              if (dmg > 0) { b.sparks(o.x, o.y - 12, CY, 6, 160); b.stats.rideTouch = (b.stats.rideTouch || 0) + 1; }
+            }
+          }
         }
         if (u.bladeStealth) {
           const S = u.bladeStealth; S.t -= dt;
@@ -249,12 +260,12 @@
     attack: { element: 'ice', delivery: 'ranged' },
     resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
     // 탑승 중인 큰 칼날은 몸 뒤(아래)에 그림 — 캐릭터가 칼날 위에 올라탄 모습
-    drawUnder(ctx, u, b) { if (u.air && u.air.ride) drawBigBlade(ctx, 0, 2, 0.7, Math.sin(b.time * 3) * 0.08); },
+    drawUnder(ctx, u, b) { if (u.air && u.air.ride) { ctx.save(); ctx.scale(1, 0.6); drawBigBlade(ctx, 0, 4, 0.72, b.time * 15); ctx.restore(); } }, // 탑승 칼날: 바닥면에서 계속 회전 (캐릭터는 위에 똑바로)
     skills: [
       { id: 'bladeMark', name: '표식', cd: 11, dur: 4, spdMul: 1.4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
       { id: 'splitBlade', name: '스플릿블레이드', cd: 10, spd: 600, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
       { id: 'bladeStorm', name: '폭풍의 칼날', cd: 7.5, dist: 70, gap: 0.3, count: 8, hitR: 14, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
-      { id: 'bladeRide', name: '블레이드 탑승', cd: 8.5, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeRide', name: '블레이드 탑승', cd: 8.5, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, touchMult: 0.7, touchCd: 0.4, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
     ],
     sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Blade/portrait.png',

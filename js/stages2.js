@@ -24,6 +24,12 @@
         u.lap = { a0: T.startAng, next: 1, prog: 0 };
       });
     },
+    solidAt(b, x, y, pad) { // 중앙 전광판 (파괴 불가)
+      const T = b.race; if (!T || !T.board) return null; y += 4;
+      const r = 11 + pad, dx = x - T.cx, dy = y - T.cy;
+      if ((dx / (T.board.rx + r - 11)) ** 2 + (dy / (T.board.ry + r - 11)) ** 2 < 1) return T.solidRef || (T.solidRef = { stageSolid: 'board', hit: (d, s, hx, hy) => b.sparks(hx ?? x, hy ?? y, '#ffffff', 6, 140) });
+      return null;
+    },
     ang(T, x, y) { return Math.atan2((y - T.cy) / ((T.ryo + T.ryi) / 2), (x - T.cx) / ((T.rxo + T.rxi) / 2)); },
     nr(T, x, y) { return Math.hypot((x - T.cx) / ((T.rxo + T.rxi) / 2), (y - T.cy) / ((T.ryo + T.ryi) / 2)); }, // 정규화 반경 (트랙 중심선 = 1)
     onRoad(T, x, y) { const dx = x - T.cx, dy = y - T.cy; return (dx / T.rxo) ** 2 + (dy / T.ryo) ** 2 <= 1 && (dx / T.rxi) ** 2 + (dy / T.ryi) ** 2 >= 1; },
@@ -149,6 +155,16 @@
       if (sb.door > 0.6 && !(outside && sb.closing)) for (const d of SUB.doorList(T, side)) g.push([d[0], d[1]]);
       for (const w of sb.windows) if (w.side === side && w.broken) g.push([w.a, w.e]);
       return g.sort((a, b) => a[0] - b[0]);
+    },
+    solidAt(b, x, y, pad) { // 정차한 열차 벽 (창문은 손상)
+      const sb = b.sub; if (!sb || sb.phase !== 'stop' || !SUB.present(sb)) return null;
+      const T = sb.S.train; y += 4;
+      for (const side of ['top', 'bot']) {
+        const wy = side === 'top' ? T.y : T.y + T.h; if (Math.abs(y - wy) > pad) continue;
+        for (const [a, e] of SUB.solids(sb, side, true)) if (x >= sb.x0 + a - pad && x <= sb.x0 + e + pad) return { stageSolid: 'train', hit: (dmg, strong, hx, hy) => { const w = SUB.winAt(sb, side, (hx ?? x) - sb.x0); if (w) SUB.hitWindow(b, w, strong ? Math.max(45, dmg * 0.5) : dmg * 0.3, hx ?? x, wy - 6); } };
+      }
+      for (const ex of [sb.x0, sb.x0 + sb.L]) if (Math.abs(x - ex) <= pad && y >= T.y && y <= T.y + T.h) return { stageSolid: 'train' };
+      return null;
     },
     solids(sb, side, outside) {
       const out = []; let s = 0;

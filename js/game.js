@@ -604,6 +604,8 @@ class Battle {
   }
   blockAt(x, y, pad = 0) {
     for (const b of this.buildings) if (!b.dead && x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad) return b;
+    // 스테이지 고체 장애물 (철망·해치 벽·전광판·정차 열차 벽 등): { stageSolid, hit(dmg, strong, x, y) } → 벽 충돌 규칙을 건물과 똑같이 적용
+    for (const h of STAGE_HOOKS) if (h.solidAt) { const o = h.solidAt(this, x, y, pad); if (o) return o; }
     return null;
   }
   resolveBuildings(u, spawn) {
@@ -647,6 +649,7 @@ class Battle {
   }
   hitBuilding(b, dmg, strong, x, y) {
     if (!b || b.dead) return;
+    if (b.stageSolid) { b.hit && b.hit(dmg, strong, x, y); return; } // 스테이지 장애물 (철망 칸 손상 등)
     if (b.solid) { b.hitT = 0.15; for (let i = 0; i < 3; i++) this.parts.push({ x: x ?? b.x + b.w / 2, y: y ?? b.y, vx: rand(-60, 60), vy: rand(-90, -30), g: 360, life: 0.4, max: 0.4, color: ['#8a7a68', '#b0a088'][i % 2], size: rand(1.5, 2.5) }); return; } // 파괴 불가 임시 지형
     b.hp -= dmg; b.hitT = 0.15;
     for (let i = 0; i < 4; i++) this.parts.push({ x: x ?? b.x + b.w / 2, y: y ?? b.y, vx: rand(-60, 60), vy: rand(-90, -30), g: 360, life: 0.45, max: 0.45, color: ['#a89878', '#c8b898', '#8a7a68'][i % 3], size: rand(1.5, 2.5) });
