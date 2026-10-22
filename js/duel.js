@@ -269,7 +269,7 @@
         plan.score = AI.rawScore(c, S, plan) - (plan.cost || 0); opts.push(plan);
       }
       if (S.traps === CFG.TRAP_SLOTS - 1) { const sp = opts.filter(o => o.inst.def.type === 'spell' && o.score > 0).length; if (sp) opts.forEach(o => { if (o.inst.def.type === 'trap') o.score -= 12 + 4 * sp; }); }
-      let min = CFG.PLAY_MIN; if (S.hand >= CFG.HAND_LIMIT - 1) min = 4; if (S.hand >= CFG.HAND_LIMIT) min = -8; // 패 한도 근처: 적극 사용 if (S.deck <= 3) min -= 6;
+      let min = CFG.PLAY_MIN; if (S.hand >= CFG.HAND_LIMIT - 1) min = 4; if (S.hand >= CFG.HAND_LIMIT) min = -8; if (S.deck <= 3) min -= 6; // 패 한도 근처 / 덱 부족: 적극 사용
       opts.sort((a, z) => z.score - a.score);
       D.lastEval = opts.slice(0, 4).map(o => `${o.inst.def.name}:${Math.round(o.score)}`).join(' ');
       return opts[0] && opts[0].score >= min ? opts[0] : null;
