@@ -21,7 +21,7 @@
       e.action = null; e.air = { t: 0, dur: A.dur, h: A.h, spin: false };
       b.damage(u, e, u.st.atk * (S.slot.mult || 1), { color: '#c8d4ff', element: S.slot.element, delivery: S.slot.delivery });
       b.shock(e.x, e.y, 6, 40, '#c8d4ff', 0.4, 4); b.text(e.x, e.y - 56, '띄우기!', '#c8d4ff', 11);
-      b.stats.spiritLaunch = (b.stats.spiritLaunch || 0) + 1;
+      b.stats.spiritLaunch = (b.stats.spiritLaunch || 0) + 1; b.say(u, 'spiritLaunch');
     }
   };
   // 고스트 온: 첫 타만 유도. 회전 후엔 무작위 방향 핀볼 이동 → 창(window) 안에 실제 몸통 충돌이 나야 다음 회전

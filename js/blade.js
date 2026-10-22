@@ -168,7 +168,7 @@
   function markAndThrow(b, u, e, slot) {
     endStealth(b, u, null);
     b.applyStatus(e, 'bladeMark', slot.markDur || 4, u);
-    b.text(e.x, e.y - 70, '표식!', CY2, 12);
+    b.text(e.x, e.y - 70, '표식!', CY2, 12); b.later(0.05, () => !u.dead && b.say(u, 'markVolley'));
     const n = slot.throws || 8, gap = slot.throwGap || 0.1, hold = 0.1 + n * gap + 0.1;
     if (u.action && u.action.pin && u.action.tgt) b.releasePin(u.action.tgt);
     const st = { type: 'bladeThrow', t: 0 }; st.step = (dt) => { st.t += dt; u.moving = false; if (st.t >= hold || u.dead) u.action = null; }; u.action = st; // 던지는 동안 제자리
@@ -186,7 +186,7 @@
     on(b, ev, a, c) {
       if (ev === 'attack' && a && a.bladeStealth && c && !c.dead && !c.airborne) { markAndThrow(b, a, c, a.bladeStealth.slot); return false; } // 은신 중 충돌 = 접촉 → 표식 (충돌 피해는 그대로)
       if (ev === 'skill' && a && a.bladeStealth) endStealth(b, a, null); // 스킬 → 은신 해제
-      if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { c.air.t = c.air.dur; c.bladeRide = null; c.buffs = c.buffs.filter(q => q.type !== 'bladeRideSpd'); b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
+      if (ev === 'damaged' && c && c.bladeRide && c.air && c.air.ride) { b.later(0.15, () => !c.dead && b.say(c, 'rideInterrupted')); c.air.t = c.air.dur; c.bladeRide = null; c.buffs = c.buffs.filter(q => q.type !== 'bladeRideSpd'); b.text(c.x, c.y - 60, '하차!', '#c8f0ff', 9); b.burst(c.x, c.y - 10, CY, 8); }
       return false;
     },
     step(b, dt) {
@@ -225,7 +225,7 @@
         if (K.t > 0) { K.t -= dt; if (K.t <= 0) p.hitSet = null; continue; }
         const o = K.owner; if (o.dead) { p.life = 0; continue; }
         const tx = o.x, ty = o.y - 18 - b.airZ(o), d = Math.hypot(tx - p.x, ty - p.y);
-        if (d < 12) { p.life = 0; continue; }
+        if (d < 12) { p.life = 0; b.say(o, 'shardReturn'); continue; }
         p.vx = (tx - p.x) / d * K.spd; p.vy = (ty - p.y) / d * K.spd;
       }
       for (const B of O.big) if (!B.dead) stepBig(b, B, dt);
@@ -269,10 +269,32 @@
     ],
     sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Blade/portrait.png',
-    // 대사: 임시(placeholder) — 사용자가 교체 가능
-    lines: {
-      skill: { '블레이드 탑승': ['올라타자!'], '스플릿블레이드': ['갈라져라!'], '폭풍의 칼날': ['폭풍처럼!'], '표식': ['찾았다.'] },
-      event: { battleStart: ['칼날이 당신을 겨눠요.', '시작할까요?'], win: ['깔끔하게 끝났네요.'], lose: ['칼날이… 무뎌졌어…'], lowHp: ['아직이에요!'] },
+    // 대사: 사용자 제공 대사 초안 (xlsx)
+    lines: { // 대사 (사용자 제공 대사 초안 xlsx)
+      skill: {
+        '표식': ['찾았어. 이제 내 차례야.', '숨었다고 칼날까지 숨은 건 아니지.', '표식은 남겼어. 잘 피해봐!'],
+        '스플릿블레이드': ['가서 길을 열어줘!', '흩어져도 내 칼날이야!', '막힌 길도 갈라버리면 돼!'],
+        '폭풍의 칼날': ['어느 쪽으로 갈지 맞혀봐!', '내가 가는 곳마다 칼날이야!', '발걸음마다 폭풍을!'],
+        '블레이드 탑승': ['올라가자, 더 자유롭게!', '날 붙잡으려면 먼저 따라와!', '이젠 발 디딜 곳도 필요 없어!'],
+      },
+      event: {
+        battleStart: ['답답한 싸움은 질색이야. 날아볼까?', '내 길은 내가 정해.', '{opp}, 칼날에서 눈 떼지 마!'],
+        lowHp: ['아직 날 수 있어. 그럼 충분해!', '여기서 날개를 접을 순 없지.'],
+        buffed: ['좋아, 바람이 더 가벼워졌어!', '이제 마음껏 날뛸 수 있겠네.'],
+        debuffed: ['내 움직임에 참견하지 마.', '묶어두려면 좀 더 애써야겠는데?'],
+        healed: ['살 것 같네! 다시 가볼까?', '고마워. 칼날도 기다리고 있었어.'],
+        stunned: ['앗, 균형이…!'],
+        knockedDown: ['바닥 구경은 충분히 했어.'],
+        pinnedBySomeone: ['나를 가둬둘 수 있을 것 같아?'],
+        water: ['젖기 전에 위로 올라가야겠네.'],
+        airborne: ['그래, 이 높이가 딱 좋아!'],
+        fallCrevasse: ['잠깐… 다시 올라가야…!'],
+        win: ['하늘에는 담장이 없거든.', '공연은 여기까지! 다음에 또 봐.', '누구도 내 길을 막게 두진 않아.'],
+        lose: ['조금만 더 멀리… 날고 싶었는데.', '이번엔… 길을 잘못 골랐네.'],
+        markVolley: ['내가 남긴 표식, 기억하지?', '여덟 번의 기회야. 잘 피해봐!'],
+        shardReturn: ['돌아오는 길도 내 무대야!', '내 칼날은 길을 잊지 않아.'],
+        rideInterrupted: ['앗, 아직 내려올 생각 없었는데!', '땅에 왔다고 느려진 건 아니야!'],
+      },
     },
   });
 })();

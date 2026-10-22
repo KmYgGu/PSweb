@@ -567,7 +567,7 @@ class Battle {
     if (u.dead) return;
     const prev = u.zone, z = this.zoneAt(u.x, u.y);
     u.zone = z;
-    if (z && z !== prev && z.splash) { this.splash(u.x, u.y, z.splash); if (!this.over) this.say(u, 'water'); }
+    if (z && z !== prev && z.splash) { this.splash(u.x, u.y, z.splash); if (!this.over) this.say(u, 'water'); this.later(1.5, () => { if (!u.dead && !this.over && u.zone && u.zone.splash && !u.air) this.say(u, 'swimStart'); }); } // swimStart: 물 위 이동 (오리 등)
     if (!z && prev && prev.splash) this.splash(u.x, u.y, prev.splash, 0.5);
     if (z && z.splash && (u.moving || u.action)) { u.rippleT -= dt; if (u.rippleT <= 0) { u.rippleT = 0.16; this.fx.push({ type: 'ripple', x: u.x, y: u.y + 1, t: 0, dur: 0.7 }); } }
     if (this.over) return;
@@ -908,12 +908,12 @@ class Battle {
   updateOni(u, dt) { // 오니화: 게이지 가득 → 변신, 서서히 감소, 0이면 복귀
     const O = u.def.oni, R = u.def.resources[O.res], v = u.res[O.res] || 0;
     if (!u.oni && v >= R.max) {
-      u.oni = true; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화!');
+      u.oni = true; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화!'); this.say(u, 'oniAwaken');
       this.shock(u.x, u.y, 6, 60, '#ff4a5a', 0.5, 5); this.glow(u.x, u.y - 22, 50, '#ff4a5a', 0.6); this.embers(u.x, u.y, '#ff6a7a', 16); this.hitstop(0.08);
     } else if (u.oni) {
       u.res[O.res] = Math.max(0, v - O.drain * dt);
       if (Math.random() < dt * 8) this.parts.push({ x: u.x + rand(-10, 10), y: u.y - rand(10, 40), vx: rand(-10, 10), vy: rand(-50, -20), life: 0.6, max: 0.6, color: '#ff5a6a', size: 2, glow: true });
-      if (u.res[O.res] <= 0) { u.oni = false; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화 해제'); this.smoke(u.x, u.y - 18, '#ff8a96', 8); }
+      if (u.res[O.res] <= 0) { u.oni = false; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화 해제'); this.say(u, 'oniEnd'); this.smoke(u.x, u.y - 18, '#ff8a96', 8); }
     }
   }
   // 이로운 효과 해제: 버프(nodispel 제외), 방벽, 혼령, 반격 자세, beneficial 상태. 해제된 이름 목록 반환
@@ -932,6 +932,7 @@ class Battle {
     if (u.oni && u.def.oni && u.def.oni.res === id && amt !== 'max' && amt > 0) return; // 오니화 중 충전 불가
     const before = u.res[id] || 0;
     u.res[id] = clamp(amt === 'max' ? R.max : before + amt, 0, R.max);
+    if (before < R.max && u.res[id] >= R.max) this.later(0.3, () => !u.dead && !this.over && this.say(u, id + 'Full')); // 대사: 자원 가득 (예: emberFull)
     if (R.display === 'pips' && u.res[id] > before) this.text(u.x, u.y - 70 - u.pad * 2, R.name + ' ' + u.res[id], R.color, 9);
   }
   resEvent(u, evt) { const D = u.def.resources; if (!D) return; for (const k in D) { const g = D[k].gain && D[k].gain[evt]; if (g != null) this.gainRes(u, k, g); } }
@@ -967,7 +968,7 @@ class Battle {
   counterTrigger(u, src) {
     u.counter = null; u.evadeT = this.time + 0.35;
     this.stats.counters = (this.stats.counters || 0) + 1;
-    this.resEvent(u, 'counterSuccess');
+    this.resEvent(u, 'counterSuccess'); this.say(u, 'counterSuccess'); // 대사: 반격 성공
     const e = src || this.enemy(u), a = Math.atan2(u.y - e.y, u.x - e.x) + (Math.random() < 0.5 ? 1.3 : -1.3);
     this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.35, a: 0.5 });
     const p = this.clampPos(u.x + Math.cos(a) * 26, u.y + Math.sin(a) * 26, u.pad); u.x = p.x; u.y = p.y;

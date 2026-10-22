@@ -99,9 +99,12 @@
         if (u.dead) return;
         b.shock(q.x, q.y, 6, r + 10, '#e8f0ff', 0.4, 4); b.dust(q.x, q.y); b.shake(1.5);
         fxList(b).push({ type: 'dogSit', x: q.x, y: q.y, face: u.facing, t: 0, dur: 0.5 });
+        let hitAny = false;
         for (const o of b.foes(u)) if (Math.hypot(o.x - q.x, (o.y - q.y) / 0.75) <= r + o.pad && !o.airborne) {
-          b.damage(u, o, u.st.atk * (slot.mult || 1.6), hitO(slot, { big: true }));
+          if (b.damage(u, o, u.st.atk * (slot.mult || 1.6), hitO(slot, { big: true })) > 0) hitAny = true;
         }
+        if (hitAny) b.say(u, 'poppyHit'); // 대사: 포피 공격 적중
+        b.later(1.4, () => { if (!u.dead && !b.over) b.say(u, 'poppyReturn'); }); // 대사: 포피 귀환 (낙하 후 돌아옴)
       });
     },
   };
@@ -163,7 +166,7 @@
       b.smoke(ox, oy - 18, '#c8d8ff', 12); b.text(ox, oy - 60, '분신!', '#c8d8ff', 11);
       b.smoke(tgt.x, tgt.y - 18, '#c8d8ff', 5); b.text(tgt.x, tgt.y - 64, '회피!', '#e8f0ff', 11);
       b.fx.push({ type: 'after', x: ox, y: oy, def: tgt.fdef, back: !!tgt.lookUp, facing: tgt.facing, t: 0, dur: 0.3, a: 0.5 });
-      b.stats.galDodge = (b.stats.galDodge || 0) + 1;
+      b.stats.galDodge = (b.stats.galDodge || 0) + 1; b.say(tgt, 'cloneTrick');
       return true;
     }
     // 진짜를 공격함 → 깜짝! (반격 실패, 피해는 그대로)
@@ -231,7 +234,7 @@
       b.proj.push({ x: u.x + face * 14, y: u.y - 14, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, spd: 520, src: u, tgt: e, homing: true, dmg: u.st.atk * (slot.mult || 1.8), kind: 'magic', life: 1.2, trail: 0, r: 16, face,
         hit: hitO(slot, { big: true }),
         draw: (ctx, p, g) => { p.face = p.vx >= 0 ? 1 : -1; drawDog(ctx, p.x, p.y + 12, p.face, 1, 1, b.time); },
-        onHit: o => elecBurst(b, o.x, o.y - 18, 1.1) });
+        onHit: o => { elecBurst(b, o.x, o.y - 18, 1.1); b.say(u, 'poppyHit'); } });
       elecBurst(b, u.x + face * 14, u.y - 16, 0.6);
       if (!u.airborne) { const p = clampP(b, u.x - face * (slot.hop || 46), u.y, u); u.air = { t: 0, dur: 0.35, h: 18, fling: { x0: u.x, y0: u.y, x1: p.x, y1: p.y } }; }
     },
@@ -287,21 +290,33 @@
     ],
     sprite: { src: 'assets/Galford/front.png', back: 'assets/Galford/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Galford/portrait.png',
-    // 대사: 임시(placeholder) — 사용자가 교체 가능
-    lines: {
+    // 대사: 사용자 제공 대사 초안 (xlsx)
+    lines: { // 대사 (사용자 제공 대사 초안 xlsx)
       skill: {
-        '전기 형태 발사': ['번개다!'],
-        '강아지 낙하': ['포피, 가라!'],
-        '동반 낙하': ['간다, 포피!'],
-        '분신술': ['분신술!'],
-        '더블 메가 스트라이크 헤즈': ['끝이다!'],
-        '플라즈마 독': ['포피!'],
+        '더블 메가 스트라이크 헤즈': ['우리의 최고 기술, 받아봐!', '포피, 마지막까지 호흡 맞춰!', '이번엔 끝까지 몰아붙일 거야!'],
+        '분신술': ['어느 쪽이 나일까?', '눈을 떼면 헷갈릴걸?', '자, 나를 찾아봐!'],
+        '동반 낙하': ['같이 한 바퀴 돌아볼까!', '착지까지 따라와 봐!', '하늘에서 내려간다!'],
+        '플라즈마 독': ['포피, 번개처럼 달려!', '좋아, 포피! 지금이야!', '우리의 번개를 보여주자!'],
+        '강아지 낙하': ['포피, 위에서 인사해 줘!', '점프, 포피! 멋지게 착지해!', '위도 살펴보는 게 좋을걸?'],
+        '전기 형태 발사': ['번개처럼, 일직선으로!', '찌릿할 테니까 조심해!', '내 번개, 따라올 수 있어?'],
       },
       event: {
-        battleStart: ['정의를 위하여!', '가자, 포피!'],
-        win: ['정의는 승리한다!', '잘했어, 포피!'],
-        lose: ['미안해… 포피…'],
-        lowHp: ['아직이다!'],
+        battleStart: ['포피, 오늘도 멋지게 가 보자!', '정의를 지킬 차례네. 준비됐어?', '{opp}, 우리 호흡을 잘 봐!'],
+        lowHp: ['포피, 걱정 마. 아직 할 수 있어!', '무릎 꿇기엔 아직 이르잖아!'],
+        buffed: ['좋아, 번개처럼 가볍네!', '이 힘이면 더 멀리 갈 수 있어!'],
+        debuffed: ['이런 잔꾀로 우릴 막겠다고?', '포피, 조심해! 움직임이 이상해.'],
+        healed: ['고마워! 다시 뛰어볼까?', '좋아, 포피. 이제 괜찮아!'],
+        stunned: ['앗, 눈앞이 핑 도네…!'],
+        knockedDown: ['넘어져도 금방 일어나면 돼!'],
+        pinnedBySomeone: ['이거 놔! 포피가 보고 있거든!'],
+        water: ['포피, 물장난은 이따가 하자!'],
+        airborne: ['높이 날아볼까? 따라와, 포피!'],
+        fallCrevasse: ['앗, 포피! 거긴 오면 안 돼!'],
+        win: ['포피, 역시 넌 최고의 파트너야!', '정의를 지키는 일, 오늘도 성공!', '잘 봤지? 우린 둘이서 하나야!'],
+        lose: ['미안해, 포피… 다음엔 꼭…!', '정의를 지키겠단 약속은… 안 잊어.'],
+        poppyHit: ['잘했어, 포피! 바로 그거야!', '우리 호흡, 오늘도 완벽하네!'],
+        poppyReturn: ['이리 와, 포피. 다음도 같이 가자!', '무사히 돌아왔네. 잘했어!'],
+        cloneTrick: ['아쉽네, 그쪽은 내가 아니야!', '진짜 나는 여기 있지!'],
       },
     },
   });

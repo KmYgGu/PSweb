@@ -60,7 +60,7 @@
       s.wallCd = S.wallCd || 0.4;
       b.damage(u, e, u.st.atk * (S.wallMult || 2), { element: 'dark', delivery: 'ranged', big: true, color: '#e0b0ff' });
       b.shock(e.x, e.y - 10, 4, 30, '#ffffff', 0.35, 4); b.shake(2); b.dust(e.x, e.y);
-      b.text(e.x, e.y - 70, '벽 충돌!', '#e0b0ff', 11);
+      b.text(e.x, e.y - 70, '벽 충돌!', '#e0b0ff', 11); b.say(u, 'controlWall');
       b.stats.controlWall = (b.stats.controlWall || 0) + 1;
     }
   }
@@ -84,7 +84,7 @@
     u.x = q.x; u.y = q.y; u.action = null; if (u.air && u.air.fling) u.air = null;
     b.glow(u.x, u.y - 20, 40, '#d890ff', 0.5); b.shock(u.x, u.y, 4, 34, '#e0b0ff', 0.4, 3);
     b.text(u.x, u.y - 64, '포지셔닝!', '#e0b0ff', 10);
-    sys(b, `${u.def.name}: 표식으로 귀환`);
+    sys(b, `${u.def.name}: 표식으로 귀환`); b.say(u, 'positionReturn');
     u.mPrev = [u.x, u.y];
   }
 
@@ -106,13 +106,13 @@
     for (const s of bad) { const n = b.applyStatus(src, s.id, s.t, u, { power: s.power }); if (n) moved.push(STATUS_DEFS[s.id].name); }
     b.text(u.x, u.y - 66, '리플레이스!', '#e0b0ff', 11);
     sys(b, `${u.def.name}: 리플레이스! 위치 교환` + (moved.length ? ` (${moved.join(', ')} 전가)` : ''));
-    b.stats.replaces = (b.stats.replaces || 0) + 1;
+    b.stats.replaces = (b.stats.replaces || 0) + 1; b.say(u, 'replace');
   };
   DEF.onHit = (u, tgt, b, dmg, o) => { // 리스트레인트
     const P = DEF.passives.restraint;
     if (o.dot || Math.random() >= P.chance) return;
     const s = b.applyStatus(tgt, 'seal', P.dur, u);
-    if (s) { sys(b, `${u.def.name}: 리스트레인트! ${tgt.def.name} 스킬 봉인`); b.stats.seals = (b.stats.seals || 0) + 1; }
+    if (s) { sys(b, `${u.def.name}: 리스트레인트! ${tgt.def.name} 스킬 봉인`); b.stats.seals = (b.stats.seals || 0) + 1; b.say(u, 'restraint'); }
   };
 
   // ---------- 전역 훅 ----------
