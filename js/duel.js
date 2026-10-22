@@ -18,6 +18,9 @@
     SPIRIT_DUR: 1.3,          // 몬스터 혼이 보이는 시간
   };
   window.DUEL_LP_SCALE = CFG.LP_SCALE;
+  const LV67 = d => d.level === 6 || d.level === 7; // 흑마술의 베일 대상
+  const VEIL_LP = 1000, VEIL_MARGIN = 900; // 지불 LP, 지불 후 최소 남길 LP
+  window.DUEL_VEIL = { LV67, VEIL_LP, VEIL_MARGIN };
   const tribNeed = lv => !lv || lv <= 4 ? 0 : lv <= 6 ? 1 : lv <= 8 ? 2 : 3;
   const TYPE_NAME = { monster: '몬스터', spell: '마법', trap: '함정' };
   const TYPE_COL = { monster: '#c8863a', spell: '#2fa36b', trap: '#b0407a' };
@@ -162,6 +165,7 @@
       const rp = noPieceMon.filter(c => c.id !== 'Y18' && S.deck + 1 - c.def.level >= 4).map(c => ({ c, v: c.def.level * 7 - AI.keepValue(c, S, true) * 0.5 })).sort((a, z) => z.v - a.v)[0];
       S.recoveryPick = rp ? rp.c : null;
       const bg = AI.bestGrave(b, u, S); S.bestGraveScore = bg ? bg.score : -999;
+      const bv = AI.bestGrave(b, u, S, LV67); S.veilScore = bv ? bv.score : -999; S.veilTarget = bv ? bv.c : null;
     }
     return S;
   }
@@ -227,10 +231,10 @@
       return 6 + (d.level || 0) * 2.5 + (ai.keep || 0) + (noScore ? 0 : Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.25);
     },
     worst(list, n, S) { return list.map(c => ({ c, k: c.def.type === 'monster' ? AI.keepValue(c, S) : 6 + Math.max(0, AI.rawScore(c.def, S, { tributes: [] })) * 0.3 })).sort((a, z) => a.k - z.k).slice(0, n).map(x => x.c); },
-    bestGrave(b, u, S) { // 묘지 몬스터 중 지금 효과를 쓰면 가장 좋은 것 (레벨·릴리스 무시)
+    bestGrave(b, u, S, pred) { // 묘지 몬스터 중 지금 효과를 쓰면 가장 좋은 것 (레벨·릴리스 무시). pred: 추가 조건 (흑마술의 베일: Lv6~7)
       let best = null;
       for (const c of u.duel.grave) {
-        if (c.def.type !== 'monster') continue;
+        if (c.def.type !== 'monster' || (pred && !pred(c.def))) continue;
         const v = AI.rawScore(c.def, S, { tributes: [], free: true }, true);
         if (!best || v > best.score) best = { c, score: v };
       }
@@ -418,7 +422,14 @@
       // ===== 유희 덱 전용 =====
       useMonster: (c, x = {}) => useMonster(b, u, c, { ...x, depth: depth + 1 }),
       useFromDeck(id, label) { if (!D) return null; const c = zones.take(D.deck, id); if (!c) return null; D.grave.push(c); useMonster(b, u, c, { label, depth: depth + 1 }); return c; },
-      bestGrave() { if (!D) return null; const r = AI.bestGrave(b, u, S()); return r ? r.c : null; },
+      bestGrave(pred) { if (!D) return null; const r = AI.bestGrave(b, u, S(), pred); return r ? r.c : null; },
+      hexCurse(t, mul, dur) { // 육망성의 저주: 근접(무기) 공격 간격 ×mul
+        if (!t || t.dead) return;
+        t.buffs = t.buffs.filter(q => q.type !== 'hexCurse'); t.buffs.push({ type: 'hexCurse', name: '육망성의 저주', t: dur, meleeRateMul: 1 / mul, nodispel: true });
+        t.atkT = Math.max(t.atkT || 0, 1 / t.atkRate * (mul - 1)); // 진행 중인 쿨타임도 연장
+        b.ring(t.x, t.y - 4, 6, 34, 0.5, '#ff5a8a'); b.glow(t.x, t.y - 16, 40, '#ff4a7a', 0.4); b.text(t.x, t.y - 62, '육망성의 저주!', '#ff8ab0', 10);
+        sys(b, `육망성의 저주: ${t.def.name} 근접 공격 간격 ×${mul} (${dur}초)`);
+      },
       discardWorst(n) { if (!D) return []; const L = AI.worst(D.hand.filter(c => c !== ci), n, S()); for (const c of L) { D.hand.splice(D.hand.indexOf(c), 1); D.grave.push(c); } if (L.length) say(b, u, `버림 <span class="dmini">${L.map(c => c.def.name).join(', ')}</span>`); return L; },
       foeCooldowns(mode) {
         for (const f of b.foes(u)) {
@@ -607,7 +618,7 @@
     let k = d.type === 'monster' ? AI.keepValue(ci, S) : 6 + Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.3;
     if (d.type === 'monster') {                                  // 묘지 시너지: 버리면 오히려 좋은 카드
       if (d.id === 'Y02' && (S.inHand('Y27') || S.inDeck('Y27'))) k -= 14; // 블랙 매지션 걸 ×2
-      if ((d.level || 0) >= 6 && (S.inHand('Y13') || D.traps.some(t => t.inst.id === 'Y19'))) k -= 10; // 소생 대상
+      if ((d.level || 0) >= 6 && (S.inHand('Y13') || D.traps.some(t => t.inst.id === 'Y19') || ((d.level === 6 || d.level === 7) && S.inHand('Y25')))) k -= 10; // 소생·흑마술의 베일 대상
       if (S.inHand('Y17') && S.graveMonsters >= 3) k -= 5;       // 탐욕의 항아리 준비
     }
     if (d.type === 'trap' && D.traps.length >= CFG.TRAP_SLOTS) k -= 4;

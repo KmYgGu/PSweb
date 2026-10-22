@@ -448,7 +448,7 @@ class Battle {
     if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
-    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / u.atkRate; } // 근접 공격(무기): 근접 캐릭터만. 원거리 자동 발사는 없음
+    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); } // 근접 공격(무기) (meleeRateMul: 육망성의 저주 등): 근접 캐릭터만. 원거리 자동 발사는 없음
   }
 
   // ---------- 상태이상 ----------
@@ -1682,6 +1682,7 @@ const Render = (() => {
     if (u.flash > 0) { ctx.globalAlpha = alpha * (u.flash / 0.12) * 0.85; Sprites.draw(ctx, s, fr, true); }
     ctx.restore();
     ctx.globalAlpha = 1;
+    if (!u.dead && u.buff('hexCurse')) drawHexagram(ctx, x, y - z, b.time);
     if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx, y + bob - z - 20 * zk);
     if (u.dead) return;
     if (u.buff('shield')) {
@@ -2015,6 +2016,14 @@ const Render = (() => {
     if (side < 0 && W.style === 'swing') ctx.scale(1, -1); // 왼쪽 향함: 날 방향 유지
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, off, -img.height * sc / 2, img.width * sc, img.height * sc);
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
+  // 육망성의 저주: 발밑에 회전하는 붉은 육망성
+  function drawHexagram(ctx, x, y, t) {
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(1, 0.45); ctx.rotate(t * 1.2);
+    ctx.globalAlpha = 0.55 + 0.2 * Math.sin(t * 6); ctx.strokeStyle = '#ff4a7a'; ctx.lineWidth = 2;
+    for (const o of [0, Math.PI]) { ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = o + i * (Math.PI * 2) / 3 - Math.PI / 2; i ? ctx.lineTo(Math.cos(a) * 20, Math.sin(a) * 20) : ctx.moveTo(Math.cos(a) * 20, Math.sin(a) * 20); } ctx.closePath(); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(0, 0, 22, 0, (Math.PI * 2)); ctx.lineWidth = 1; ctx.stroke();
     ctx.restore(); ctx.globalAlpha = 1;
   }
   // 로켓 해머 (스프라이트에 없음 → 절차적으로 그림). 손 위치 기준 회전
