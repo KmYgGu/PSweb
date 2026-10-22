@@ -132,7 +132,7 @@
     const S = {
       b, u, e, foes, d, effMax,
       myHpR: u.hp / u.maxHp, myLp: u.hp, missing: u.maxHp - u.hp,
-      oppEff: foes.reduce((s, f) => s + effHp(f), 0) || 1, oppTargetEff: e ? effHp(e) : 1,
+      oppEff: foes.reduce((s, f) => s + effHp(f), 0) || 1, oppTargetEff: e ? effHp(e) : 1, oppHpRaw: e ? e.hp : 1e9, oppAir: !!(e && e.airborne), // oppHpRaw: 고정 피해(라의 익신룡) 판단용
       oppHpR: e ? e.hp / e.maxHp : 1, oppDef: e ? e.st.def : 0,
       oppAir: !!(e && e.airborne), oppStunned: !!(e && e.blocked('blocksAct')),
       oppCasting: !!(A && ['wind', 'dash', 'chase', 'charge', 'combo'].includes(A.type)),
@@ -475,14 +475,14 @@
       raCannon() {
         if (!D) return; const keep = Math.ceil(u.maxHp * 0.01), paid = Math.max(0, Math.round(u.hp - keep)); if (!paid) return;
         u.hp = keep; b.text(u.x, u.y - 50, `-${paid} LP`, '#ff9ab0', 11); say(b, u, `LP ${paid} 지불! <span class="dmini">남은 LP ${keep}</span>`);
-        const amt = paid * CFG.ATK_SCALE * 1.2 * mul, r = 36 + paid / 22, t = E(); if (!t) return;
+        const amt = paid, r = 36 + Math.min(paid, 4000) / 50, t = E(); if (!t) return; // 신의 불꽃: 지불 LP 그대로 고정 피해 (배율·방어·LP 환산 무시)
         const px = t.x, py = t.y;
         b.telegraphCircle(px, py, r, 0.7, '#ffb040'); b.glow(u.x, u.y - 60, 60, '#ffd060', 0.7);
         b.later(0.7, () => {
           if (b.over) return;
           b.streak(u.x, u.y - 90, px, py - 10, '#ffb040', 30, 0.5); b.streak(u.x, u.y - 90, px, py - 10, '#fff0c0', 12, 0.4);
           b.explosion(px, py, r); b.shock(px, py, 8, r * 1.3, '#ffb040', 0.6, 6); b.shake(5); b.hitstop(0.15);
-          for (const f of b.foes(u)) if (Math.hypot(f.x - px, f.y - py) <= r + f.pad + 8) b.damage(u, f, amt, hitO({ element: 'fire', big: true, sure: true, piercesBarrier: true }));
+          for (const f of b.foes(u)) if (Math.hypot(f.x - px, f.y - py) <= r + f.pad + 8) b.damage(u, f, amt, hitO({ element: 'fire', big: true, fixed: true, noCrit: true, piercesBarrier: true }));
         });
       },
       avarice() {

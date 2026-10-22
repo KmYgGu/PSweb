@@ -1018,6 +1018,18 @@ class Battle {
     return Math.abs(dtn) < g.hw && dn < 5 && dn > -12 && (p.vx * g.nx + p.vy * g.ny) < 0;
   }
   // 기본 공격(충돌): ATK x BUMP_K. 기본 공격 속성/상태이상 유지. 무기 공격과 독립된 쿨타임(bumpT)
+  fixedDamage(src, tgt, amount, o) {
+    const dmg = Math.max(0, Math.round(Number.isFinite(amount) ? amount : 0)); if (!dmg) return 0;
+    tgt.hp -= dmg; tgt.flash = 0.12;
+    if (src !== tgt) { this.resEvent(src, 'dealt'); this.resEvent(tgt, 'damaged'); }
+    this.text(tgt.x + rand(-6, 6), tgt.y - 40, String(dmg), o.color || '#ffd060', 17);
+    this.text(tgt.x, tgt.y - 60, '고정 피해!', '#ffe08a', 9);
+    const a = Math.atan2(tgt.y - src.y, tgt.x - src.x); tgt.kx += Math.cos(a) * 7; tgt.ky += Math.sin(a) * 7;
+    this.impact(tgt.x, tgt.y - 20 - this.airZ(tgt), a, '#ffb040', 2, o.element);
+    if (tgt.hp <= 0) this.kill(tgt, src);
+    if (src !== tgt && !this.over) this.emit('damaged', src, tgt, dmg, o);
+    return dmg;
+  }
   bumpAttack(u, e) {
     if (u.dead || e.dead || this.over || this.freeze || u.stun || (u.bumpT || 0) > 0) return;
     u.bumpT = 1 / u.atkRate;
@@ -1126,12 +1138,13 @@ class Battle {
       if (df < 1.2) { const g = this.barrierGeom(tgt); this.barrierHit(tgt, amount, g.cx, g.cy); return 0; }
     }
     if (!o.dot) for (const h of STAGE_HOOKS) if (h.preDamage) { // 피해 직전 훅: true = 무효, 숫자 = 피해량 변경 (듀얼리스트 크리보/방패/함정 등)
-      const r = h.preDamage(this, src, tgt, amount, o); if (r === true) return 0; if (typeof r === 'number') amount = r;
+      const r = h.preDamage(this, src, tgt, amount, o); if (r === true) return 0; if (typeof r === 'number' && !o.fixed) amount = r; // o.fixed: 피해 감소 무시 (무효는 적용)
     }
     const hc = this.hitCheck(src, tgt, o);
     if (!hc.hit) { this.text(tgt.x, tgt.y - 48 - this.airZ(tgt), hc.label, '#c8d8ff', 11); playSfx('whiff'); return 0; }
     if (hc.sure) this.text(tgt.x + 8, tgt.y - 58 - this.airZ(tgt), hc.label, '#9ff0ff', 9);
     let dmg = amount, crit = !!o.crit;
+    if (o.fixed) return this.fixedDamage(src, tgt, amount, o); // 고정 피해: 방어·속성·배율·LP 환산 무시
     if (!crit && !o.noCrit && Math.random() < src.st.crit) crit = true;
     if (crit) dmg *= 1.75;
     // 방어력 (관통: 방어력의 일부 무시). 지속 피해는 방어 무시
