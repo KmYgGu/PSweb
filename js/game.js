@@ -4,6 +4,8 @@
 const W = 360, H = 640;
 const AR = { x: 12, y: 120, w: 336, h: 410 };
 // 기본 공격 = 충돌(부딪힘) 피해: ATK x BUMP_K, 각자 atkRate 쿨타임. 근접 공격 = 무기 공격(사거리 < MELEE_RANGE 캐릭터만, 사거리 안에서 자동)
+// 근접 무기 캐릭터별 무기 스프라이트 키 (def.weapon 으로 덮어쓰기 가능)
+const WEAPON_KEY = { swordsman: 'sword', tank: 'mace', assassin: 'dagger', lancer: 'spear', berserker: 'axe', evelyn: 'wireHook', kidomusha: 'tachi', duck: 'toyHammer', galford: 'ninjato', broly: 'kiFistG', paragus: 'kiFistP' };
 const BUMP_K = 0.85, MELEE_RANGE = 80; // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
 const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
@@ -373,7 +375,7 @@ class Battle {
   freezeLater(t, fn) { if (this.freeze) this.freeze.timers.push({ t, fn }); }
   updateUnit(u, dt) {
     if (Number.isFinite(u.hp)) u.lastHp = u.hp; else { console.warn('[battle] NaN HP 복구', u.def.id); u.hp = Number.isFinite(u.lastHp) ? u.lastHp : u.maxHp; } // 방어: HP NaN 방지
-    u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt);
+    u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt); if (u.wSwing && (u.wSwing.t += dt) >= u.wSwing.dur) u.wSwing = null;
     u.boost *= Math.pow(0.08, dt); // 충돌 가속 감쇠 (~0.6초)
     u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
     if (u.dead) { u.deadT += dt; return; }
@@ -1036,6 +1038,8 @@ class Battle {
         playSfx('shot');
       }
     } else {
+      const wk = !u.def.hammer && (u.def.weapon || WEAPON_KEY[u.def.id]); // 근접 무기 휘두르기 표시 (충돌 공격엔 없음)
+      if (wk) u.wSwing = { t: 0, dur: 0.26, ang: Math.atan2((e.y - 18) - (u.y - 20), e.x - u.x), k: wk };
       this.later(0.08, () => {
         if (miss) { this.slashFx(u.x - u.facing * 18, u.y - 18, -u.facing, '#e0b8ff', 0.8); this.text(u.x, u.y - 50, '빗나감', '#e0b8ff', 10); playSfx('whiff'); return; }
         if (!u.dead && !u.stun && dist(u, e) <= u.reach + 12) {
@@ -1675,6 +1679,7 @@ const Render = (() => {
     if (u.flash > 0) { ctx.globalAlpha = alpha * (u.flash / 0.12) * 0.85; Sprites.draw(ctx, s, fr, true); }
     ctx.restore();
     ctx.globalAlpha = 1;
+    if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx, y + bob - z - 20 * zk);
     if (u.dead) return;
     if (u.buff('shield')) {
       const sh = u.buff('shield'), a = Math.min(1, sh.t * 2);
@@ -1949,6 +1954,66 @@ const Render = (() => {
     ctx.restore();
   }
 
+  // ── 근접 무기 스프라이트 (무기 공격 때만 휘두름, 충돌 기본 공격엔 없음). 오프스크린 캔버스에 1회 프리렌더
+  //  모양: 손잡이(x=0) → 끝(+x) 방향, 세로 중앙 정렬. style: swing(호) / thrust(찌르기)
+  const WEAPONS = {
+    sword: { w: 34, h: 9, style: 'swing', trail: '#bfe6ff', draw(g) { R(g, 0, 3, 7, 3, '#6a4528'); R(g, 1, 4, 5, 1, '#9a6a3a'); R(g, 7, 0, 2, 9, '#c8a050'); R(g, 9, 3, 22, 3, '#d8e2ec'); R(g, 9, 3, 22, 1, '#ffffff'); R(g, 9, 5, 22, 1, '#8aa0b8'); R(g, 31, 4, 2, 1, '#ffffff'); R(g, 10, 4, 18, 1, '#9fd8ff'); } },
+    mace: { w: 28, h: 12, style: 'swing', trail: '#ffe7a0', draw(g) { R(g, 0, 5, 16, 2, '#5a4030'); R(g, 0, 5, 4, 2, '#2c2c34'); R(g, 15, 2, 9, 8, '#8a8f9c'); R(g, 16, 3, 7, 2, '#d0d6e0'); R(g, 18, 0, 3, 12, '#6a707c'); R(g, 24, 4, 3, 4, '#6a707c'); R(g, 19, 5, 2, 2, '#e8c050'); } },
+    dagger: { w: 20, h: 7, style: 'swing', trail: '#c8a0ff', fast: true, draw(g) { R(g, 0, 2, 5, 3, '#2a2030'); R(g, 5, 0, 2, 7, '#5a5068'); R(g, 7, 2, 11, 3, '#b0b4cc'); R(g, 7, 2, 11, 1, '#e8eaff'); R(g, 18, 3, 2, 1, '#e8eaff'); R(g, 8, 4, 9, 1, '#6a50a0'); } },
+    spear: { w: 60, h: 9, style: 'thrust', trail: '#e0f0ff', draw(g) { R(g, 0, 4, 46, 2, '#8a6038'); R(g, 0, 4, 46, 1, '#b08050'); R(g, 44, 2, 3, 6, '#c8a050'); R(g, 47, 2, 9, 5, '#d8e2ec'); R(g, 56, 3, 3, 3, '#d8e2ec'); R(g, 59, 4, 1, 1, '#ffffff'); R(g, 47, 2, 10, 1, '#ffffff'); R(g, 40, 6, 3, 3, '#c03030'); } },
+    axe: { w: 36, h: 22, style: 'swing', trail: '#ff9070', heavy: true, draw(g) { R(g, 0, 10, 32, 3, '#5a3a24'); R(g, 0, 10, 32, 1, '#8a5a34'); R(g, 22, 1, 9, 20, '#7a7e8a'); R(g, 19, 3, 3, 16, '#7a7e8a'); R(g, 31, 4, 3, 14, '#5a5e6a'); R(g, 22, 1, 9, 2, '#d0d4de'); R(g, 18, 4, 1, 14, '#e8ecf4'); R(g, 32, 11, 4, 2, '#7a7e8a'); R(g, 25, 8, 3, 6, '#a02020'); } },
+    wireHook: { w: 30, h: 9, style: 'swing', trail: '#ffb060', draw(g) { for (let i = 0; i < 22; i += 2) R(g, i, 4 + (i % 4 ? 0 : 1), 2, 1, '#ffcf8a'); R(g, 22, 2, 6, 3, '#c0c4cc'); R(g, 27, 3, 2, 5, '#c0c4cc'); R(g, 25, 6, 2, 2, '#e8ecf4'); R(g, 22, 2, 6, 1, '#ffffff'); R(g, 20, 3, 2, 3, '#ff7a30'); } },
+    tachi: { w: 44, h: 9, style: 'swing', trail: '#ff6070', draw(g) { R(g, 0, 4, 9, 3, '#1e1418'); for (let i = 1; i < 9; i += 3) R(g, i, 4, 1, 3, '#a02030'); R(g, 9, 2, 2, 6, '#c8a050'); for (let i = 0; i < 31; i++) { const y = 3 - Math.round(Math.sin(i / 31 * 1.4) * 2.5); R(g, 11 + i, y + 1, 1, 2, '#d8dce8'); R(g, 11 + i, y + 1, 1, 1, '#ffffff'); R(g, 11 + i, y + 3, 1, 1, '#6a3040'); } } },
+    toyHammer: { w: 26, h: 16, style: 'swing', trail: '#ffe060', draw(g) { R(g, 0, 7, 16, 2, '#e8c050'); R(g, 0, 7, 16, 1, '#fff0a0'); R(g, 14, 1, 11, 14, '#e83a3a'); R(g, 14, 1, 11, 3, '#ff8080'); R(g, 14, 1, 2, 14, '#f0f0f0'); R(g, 23, 1, 2, 14, '#f0f0f0'); R(g, 24, 12, 1, 3, '#a02020'); } },
+    ninjato: { w: 36, h: 7, style: 'swing', trail: '#a8e0ff', draw(g) { R(g, 0, 2, 9, 3, '#20283a'); for (let i = 1; i < 9; i += 2) R(g, i, 2, 1, 3, '#4a6aa0'); R(g, 9, 0, 3, 7, '#30303a'); R(g, 12, 2, 22, 3, '#cfd8e4'); R(g, 12, 2, 22, 1, '#ffffff'); R(g, 34, 3, 2, 1, '#ffffff'); R(g, 13, 4, 20, 1, '#6aa8ff'); } },
+    kiFistG: { w: 22, h: 16, style: 'thrust', trail: '#9aff80', fist: '#7aff5a', draw(g) { fist(g, '#c88a5a', '#7aff5a'); } },
+    kiFistP: { w: 22, h: 16, style: 'thrust', trail: '#c8a0ff', fist: '#b080ff', draw(g) { fist(g, '#b08060', '#b080ff'); } },
+  };
+  function R(g, x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
+  function fist(g, skin, ki) { R(g, 0, 5, 9, 6, '#3a3040'); R(g, 9, 3, 10, 10, skin); R(g, 18, 4, 2, 8, skin); for (let i = 0; i < 4; i++) R(g, 18, 4 + i * 2, 2, 1, '#7a5038'); R(g, 10, 3, 8, 2, '#f0c8a0'); R(g, 20, 6, 2, 4, ki); }
+  const weaponCache = {};
+  function weaponCanvas(k) {
+    if (weaponCache[k]) return weaponCache[k];
+    const W = WEAPONS[k], c = document.createElement('canvas'); c.width = W.w + 2; c.height = W.h + 2;
+    const g = c.getContext('2d'); g.translate(1, 1); W.draw(g);
+    // 1px 외곽선 (픽셀 아트 가독성)
+    const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const og = o.getContext('2d');
+    og.globalAlpha = 0.55; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) og.drawImage(c, dx, dy);
+    og.globalCompositeOperation = 'source-in'; og.globalAlpha = 1; og.fillStyle = '#14101a'; og.fillRect(0, 0, o.width, o.height);
+    og.globalCompositeOperation = 'source-over'; og.drawImage(c, 0, 0);
+    return (weaponCache[k] = o);
+  }
+  // 무기 휘두르기 그리기: 월드 좌표 (x, y = 손 높이). u.wSwing = { t, dur, ang, k }
+  function drawWeaponSwing(ctx, u, x, y) {
+    const S = u.wSwing, W = WEAPONS[S.k]; if (!W) return;
+    const p = clamp(S.t / S.dur, 0, 1), img = weaponCanvas(S.k);
+    const reach = Math.max(20, u.reach || 40), len = clamp(reach * 0.8, 16, 70), sc = len / W.w;
+    const side = Math.cos(S.ang) >= 0 ? 1 : -1; // 위 → 아래로 내려치기 (보는 방향 기준)
+    const fade = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y));
+    let th = S.ang, off = 6;
+    if (W.style === 'thrust') { off = 4 + Math.sin(Math.PI * Math.min(1, p * 1.4)) * reach * 0.35; }
+    else {
+      const a0 = -1.35, a1 = 1.1, e = easeOut(Math.min(1, p * (W.fast ? 2.2 : W.heavy ? 1.3 : 1.7)));
+      th = S.ang + side * (a0 + (a1 - a0) * e);
+      // 호 궤적 (무기 끝 반경)
+      const r = off + len, aS = S.ang + side * a0, aE = th;
+      ctx.globalAlpha = 0.55 * fade; ctx.strokeStyle = W.trail; ctx.lineWidth = W.heavy ? 6 : 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(0, 0, r - 2, Math.min(aS, aE), Math.max(aS, aE)); ctx.stroke();
+      ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(0, 0, r, Math.min(aS, aE), Math.max(aS, aE)); ctx.stroke();
+    }
+    if (W.style === 'thrust' && p < 0.8) { // 찌르기 잔상 선
+      ctx.globalAlpha = 0.5 * fade; ctx.strokeStyle = W.trail; ctx.lineWidth = W.fist ? 4 : 3;
+      ctx.beginPath(); ctx.moveTo(Math.cos(th) * 4, Math.sin(th) * 4); ctx.lineTo(Math.cos(th) * (off + len * 0.9), Math.sin(th) * (off + len * 0.9)); ctx.stroke();
+    }
+    if (W.fist) glowAt(ctx, Math.cos(th) * (off + len * 0.85), Math.sin(th) * (off + len * 0.85), 10 * Math.max(sc, 0.8), W.fist, 0.6 * fade); // 기 오라
+    ctx.globalAlpha = fade; ctx.rotate(th);
+    if (side < 0 && W.style === 'swing') ctx.scale(1, -1); // 왼쪽 향함: 날 방향 유지
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, off, -img.height * sc / 2, img.width * sc, img.height * sc);
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
   // 로켓 해머 (스프라이트에 없음 → 절차적으로 그림). 손 위치 기준 회전
   function drawHammer(ctx, u, b) {
     const f = u.facing, sw = u.hamSwing > 0 ? 1 - u.hamSwing / 0.4 : u.swing > 0 ? 1 - u.swing / 0.2 : -1;

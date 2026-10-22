@@ -251,10 +251,10 @@
     // 탑승 중인 큰 칼날은 몸 뒤(아래)에 그림 — 캐릭터가 칼날 위에 올라탄 모습
     drawUnder(ctx, u, b) { if (u.air && u.air.ride) drawBigBlade(ctx, 0, 2, 0.7, Math.sin(b.time * 3) * 0.08); },
     skills: [
-      { id: 'bladeMark', name: '표식', cd: 15, dur: 4, spdMul: 1.4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
-      { id: 'splitBlade', name: '스플릿블레이드', cd: 14, spd: 600, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
-      { id: 'bladeStorm', name: '폭풍의 칼날', cd: 11, dist: 70, gap: 0.3, count: 8, hitR: 14, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
-      { id: 'bladeRide', name: '블레이드 탑승', cd: 12, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeMark', name: '표식', cd: 11, dur: 4, spdMul: 1.4, eva: 0.45, resDown: -0.3, markDur: 4, throws: 8, throwGap: 0.1, mult: 0.7, spd: 720, element: 'ice', delivery: 'ranged' },
+      { id: 'splitBlade', name: '스플릿블레이드', cd: 10, spd: 600, mult: 1.0, shrink: 0.8, minS: 0.35, maxT: 6, trapGap: 26, trapMax: 10, trapLife: 6, trapMult: 0.7, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeStorm', name: '폭풍의 칼날', cd: 7.5, dist: 70, gap: 0.3, count: 8, hitR: 14, mult: 0.55, spd: 380, life: 0.55, element: 'ice', delivery: 'ranged' },
+      { id: 'bladeRide', name: '블레이드 탑승', cd: 8.5, dur: 3, h: 16, spdMul: 2.2, gap: 0.6, max: 3, mult: 0.6, out: 0.45, outSpd: 300, backSpd: 360, element: 'ice', delivery: 'ranged' },
     ],
     sprite: { src: 'assets/Blade/front.png', back: 'assets/Blade/back.png', scale: 0.46, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/Blade/portrait.png',
