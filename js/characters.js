@@ -96,7 +96,8 @@ const CHARACTERS = [
     attack: { element: 'slash', delivery: 'ranged', pierce: 0.3 },
     resist: { fire: 1.3, blunt: 1.2, ranged: 0.85 },
     statusResist: { poison: 0.5 },
-    skills: [{ id: 'arrowVolley', name: '화살 세례', cd: 5, element: 'slash', delivery: 'ranged', pierce: 0.3, applies: [{ status: 'poison', duration: 4, chance: 0.35, power: 6 }] }],
+    skills: [{ id: 'arrowVolley', name: '화살 세례', cd: 5, element: 'slash', delivery: 'ranged', pierce: 0.3, applies: [{ status: 'poison', duration: 4, chance: 0.35, power: 6 }] },
+      { id: 'backStep', name: '백스텝', cd: 6, dist: 95, dashT: 0.2 }],
     projectile: 'arrow',
     lines: { // 대사 (사용자 제공 대사 초안 xlsx)
       skill: {
@@ -130,7 +131,8 @@ const CHARACTERS = [
     attack: { element: 'fire', delivery: 'ranged' },
     resist: { fire: 0.5, ice: 1.4, slash: 1.15 },
     statusResist: { confusion: 0.4 },
-    skills: [{ id: 'fireball', name: '화염구', cd: 5.5, element: 'fire', delivery: 'ranged', applies: [{ status: 'weaken', duration: 4 }] }],
+    skills: [{ id: 'fireball', name: '화염구', cd: 5.5, element: 'fire', delivery: 'ranged', applies: [{ status: 'weaken', duration: 4 }] },
+      { id: 'teleport', name: '텔레포트', cd: 9 }],
     projectile: 'magic',
     lines: { // 대사 (사용자 제공 대사 초안 xlsx)
       skill: {
@@ -268,7 +270,8 @@ const CHARACTERS = [
     attack: { element: 'light', delivery: 'ranged' },
     resist: { light: 0.5, dark: 1.5 },
     statusResist: { all: 0.25 },
-    skills: [{ id: 'holyLight', name: '치유의 빛', cd: 6.5, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 3 }] }],
+    skills: [{ id: 'holyLight', name: '치유의 빛', cd: 6.5, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 3 }] },
+      { id: 'pray', name: '기도', cd: 12, dur: 2, resist: 0.4, cdRate: 2.5 }],
     projectile: 'holy',
     lines: { // 대사 (사용자 제공 대사 초안 xlsx)
       skill: {
@@ -502,6 +505,7 @@ const CHARACTERS = [
     skills: [
       { id: 'mysticBall', name: '미스틱 볼', cd: 5.5, out: 0.75, spd: 260, backSpd: 300, control: 2.0, wallMult: 2.0, wallCd: 0.4, element: 'dark', delivery: 'ranged' },
       { id: 'positioning', name: '포지셔닝', cd: 9, delay: 3.0 },
+      { id: 'accelerate', name: '액셀러레이트', cd: 10, spd: 640, spread: 0.75, bounces: 3, life: 3, mult: 0.35, dotDur: 2, dotPow: 4, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
     ],
     // 패시브 (js/mystic.js): 리플레이스(피격 시 20%·내부 쿨 4초 위치 교환 + 해로운 상태 넘기기), 리스트레인트(적중 시 20% 봉인 2초)
     passives: { replace: { chance: 0.2, icd: 4 }, restraint: { chance: 0.2, dur: 2 } },

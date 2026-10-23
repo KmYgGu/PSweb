@@ -408,7 +408,7 @@ class Battle {
     if (this.over) { u.moving = false; return; }
     this.updateStatuses(u, dt);
     if (u.dead) return;
-    u.atkT -= dt; u.bumpT = (u.bumpT || 0) - dt; for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= dt;
+    u.atkT -= dt; u.bumpT = (u.bumpT || 0) - dt; const cdr = dt * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= cdr; // cdRate: 쿨타임 감소 속도 (성직자 기도)
     const noAct = u.blocked('blocksAct'), noMove = u.blocked('blocksMove');
     if (noAct && noMove) { u.moving = false; return; }
     if (u.action) { if (!noAct) this.updateAction(u, e, dt); return; }
