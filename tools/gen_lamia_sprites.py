@@ -10,10 +10,10 @@ F = {
            '...HWWWwWWWWH', '...SWWWwWWWWS', '....WWWwWWWW', '....WWW..WWW', '....KKK..KKK', '....KKK..KKK', '....KKK..KKK', ''],
  'back': ['', '.....HTTTH', '....HHHHHHHH', '....HHHHHHHH', '....HHHHHHHH', '....HHHHHHHH', '....HHHHHHHH', '....HHHHHHHH',
           '...SHHHHHHHHS', '....WHHHHHHW', '....WWWWWWWW', '....WWW..WWW', '....KKK..KKK', '....KKK..KKK', '....KKK..KKK', ''],
- 'stand/front': ['', '......cCCc', '......CccC', '......CBBC', '......CCCC', 'iII..CCccCC..IIi', '....CCCccCCC', '....CCCccCCC',
-                 'iII..CCccCC..IIi', '.....CCccCC', '.iII..CCCC..IIi', '.....CCCCCC', '......CCCC', '.......CC', '', ''],  # 팔 6개 (좌우 3개씩)
- 'stand/back': ['', '......cCCc', '......CCCC', '......CCCC', '......CCCC', 'iII..CCCCCC..IIi', '....CCCCCCCC', '....CCCccCCC',
-                'iII..CCCCCC..IIi', '.....CCccCC', '.iII..CCCC..IIi', '.....CCCCCC', '......CCCC', '.......CC', '', ''],
+ 'stand/front': ['', '......cCCc', '......CccC', '......CBBC', '......CCCC', '.....CCccCC', '....CCCccCCC', '....CCCccCCC',
+                 '.....CCccCC', '.....CCccCC', '......CCCC', '.....CCCCCC', '......CCCC', '.......CC', '', ''],  # 몸통만: 팔(arm.png)은 체력 비례 개수로 게임에서 따로 그림
+ 'stand/back': ['', '......cCCc', '......CCCC', '......CCCC', '......CCCC', '.....CCCCCC', '....CCCCCCCC', '....CCCccCCC',
+                '.....CCCCCC', '.....CCccCC', '......CCCC', '.....CCCCCC', '......CCCC', '.......CC', '', ''],
  'stand/arm': ['', '', '', '', '', '', '...CCC', '..CCcCCCIIi', '..CCCCCCIIIii', '...CCC', '', '', '', '', '', ''],
 }
 def render(rows, alpha=255):

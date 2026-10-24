@@ -20,7 +20,7 @@
 
   // ---------- 1. 흡수 ----------
   // 복사 불가: 듀얼리스트 카드 슬롯(→ 대체 스킬 '흡수한 카드'), 자원(cost)이 필요한 스킬(이블린 가로테, 귀무사 혼령), 슈르프 자신의 스킬
-  const NOCOPY = new Set(['duelCardH', 'duelCard', 'absorb', 'schFinal', 'schTransform', 'lmStand', 'lmOrder', 'lmSpread']); // 라미아: 스탠드가 필요한 스킬
+  const NOCOPY = new Set(['duelCardH', 'duelCard', 'absorb', 'schFinal', 'schTransform', 'lmStand', 'lmOrder', 'lmSpread', 'lmCircle']); // 라미아: 스탠드가 필요한 스킬
   function myBase(u) { if (!u.schBase) { u.schBase = u.skills; u.skills = u.skills.slice(); } }
   function dropCopy(b, u, why) {
     if (!u.schCopy) return;
