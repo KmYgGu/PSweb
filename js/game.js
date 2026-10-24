@@ -1639,7 +1639,7 @@ const Render = (() => {
   }
 
   function drawUnit(ctx, u, b) {
-    if (u.hidden) return;
+    if (u.hidden || u.def.noDraw) return;
     if (u.def.spellCharge && !u.dead && u.mCharge > 0.02) { // 마법 충전 표시: 머리 위 도트 5칸
       const k = u.mCharge / u.def.spellCharge.cap, n = Math.ceil(k * 5), x0 = Math.round(u.x) - 12, y0 = Math.round(u.y) - 58, full = k >= 1 && Math.floor(b.time * 8) % 2;
       ctx.fillStyle = '#2a1a3a'; ctx.fillRect(x0 - 1, y0 - 1, 26, 5);

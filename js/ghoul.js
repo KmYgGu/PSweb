@@ -125,6 +125,7 @@
   sumDef('sitri', '시트리스', 16, { hp: 130 }, { color: '#ff9ab8' });
   sumDef('ejir', '에지르', 28, { hp: 120, spd: 38 }, { color: '#9af0c8' });
   sumDef('adra', '아드라', 29, { hp: 200, atk: 12, spd: 230, range: 30, atkRate: 1.0 }, { color: '#5ab8f0' });
+  sumDef('castle', '백은성', 5, { hp: 100, atk: 0, spd: 0, range: 0, atkRate: 0 }, { color: '#e8ecf8' }); SUMDEF.castle.noDraw = true; SUMDEF.castle.gender = 'neutral'; // 성벽(그림은 drawOver에서), 갇힌 상대의 공격 대상
   const SUMMON_DEFS = Object.values(SUMDEF);
   const STAGE_UNIT_KEYS = ['lap', 'socAI', 'ffAI', 'ffFood', 'ffWall', 'hpPrev'];
   function summon(b, owner, key, x, y, o = {}) {
@@ -132,7 +133,7 @@
     const s = new Unit(def, owner.team, 7 + (b.gSumN = (b.gSumN || 0) + 1), 1);
     const q = b.clampPos(x, y, s.pad, s); s.x = q.x; s.y = q.y; b.resolveBuildings(s, true); s.zone = b.zoneAt(s.x, s.y);
     if (o.hp) s.maxHp = s.hp = s.st.hp = o.hp;
-    s.summon = { owner, key, t: o.dur || 8, dur: o.dur || 8, onEnd: o.onEnd || null, step: o.step || null, ...o.extra };
+    s.summon = { owner, key, t: o.dur || 8, dur: o.dur || 8, onEnd: o.onEnd || null, step: o.step || def.gStep || null, ...o.extra };
     s.gender = def.gender || 'female';
     if (!def.stats.atkRate || def.stats.range >= 80) s.atkT = 1e9;
     for (const k of STAGE_UNIT_KEYS) if (owner[k] !== undefined && s[k] === undefined) s[k] = owner[k] && typeof owner[k] === 'object' ? JSON.parse(JSON.stringify(owner[k])) : owner[k];
@@ -242,6 +243,7 @@
     mon(5, '백은성의 라뷰린스', 8, 2900, 'light', '상대를 내구도 (90 + ATK×0.6) 의 작은 백은성에 7초 가둠: 성 안(좌우 14px·상하 6px)에서만 움직임, 상대가 주는 피해는 성벽이 대신 받음. 오~호호호!', ctx => {
       const { b, u } = ctx, e = mainFoe(b, u); if (!e) return;
       const hp = 90 + ctx.atk(0.6) * 1.0; e.gCastle = { hp, max: hp, t: 7, src: u, cx: e.x, cy: e.y }; b.applyStatus(e, 'gCastle', 7, u, { noResistScale: true });
+      const W = summon(b, u, 'castle', e.x, e.y, { dur: 7.2, hp: Math.round(hp), quiet: true }); if (W) { W.x = e.x; W.y = e.y; W.gImmune = 1e9; W.gWall = e; e.gCastle.W = W; e.gTaunt = W; e.gTauntT = b.time + 7; }
       b.shock(e.x, e.y, 6, 40, '#e8ecf8', 0.5, 5); b.text(e.x, e.y - 70, '백은성!', '#f0f4ff', 12);
       u.gLaugh = { t: 7, n: 0 }; actor(b, SPR(5), u.x - u.facing * 18, u.y - 4, 7, { face: u.facing, upd: (A) => { A.x = u.x - u.facing * 18; A.y = u.y - 4; if (!e.gCastle) A.t = Math.max(A.t, A.dur - 0.3); } });
     }, { tags: ['control'], score: S => (S.oppStunned ? -20 : 14) + (S.oppCasting ? 6 : 0), priority: 6 }),
@@ -255,7 +257,7 @@
     mon(7, '드래그마의 성녀 에클레시아', 4, 1700, 'light', '무작위 위치에 에클레시아(체력 150) 소환 7초: 상대를 도발(상대의 공격 대상 고정), 가까이 오면 기본 공격.', ctx => {
       const { b, u } = ctx, e = mainFoe(b, u); const p = spot(b, 0, e, 60);
       const s = summon(b, u, 'ecclesia', p.x, p.y, { dur: 7, extra: { taunt: true } });
-      if (s) for (const f of b.foes(u)) if (!f.summon) { f.gTaunt = s; f.gTauntT = b.time + 7; b.text(f.x, f.y - 64, '도발!', '#ffd890', 10); }
+      if (s) for (const f of b.foes(u)) if (!f.summon) { if (!f.gCastle) { f.gTaunt = s; f.gTauntT = b.time + 0.3; } b.text(f.x, f.y - 64, '도발!', '#ffd890', 10); }
     }, { tags: ['defense'], score: S => (S.oppMelee ? 10 : 2) + (S.myHpR < 0.5 ? 8 : 0) }),
     mon(8, '티아라멘츠 루루카로스', 8, 2700, 'ice', '덱 3장을 묘지로 → 보낸 몬스터 레벨 합(ΣLv)만큼 강화된 전체 파도: 모든 캐릭터(자신 포함)에 ATK×(0.5+0.05ΣLv) (자신은 35%).', ctx => {
       const { b, u } = ctx, D = u.duel, n = Math.min(3, Math.max(0, D.deck.length - 3)), out = ctx.deck.mill(n), lv = out.reduce((s, c) => s + effLv(c), 0);
@@ -312,7 +314,7 @@
     }, { tags: [], score: S => (S.myHpR < 0.6 ? 14 : 2) + (S.oppMelee && S.d < 90 ? -8 : 0) + (S.hand <= 2 ? 6 : 0) }),
     mon(16, '시트리스의 충혹마', 4, 1500, 'dark', '시트리스 소환 6초. 남성 캐릭터는 하트를 띄우며 시트리스에게 끌려가고(이동 방향 고정), 여성은 멀리 피함. 오리=중립.', ctx => {
       const { b, u } = ctx, e = mainFoe(b, u), p = e ? { x: (u.x + e.x) / 2, y: (u.y + e.y) / 2 } : { x: u.x, y: u.y };
-      summon(b, u, 'sitri', p.x, p.y, { dur: 6, step: sitriStep });
+      summon(b, u, 'sitri', p.x, p.y, { dur: 6 });
     }, { tags: ['control'], score: S => 10 + (S.e && charmGender(S.e) === 'male' ? 6 : 0) }),
     mon(17, '엑소시스터 이렌느', 4, 1400, 'light', '5초간 모든 디버프 면역 + 현재 디버프 해제.', ctx => {
       const { b, u } = ctx; u.gImmune = b.time + 5; u.statuses = u.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive);
@@ -376,7 +378,7 @@
       const { b, u } = ctx; u.gIce = { t: 6, cd: new Map() }; b.ring(u.x, u.y - 16, 6, 36, 0.5, '#bfefff'); ctx.text('얼음 방어막!', '#bfefff');
     }, { tags: ['defense'], buffType: null, score: S => (S.u.gIce ? -40 : 4) + S.incoming * 10 + (S.oppMelee && S.d < 120 ? 8 : 0) }),
     mon(28, '히스이의 에지르', 3, 1200, 'light', '에지르(체력 120) 8초 소환: 무작위 방향으로 꾸물꾸물 기어다니며 점액을 흘림. 점액(4초) 위의 모든 캐릭터(피아 무관)는 0.5초마다 회복 (일반 3 / 듀얼리스트 LP 14).', ctx => {
-      const { b, u } = ctx; summon(b, u, 'ejir', u.x - u.facing * 24, u.y + 8, { dur: 8, step: ejirStep });
+      const { b, u } = ctx; summon(b, u, 'ejir', u.x - u.facing * 24, u.y + 8, { dur: 8 });
     }, { tags: ['heal'], heal: 100, score: S => (S.myHpR < 0.7 ? 8 : -4) }),
     mon(29, '아르고스타즈 영관의 아드라', 4, 1700, 'blunt', '스포츠 스테이지(축구장/레이싱 코스)로 교체 후 아드라(체력 200)가 10초간 참가 (기본 공격과 스포츠 행동만).', ctx => {
       const { b, u } = ctx, L = SPORT.filter(s => s !== b.stageId && STAGE_DEFS[s]);
@@ -424,7 +426,7 @@
     }, { tags: ['control'], score: S => 10 + (S.oppCasting ? 8 : 0) }),
     mon(38, '메멘토 엔위치', 3, 1200, 'dark', '이번 대전에서 파괴된 소환수(천동·RAI-MEI·에클레시아 등)·스테이지 오브젝트(건물·얼음벽·창문·인형뽑기 인형)를 되살림.', ctx => {
       const { b, u } = ctx; let n = 0;
-      for (const L of (b.gLost || []).filter(l => l.team === u.team).splice(0, 3)) { const def = SUMDEF[L.key]; if (!def) continue; const p = spot(b, 0, null); summon(b, u, L.key, p.x, p.y, { dur: 8, hp: Math.min(L.hp, 300) }); n++; }
+      for (const L of (b.gLost || []).filter(l => l.team === u.team).splice(0, 3)) { const def = SUMDEF[L.key]; if (!def || L.key === 'castle') continue; const p = spot(b, 0, null); summon(b, u, L.key, p.x, p.y, { dur: 8, hp: Math.min(L.hp, 300) }); n++; }
       b.gLost = (b.gLost || []).filter(l => l.team !== u.team);
       for (const bl of b.buildings) if (bl.dead || bl.hp < bl.maxHp) { bl.dead = false; bl.hp = bl.maxHp; n++; }
       for (const s of b.iceSegs || []) if (s.dead) { s.dead = false; s.hp = s.maxHp; n++; }
@@ -449,6 +451,15 @@
   ];
   const effHp = o => o.def.duelist ? o.hp / LPK : o.hp;
   function charmGender(o) { const id = o.def.id; if (id === 'duck') return 'neutral'; return o.gender || o.def.gender || 'male'; } // 오리는 성별 없음, 나머지는 캐릭터 데이터 성별
+  function syncCastle(b, u) { // 백은성 유닛 ↔ 내구도 동기화, 위치 고정, 도발 유지
+    const C = u.gCastle; if (!C) return; const W = C.W;
+    if (!W || !b.u.includes(W) || W.dead) { C.hp = 0; } else { C.hp = Math.min(C.hp, W.hp); W.hp = C.hp; W.x = C.cx ?? u.x; W.y = C.cy ?? u.y; W.kx = W.ky = 0; W.action = null; u.gTaunt = W; u.gTauntT = b.time + 0.5; }
+    if (C.hp <= 0) { u.gCastle = null; u.statuses = u.statuses.filter(s => s.id !== 'gCastle'); b.text(u.x, u.y - 60, '백은성 붕괴!', '#f0f4ff', 11); b.debris(u.x, u.y, 12); if (W && b.u.includes(W)) { W.summon.ended = true; removeSummon(b, W); } if (u.gTaunt === W) u.gTaunt = null; }
+  }
+  function tauntStep(s, dt) { // 에클레시아: 살아 있는 동안 도발 유지 (백은성에 갇힌 상대는 성벽 우선)
+    const b = window.__gb; if (!b) return;
+    for (const f of b.u) if (f.team !== s.team && !f.summon && !f.dead && !f.gCastle) { f.gTaunt = s; f.gTauntT = b.time + 0.3; }
+  }
   function sitriStep(s, dt) {
     const b = window.__gb; if (!b) return;
     for (const f of b.foes(s)) { if (f.summon || f.dead) continue; const g = charmGender(f); if (g === 'neutral') continue;
@@ -462,6 +473,7 @@
     if ((s.gTurn = (s.gTurn || 0) - dt) <= 0) { s.gTurn = rand(0.8, 1.6); s.dir = rand(0, TAU); }
     if ((s.gDrop = (s.gDrop || 0) - dt) <= 0) { s.gDrop = 0.4; (b.gSlime || (b.gSlime = [])).push({ x: s.x, y: s.y, t: 0, dur: 4, r: 14 }); }
   }
+  SUMDEF.ecclesia.gStep = tauntStep; SUMDEF.sitri.gStep = sitriStep; SUMDEF.ejir.gStep = ejirStep; // 지속 효과는 정의에 붙임 → 메멘토 부활/스테이지 교체 후에도 유지
   for (const c of G) { c.shout = c.shout || c.name + '!'; c.borrowable = false; CARD_DEFS[c.id] = c; } // 패스트푸드점 카드 배달(비듀얼리스트)에는 제외: 효과가 덱/묘지를 전제
   const GHOUL_DECK = G.map(c => c.id);
 
@@ -503,7 +515,7 @@
       let amt = amount;
       if (tgt.gElecWeak > b.time) { if (o.element === 'elec') amt *= 1.5; else { const r = tgt.def.resist && tgt.def.resist[o.element]; if (r > 1) amt /= r; } }
       if (src && src.gCastle && src.status('gCastle') && tgt.team !== src.team) { // 백은성: 갇힌 쪽의 공격은 성벽이 받음
-        const C = src.gCastle; C.hp -= amt; b.sparks(src.x, src.y - 20, '#e8ecf8', 5, 120);
+        const C = src.gCastle; if (C.W && b.u.includes(C.W) && !C.W.dead) { C.W.hp -= amt; C.W.flash = 0.15; } else C.hp -= amt; b.sparks(src.x, src.y - 20, '#e8ecf8', 5, 120); syncCastle(b, src);
         if (C.hp <= 0) { src.gCastle = null; src.statuses = src.statuses.filter(s => s.id !== 'gCastle'); b.text(src.x, src.y - 60, '백은성 붕괴!', '#f0f4ff', 11); b.debris(src.x, src.y, 12); }
         return true;
       }
@@ -523,7 +535,8 @@
       for (const A of acts(b)) { A.t += dt; if (A.upd) A.upd(A, dt); }
       b.gAct = acts(b).filter(A => A.t < A.dur);
       for (const u of b.u) {
-        if (u.gCastle) { const C = u.gCastle; C.t -= dt; if (C.t <= 0 || !u.status('gCastle') || u.dead) { u.gCastle = null; u.statuses = u.statuses.filter(s => s.id !== 'gCastle'); } else { if (C.cx === undefined) { C.cx = u.x; C.cy = u.y; } u.x = clamp(u.x, C.cx - 14, C.cx + 14); u.y = clamp(u.y, C.cy - 6, C.cy + 6); } }
+        if (u.gCastle) { const C = u.gCastle; C.t -= dt; if (C.t <= 0 || !u.status('gCastle') || u.dead) { u.gCastle = null; u.statuses = u.statuses.filter(s => s.id !== 'gCastle'); } else { if (C.cx === undefined) { C.cx = u.x; C.cy = u.y; } u.x = clamp(u.x, C.cx - 14, C.cx + 14); u.y = clamp(u.y, C.cy - 6, C.cy + 6); syncCastle(b, u); } }
+        if (!u.gCastle && u.gTaunt && u.gTaunt.gWall === u) { const W = u.gTaunt; u.gTaunt = null; if (b.u.includes(W)) removeSummon(b, W); }
         if (u.gLaugh) { const L = u.gLaugh; L.t -= dt; L.n -= dt; if (L.n <= 0) { L.n = 1.4; b.text(u.x + rand(-10, 10), u.y - 74, ['오~호호호!', '호호호호!', '오-호호호호!'][Math.floor(Math.random() * 3)], '#f0f4ff', 9); } if (L.t <= 0 || u.dead) u.gLaugh = null; }
         if (u.gIce) {
           const I = u.gIce; I.t -= dt; if (I.t <= 0 || u.dead) { u.gIce = null; continue; }
@@ -531,7 +544,7 @@
           for (const L of projLists(b)) for (const p of L) { const s = projSrc(p); if (!s || s.team === u.team || p.gIceHit) continue; const q = projPos(p); if (Math.hypot(q.x - u.x, q.y - (u.y - 16)) < 40) { p.gIceHit = true; p.gFrz = 1.2; b.gFrozenP = true; b.burst(q.x, q.y, '#bfefff', 5); } }
         }
       }
-      if (b.gSlime) { for (const S of b.gSlime) { S.t += dt; S.tick = (S.tick || 0) - dt; if (S.tick <= 0) { S.tick = 0.5; for (const o of b.u) if (!o.dead && !o.airborne && Math.hypot(o.x - S.x, (o.y - S.y) / 0.7) < S.r + 6) b.heal(o, o.def.duelist ? 14 : 3, true); } } b.gSlime = b.gSlime.filter(S => S.t < S.dur); }
+      if (b.gSlime) { for (const S of b.gSlime) { S.t += dt; S.tick = (S.tick || 0) - dt; if (S.tick <= 0) { S.tick = 0.5; for (const o of b.u) if (!o.dead && !o.airborne && Math.hypot(o.x - S.x, (o.y - S.y) / 0.7) < S.r + 6) { const amt = o.def.duelist ? 14 : 3; if (o.hp < o.maxHp) { b.heal(o, amt, true); if (Math.random() < 0.5) b.text(o.x + rand(-6, 6), o.y - 52, '+' + amt, '#9af0c8', 8); } } } } b.gSlime = b.gSlime.filter(S => S.t < S.dur); }
       if (b.gZone) { // 루루카로스 파도: 위→아래로 휩씀 (전원, 자신 35%)
         for (const Z of b.gZone) { Z.t += dt; const y = 120 + (Z.t / Z.dur) * 500; for (const o of b.u) if (!o.dead && !Z.hit.has(o) && Math.abs(o.y - y) < 26) { Z.hit.add(o); const self = o.team === Z.u.team; b.damage(Z.u, o, Z.amt * (self ? 0.35 : 1), { element: 'ice', delivery: 'ranged', cardDmg: true, sure: true, big: !self, selfHit: self }); } }
         b.gZone = b.gZone.filter(Z => Z.t < Z.dur);
@@ -549,7 +562,7 @@
     },
     drawOver(ctx, b) {
       for (const A of b.gAct || []) drawActor(ctx, b, A);
-      for (const s of b.u) if (s.summon && !s.dead && s.maxHp > 0 && !s.hidden) { // 소환수 머리 위 작은 체력바
+      for (const s of b.u) if (s.summon && !s.dead && s.maxHp > 0 && !s.hidden && !s.def.noDraw) { // 소환수 머리 위 작은 체력바
         const k = clamp(s.hp / s.maxHp, 0, 1), x = Math.round(s.x) - 12, y = Math.round(s.y - 50 * (s.size || 1) - b.airZ(s));
         ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(20,18,30,0.85)'; ctx.fillRect(x - 1, y - 1, 26, 5); ctx.fillStyle = '#3a3448'; ctx.fillRect(x, y, 24, 3);
         ctx.fillStyle = s.team === 0 ? '#6ad0ff' : '#ff7a8a'; ctx.fillRect(x, y, Math.max(1, Math.round(24 * k)), 3); ctx.restore(); }
