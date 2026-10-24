@@ -22,6 +22,15 @@
   const VEIL_LP = 1000, VEIL_MARGIN = 900; // 지불 LP, 지불 후 최소 남길 LP
   window.DUEL_VEIL = { LV67, VEIL_LP, VEIL_MARGIN };
   const tribNeed = lv => !lv || lv <= 4 ? 0 : lv <= 6 ? 1 : lv <= 8 ? 2 : 3;
+  // 카이바 확장: 카드 인스턴스별 레벨 보정(코스트 다운), 릴리스 감소(크로스 소울·카이저 씨호스), 무릴리스 조건(def.ai.freeSummon)
+  const effLv = ci => ci.def.level ? Math.max(1, ci.def.level + (ci.lvMod || 0)) : 0;
+  function needFor(u, ci, S) {
+    const c = ci.def; if (c.type !== 'monster') return { need: 0, cut: 0 };
+    const base = tribNeed(effLv(ci)); if (!base) return { need: 0, cut: 0 };
+    if (c.ai && c.ai.freeSummon && S && c.ai.freeSummon(S)) return { need: 0, cut: 0, free: true };
+    const cut = Math.min(base, (u.duel && u.duel.tribCut) || 0);
+    return { need: base - cut, cut };
+  }
   const TYPE_NAME = { monster: '몬스터', spell: '마법', trap: '함정' };
   const TYPE_COL = { monster: '#c8863a', spell: '#2fa36b', trap: '#b0407a' };
   const EXO = (typeof EXODIA_IDS !== 'undefined') ? EXODIA_IDS : [];
@@ -55,7 +64,9 @@
     u.maxHp = u.hp = u.st.hp = CFG.LP;
     u.duel = { deck: buildDeck(D.deck), hand: [], grave: [], banished: [], traps: [], phase: 'start', t: 0, plays: 0, monsters: 0, trig: false, turn: 0, lost: false, pops: [], spirits: [],
       lastPlay: null, queenTurn: null, kuri: null, gardner: null, elfT: -9, hats: null, magnet: null, repel: null, lsword: null };
+    if (D.extra) u.duel.extra = D.extra.map(inst).filter(Boolean);
     for (let i = 0; i < CFG.HAND_START && u.duel.deck.length; i++) u.duel.hand.push(u.duel.deck.shift());
+    for (const f of DUEL.setupHooks) f(b, u);
     u.buffs.push(u.duel.load = { type: 'trapLoad', name: '세트 함정', t: 1e9, spdMul: 1, nodispel: true });
     u.nBuffs = u.buffs.length;
   }
@@ -66,7 +77,9 @@
     let got = 0;
     for (let i = 0; i < n; i++) {
       if (!S.deck.length) { if (o.safe) break; deckOut(b, u); return got; }
-      S.hand.push(S.deck.shift()); got++;
+      let k = 0; if (S.nextDraw) { const j = S.deck.findIndex(c => c.id === S.nextDraw); if (j >= 0) { k = j; b.text(u.x, u.y - 84, '드로우 선택!', '#cfe8ff', 9); } S.nextDraw = null; }
+      const dc = S.deck.splice(k, 1)[0]; S.hand.push(dc); got++;
+      if (dc.def.onDraw) b.later(0.05, () => { if (!u.dead && !b.over && S.hand.includes(dc)) { try { dc.def.onDraw(b, u, dc); } catch (err) { console.warn('[duel] onDraw failed', dc.id, err); } } });
     }
     if (got) {
       b.text(u.x, u.y - 70 - u.pad * 2, got > 1 ? `드로우 ×${got}!` : '드로우!', '#ffe9a0', 10);
@@ -254,7 +267,7 @@
       return v;
     },
     choose(b, u) {
-      const S = situation(b, u), D = u.duel, seen = new Set(), opts = [];
+      const S = situation(b, u), D = u.duel, seen = new Set(), opts = []; let adj = 0;
       const qs = D.hand.map(ci => Math.max(-20, AI.rawScore(ci.def, S, { tributes: [] }))); S.handQuality = qs.length ? Math.max(...qs) : 0; // 카드 파괴 판단용
       for (const ci of D.hand) {
         const c = ci.def; if (seen.has(c.id)) continue; seen.add(c.id);
@@ -262,15 +275,15 @@
         if (c.type === 'trap' && D.traps.length >= CFG.TRAP_SLOTS) continue;
         if (c.type === 'monster' && D.monsters >= CFG.MAX_MONSTERS) continue;
         const plan = { inst: ci, tributes: [], ctx: null };
-        const need = c.type === 'monster' ? tribNeed(c.level) : 0;
+        const NF = needFor(u, ci, S), need = NF.need; plan.cut = NF.cut;
         if (need) {
-          const cand = D.hand.filter(o => o !== ci && o.def.type === 'monster' && (o.def.level || 0) < c.level)
+          const cand = D.hand.filter(o => o !== ci && o.def.type === 'monster' && effLv(o) < effLv(ci))
             .map(o => ({ o, k: AI.keepValue(o, S) })).filter(x => x.k < 500).sort((a, z) => a.k - z.k);
           if (cand.length < need) continue;
           plan.tributes = cand.slice(0, need).map(x => x.o);
           plan.cost = cand.slice(0, need).reduce((s, x) => s + x.k, 0) * (S.hand >= 6 ? 0.6 : 0.85);
         }
-        plan.score = AI.rawScore(c, S, plan) - (plan.cost || 0); opts.push(plan);
+        plan.score = AI.rawScore(c, S, plan) - (plan.cost || 0); for (const f of DUEL.planHooks) plan.score += f(b, u, plan, S) || 0; opts.push(plan);
       }
       if (S.traps === CFG.TRAP_SLOTS - 1) { const sp = opts.filter(o => o.inst.def.type === 'spell' && o.score > 0).length; if (sp) opts.forEach(o => { if (o.inst.def.type === 'trap') o.score -= 12 + 4 * sp; }); }
       let min = CFG.PLAY_MIN; if (S.hand >= CFG.HAND_LIMIT - 1) min = 4; if (S.hand >= CFG.HAND_LIMIT) min = -8; if (S.deck <= 3) min -= 6; // 패 한도 근처 / 덱 부족: 적극 사용
@@ -557,11 +570,14 @@
     if (x.label) say(b, u, `${cardTag(c)} ${x.label}: ${c.name}`, c.shoutLater ? null : shoutOf(c));
     if (c.level >= 10) { b.say(u, 'summonGod'); b.shake(2.5); } else if (c.level >= 7) b.say(u, 'summonBig');
     if (D && c.id === 'Y21') D.queenTurn = D.turn;
-    const ctx = makeCtx(b, u, ci, null, { mult: x.mult, depth, spirit: sp });
+    let mm = x.mult || 1; if (D && D.nextMonMult && !x.noBoost) { mm *= D.nextMonMult; D.nextMonMult = 0; b.text(u.x, u.y - 92, '거대화! ×2', '#ffb060', 11); }
+    const ctx = makeCtx(b, u, ci, null, { mult: mm, depth, spirit: sp });
     try { c.effect && c.effect(ctx); } catch (err) { console.warn('[duel] monster effect failed', c.id, err); }
   }
   function play(b, u, plan) {
     const D = u.duel, ci = plan.inst, c = ci.def;
+    for (const f of DUEL.playHooks) f(b, u, ci, plan); // 카이바: 생명 단축의 패 / 마법 흡수 등 (사용 직전)
+    if (plan.cut && D.tribCut) { D.tribCut = Math.max(0, D.tribCut - (D.tribCutAll ? D.tribCut : plan.cut)); D.tribCutAll = false; b.text(u.x, u.y - 60, '릴리스 감소!', '#ffe0a0', 9); }
     D.hand.splice(D.hand.indexOf(ci), 1);
     if (plan.tributes.length) {
       for (const t of plan.tributes) { D.hand.splice(D.hand.indexOf(t), 1); D.grave.push(t); }
@@ -903,11 +919,12 @@
       if (!u.duel) return;
       const el = document.createElement('div'); el.className = 'duelhud';
       el.innerHTML = `<span class="dk" title="패">패<b class="h">0</b></span><span class="dk" title="덱">덱<b class="d">0</b></span><span class="dk" title="묘지">묘<b class="g">0</b></span><span class="tr" title="세트 함정"><i></i><i></i><i></i></span><span class="ex" title="패의 엑조디아 부위">엑<b class="x">0</b>/5</span>`;
+      if (u.def.duelist.noExodia) { el.querySelector('.ex').innerHTML = 'EX<b class="x">0</b>'; el.querySelector('.ex').title = '엑스트라 덱'; }
       f.querySelector('.info').appendChild(el); u.duelHud = { el, key: '' };
     },
     update(u) {
       const H = u.duelHud, D = u.duel; if (!H || !D) return;
-      const px = D.hand.filter(c => piece(c.def)).length;
+      const px = u.def.duelist.noExodia ? (D.extra ? D.extra.length : 0) : D.hand.filter(c => piece(c.def)).length;
       const key = `${D.hand.length}|${D.deck.length}|${D.grave.length}|${D.traps.length}|${D.phase}|${px}`;
       if (key === H.key) return; H.key = key;
       H.el.querySelector('.h').textContent = D.hand.length;
@@ -915,7 +932,7 @@
       H.el.querySelector('.g').textContent = D.grave.length;
       H.el.querySelectorAll('.tr i').forEach((x, i) => x.classList.toggle('on', i < D.traps.length));
       H.el.querySelector('.tr').classList.toggle('full', D.traps.length >= CFG.TRAP_SLOTS);
-      H.el.querySelector('.x').textContent = px; H.el.querySelector('.ex').classList.toggle('hot', px >= 3);
+      H.el.querySelector('.x').textContent = px; H.el.querySelector('.ex').classList.toggle('hot', !u.def.duelist.noExodia && px >= 3);
       H.el.classList.toggle('wait', D.phase === 'wait');
     },
   });
@@ -940,7 +957,7 @@
     return `<div class="skills"><div class="sh">듀얼리스트 · LP ${CFG.LP} · 덱 ${n}장</div>
       <div class="skill">드로우 → 카드 사용 → 피격/상대 스킬까지 대기를 반복. 덱 0장에서 드로우하면 패배.<br>
       몬스터 Lv5~6 릴리스1 / Lv7~8 릴리스2 / Lv9+ 릴리스3 · 함정 최대 3장(세트마다 감속, 3장이면 마법 봉쇄)<br>
-      <b style="color:#ffd040">봉인된 엑조디아 5장이 패에 모이면 즉시 승리</b><br>
+      ${D.noExodia ? (D.blurb || '') : '<b style="color:#ffd040">봉인된 엑조디아 5장이 패에 모이면 즉시 승리</b>'}<br>
       <span style="color:#a8a0c0">받는 피해 ×${CFG.LP_SCALE.toFixed(2)} (LP 환산) · 카드 피해 = ATK×${CFG.ATK_SCALE}</span></div></div>`;
   }
 
@@ -956,7 +973,7 @@
     exodia(u) { for (const id of EXO) { const D = u.duel; [D.deck, D.grave].forEach(z => { const i = z.findIndex(c => c.id === id); if (i >= 0) z.splice(i, 1); }); if (!D.hand.some(c => c.id === id)) D.hand.push(inst(id)); } },
   };
 
-  window.DUEL = { CFG, AI, makeCtx, draw, deckOut, situation, play, useMonster, checkTraps, activateTrap, reduceHand, describe, buildDeck, tribNeed, TYPE_COL, debug, testDeckSize: null };
+  window.DUEL = { planHooks: [], playHooks: [], setupHooks: [], effLv, needFor, inst, shuffle, popup, spawnSpirit, cardTag, say, sys, CFG, AI, makeCtx, draw, deckOut, situation, play, useMonster, checkTraps, activateTrap, reduceHand, describe, buildDeck, tribNeed, TYPE_COL, debug, testDeckSize: null };
 
   // ---------------- 유희 ----------------
   const FACES_Y = { front: 'right', back: 'left' };

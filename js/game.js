@@ -87,7 +87,7 @@ class Unit {
   get atkRate() { return this.st.atkRate * this.mult('atkRateMul'); }
   get reach() { return this.st.range + 20 + this.pad; }
   get pad() { return 15 * (this.size - 1); } // 큰 캐릭터 추가 반경
-  get size() { return (this.form && this.form.size) || this.def.size || 1; } // 충돌 반경 배율 (변신 시 form.size)
+  get size() { return ((this.form && this.form.size) || this.def.size || 1) * (this.shrinkK || 1); } // shrinkK: 수축(카이바) // 충돌 반경 배율 (변신 시 form.size)
   get fdef() { return this.form || (this.oni && this.def.oni ? this.def.oni.form : this.def); } // 현재 스프라이트 정의
 }
 
@@ -1663,6 +1663,8 @@ const Render = (() => {
     const LG = lungeOff(u); // 박치기 등 몸 전체가 앞으로 쏠리는 근접 공격 연출
     ctx.translate(Math.round(x + jx + LG.x), Math.round(y + bob - z + LG.y)); if (LG.r) ctx.rotate(LG.r);
     if (zk !== 1) ctx.scale(zk, zk);
+    if (u.shrinkK && u.shrinkK !== 1) ctx.scale(u.shrinkK, u.shrinkK); // 수축
+    if (u.spinT > 0) ctx.scale(Math.cos(u.spinT * 14) || 0.05, 1); // 에너미 컨트롤러: 제자리 한 바퀴
     // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
     if (u.recoil && !stone && !F) {
       const r = u.recoil, p = r.t / r.dur;
