@@ -150,8 +150,8 @@
       if (phase === 'lock') { ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * Math.min(1, t / lock); ctx.strokeStyle = '#fff4c0'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(A.x + Math.cos(A.a) * len, A.y + Math.sin(A.a) * len); ctx.stroke(); ctx.restore(); }
       if (phase === 'fire' && A.L != null) { const k = Math.max(0, 1 - t / 0.3); ctx.save(); ctx.lineCap = 'round'; const x1 = A.x + Math.cos(A.a) * A.L, y1 = A.y + Math.sin(A.a) * A.L;
-        ctx.globalAlpha = 0.4 * k; ctx.strokeStyle = '#fff0a0'; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(x1, y1); ctx.stroke();
-        ctx.globalAlpha = 0.95 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore(); }
+        ctx.globalAlpha = 0.4 * k; ctx.strokeStyle = '#fff0a0'; ctx.lineWidth = 20; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(x1, y1); ctx.stroke();
+        ctx.globalAlpha = 0.95 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.stroke(); ctx.restore(); }
       drawArm(ctx, A, phase === 'fire' ? Math.max(0, 1 - t / 0.3) : 0.9);
     }
   }
@@ -235,8 +235,8 @@
       { id: 'lmStand', name: '스탠드 전개', cd: 4 },
       { id: 'lmFreeze', name: '광역 빙결 마법', cd: 14, h: 34, delay: 1.0, fall: 0.35, after: 0.35, dur: 1.8, mult: 0.4, element: 'ice', delivery: 'ranged' },
       { id: 'lmOrder', name: '명령', cd: 11, limit: 4, spd: 430, turn: 3.2, walk: 120, walkMax: 3, mult: 2.4 },
-      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, len: 300, width: 8, mult: 0.7, element: 'light', delivery: 'ranged' },
-      { id: 'lmSpread', name: '스탠드 산개', cd: 13, n: 6, gap: 0.3, lock: 0.35, len: 360, width: 8, mult: 0.55, element: 'light', delivery: 'ranged' },
+      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, len: 300, width: 16, mult: 0.7, element: 'light', delivery: 'ranged' },
+      { id: 'lmSpread', name: '스탠드 산개', cd: 13, n: 6, gap: 0.3, lock: 0.35, len: 360, width: 16, mult: 0.55, element: 'light', delivery: 'ranged' },
     ],
     lm: { stay: 9 }, // 스탠드 전개 유지 시간(초) 뒤 호출 (또는 상대가 70 안으로 붙으면)
     extraDefs: [STAND, ARM],
