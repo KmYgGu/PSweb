@@ -5,7 +5,7 @@ const W = 360, H = 640;
 const AR = { x: 12, y: 120, w: 336, h: 410 };
 // 기본 공격 = 충돌(부딪힘) 피해: ATK x BUMP_K, 각자 atkRate 쿨타임. 근접 공격 = 무기 공격(사거리 < MELEE_RANGE 캐릭터만, 사거리 안에서 자동)
 // 근접 무기 캐릭터별 무기 스프라이트 키 (def.weapon 으로 덮어쓰기 가능)
-const WEAPON_KEY = { swordsman: 'sword', tank: 'mace', assassin: 'dagger', lancer: 'spear', berserker: 'axe', evelyn: 'wireHook', kidomusha: 'tachi', duck: 'toyHammer', galford: 'ninjato', broly: 'kiFistG', paragus: 'kiFistP' };
+const WEAPON_KEY = { swordsman: 'sword', tank: 'mace', assassin: 'dagger', lancer: 'spear', berserker: 'axe', evelyn: 'heelLeg', kidomusha: 'tachi', duck: 'duckHead', galford: 'ninjato', broly: 'kiFistG', paragus: 'kiFistP' };
 const BUMP_K = 0.85, MELEE_RANGE = 80; // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
 const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
@@ -1660,7 +1660,8 @@ const Render = (() => {
     }
     ctx.globalAlpha = alpha;
     ctx.save();
-    ctx.translate(Math.round(x + jx), Math.round(y + bob - z));
+    const LG = lungeOff(u); // 박치기 등 몸 전체가 앞으로 쏠리는 근접 공격 연출
+    ctx.translate(Math.round(x + jx + LG.x), Math.round(y + bob - z + LG.y)); if (LG.r) ctx.rotate(LG.r);
     if (zk !== 1) ctx.scale(zk, zk);
     // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
     if (u.recoil && !stone && !F) {
@@ -1697,7 +1698,7 @@ const Render = (() => {
     ctx.restore();
     ctx.globalAlpha = 1;
     if (!u.dead && u.buff('hexCurse')) drawHexagram(ctx, x, y - z, b.time);
-    if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx, y + bob - z - 20 * zk);
+    if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx + LG.x, y + bob - z - 20 * zk + LG.y);
     if (u.dead) return;
     if (u.buff('shield')) {
       const sh = u.buff('shield'), a = Math.min(1, sh.t * 2);
@@ -1984,6 +1985,20 @@ const Render = (() => {
     tachi: { w: 44, h: 9, style: 'swing', trail: '#ff6070', draw(g) { R(g, 0, 4, 9, 3, '#1e1418'); for (let i = 1; i < 9; i += 3) R(g, i, 4, 1, 3, '#a02030'); R(g, 9, 2, 2, 6, '#c8a050'); for (let i = 0; i < 31; i++) { const y = 3 - Math.round(Math.sin(i / 31 * 1.4) * 2.5); R(g, 11 + i, y + 1, 1, 2, '#d8dce8'); R(g, 11 + i, y + 1, 1, 1, '#ffffff'); R(g, 11 + i, y + 3, 1, 1, '#6a3040'); } } },
     toyHammer: { w: 26, h: 16, style: 'swing', trail: '#ffe060', draw(g) { R(g, 0, 7, 16, 2, '#e8c050'); R(g, 0, 7, 16, 1, '#fff0a0'); R(g, 14, 1, 11, 14, '#e83a3a'); R(g, 14, 1, 11, 3, '#ff8080'); R(g, 14, 1, 2, 14, '#f0f0f0'); R(g, 23, 1, 2, 14, '#f0f0f0'); R(g, 24, 12, 1, 3, '#a02020'); } },
     ninjato: { w: 36, h: 7, style: 'swing', trail: '#a8e0ff', draw(g) { R(g, 0, 2, 9, 3, '#20283a'); for (let i = 1; i < 9; i += 2) R(g, i, 2, 1, 3, '#4a6aa0'); R(g, 9, 0, 3, 7, '#30303a'); R(g, 12, 2, 22, 3, '#cfd8e4'); R(g, 12, 2, 22, 1, '#ffffff'); R(g, 34, 3, 2, 1, '#ffffff'); R(g, 13, 4, 20, 1, '#6aa8ff'); } },
+    // 오리 박치기: 무기 없음 → 오리 몸 전체가 공격 방향으로 머리부터 들이받음(lungeOff) + 머리 앞 픽셀 충격 버스트
+    duckHead: { w: 1, h: 1, style: 'lunge', lunge: 13, tilt: 0.32, burst: '#ffe060', beak: '#ff8a1a', draw() {} },
+    // 이블린 하이힐 다리: 허벅지(+x 쪽으로) → 정강이 → 하이힐. 힐 끝(뒤꿈치)에 와이어 연결
+    heelLeg: { w: 34, h: 14, style: 'swing', trail: '#ff6a5a', flip: true, sc: 1.15, oy: 10, arc: [1.25, -0.7], wire: '#ffcf8a', heelX: 24.5, heelY: 6, draw(g) {
+      R(g, 0, 3, 5, 7, '#f4d8c8'); R(g, 0, 3, 5, 1, '#ffffff'); R(g, 0, 9, 5, 1, '#d8b0a0');       // 허벅지 맨살 (절대영역)
+      R(g, 5, 3, 6, 7, '#2a2430'); R(g, 5, 3, 6, 1, '#6a5a7a'); R(g, 5, 4, 6, 1, '#3e3448');     // 스타킹 시작
+      R(g, 9, 3, 2, 7, '#c02838');                                                               // 가터 (붉은 띠)
+      R(g, 11, 4, 3, 5, '#2e2836');                                                              // 무릎
+      R(g, 14, 5, 9, 4, '#2e2836'); R(g, 14, 5, 9, 1, '#5a4e68');                               // 정강이 (가늘어짐)
+      R(g, 23, 5, 2, 3, '#2e2836');                                                              // 발목
+      R(g, 25, 4, 6, 3, '#14101a'); R(g, 25, 4, 6, 1, '#b8a8c8'); R(g, 27, 5, 2, 1, '#ffffff'); R(g, 31, 5, 2, 2, '#14101a');  // 구두 (광택) + 뾰족한 앞코
+      R(g, 26, 7, 7, 1, '#d02040');                                                              // 붉은 밑창
+      R(g, 24, 7, 1, 6, '#14101a'); R(g, 25, 7, 1, 2, '#14101a'); R(g, 24, 12, 1, 1, '#d02040'); // 가는 힐 굽 + 붉은 끝
+    } },
     kiFistG: { w: 22, h: 16, style: 'thrust', trail: '#9aff80', fist: '#7aff5a', draw(g) { fist(g, '#c88a5a', '#7aff5a'); } },
     kiFistP: { w: 22, h: 16, style: 'thrust', trail: '#c8a0ff', fist: '#b080ff', draw(g) { fist(g, '#b08060', '#b080ff'); } },
   };
@@ -2002,17 +2017,39 @@ const Render = (() => {
     return (weaponCache[k] = o);
   }
   // 무기 휘두르기 그리기: 월드 좌표 (x, y = 손 높이). u.wSwing = { t, dur, ang, k }
+  function lungeOff(u) {
+    const S = u.wSwing, W = S && WEAPONS[S.k];
+    if (!W || !W.lunge) return { x: 0, y: 0, r: 0 };
+    const p = clamp(S.t / S.dur, 0, 1), k = Math.sin(Math.PI * Math.min(1, p * 1.5)) * (p < 0.67 ? 1 : 1 - (p - 0.67) * 3);
+    return { x: Math.cos(S.ang) * W.lunge * k, y: Math.sin(S.ang) * W.lunge * k * 0.6, r: (Math.cos(S.ang) >= 0 ? 1 : -1) * W.tilt * k };
+  }
+  function drawLunge(ctx, u, x, y, S, W, p) { // 박치기: 뒤쪽 속도선 + 머리(부리) 앞 충격 버스트
+    const f = Math.cos(S.ang) >= 0 ? 1 : -1, ca = Math.cos(S.ang), sa = Math.sin(S.ang);
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y));
+    if (p < 0.55) { ctx.globalAlpha = 0.7 * (1 - p / 0.55); ctx.fillStyle = '#fff6c0';
+      for (let i = 0; i < 4; i++) { const yy = -14 + i * 7, len = 8 + (i % 2) * 5; ctx.fillRect(Math.round(-f * (14 + i * 2) - (f > 0 ? len : 0)), Math.round(yy), len, 2); } }
+    if (p > 0.2 && p < 0.65) {
+      const q = (p - 0.2) / 0.45, bx = Math.round(ca * 30 + f * 2), by = Math.round(sa * 14 - 8), rr = 4 + q * 13;
+      ctx.globalAlpha = 1 - q * 0.8;
+      for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + 0.39; const sz = i % 2 ? 3 : 4; ctx.fillStyle = i % 2 ? '#ffffff' : W.burst; ctx.fillRect(Math.round(bx + Math.cos(a) * rr) - 1, Math.round(by + Math.sin(a) * rr) - 1, sz, sz); }
+      ctx.fillStyle = W.beak; ctx.fillRect(bx - 3, by - 1, 6, 2); ctx.fillStyle = '#ffffff'; ctx.fillRect(bx - 1, by - 3, 2, 6);
+      if (q < 0.45) { ctx.globalAlpha = 0.7; ctx.fillStyle = '#ffffff'; ctx.fillRect(bx - 6, by - 4, 12, 8); ctx.fillRect(bx - 4, by - 6, 8, 12); ctx.fillStyle = W.beak; ctx.fillRect(bx - 3, by - 3, 6, 6); }
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
+  }
   function drawWeaponSwing(ctx, u, x, y) {
     const S = u.wSwing, W = WEAPONS[S.k]; if (!W) return;
+    if (W.style === 'lunge') return drawLunge(ctx, u, x, y, S, W, clamp(S.t / S.dur, 0, 1));
+    if (W.oy) y += W.oy;
     const p = clamp(S.t / S.dur, 0, 1), img = weaponCanvas(S.k);
-    const reach = Math.max(20, u.reach || 40), len = clamp(reach * 0.8, 16, 70), sc = len / W.w;
+    const reach = Math.max(20, u.reach || 40), len = W.sc ? W.w * W.sc : clamp(reach * 0.8, 16, 70), sc = len / W.w; // W.sc: 고정 크기 (몸의 일부라 사거리로 늘리지 않음)
     const side = Math.cos(S.ang) >= 0 ? 1 : -1; // 위 → 아래로 내려치기 (보는 방향 기준)
     const fade = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;
     ctx.save(); ctx.translate(Math.round(x), Math.round(y));
     let th = S.ang, off = 6;
     if (W.style === 'thrust') { off = 4 + Math.sin(Math.PI * Math.min(1, p * 1.4)) * reach * 0.35; }
     else {
-      const a0 = -1.35, a1 = 1.1, e = easeOut(Math.min(1, p * (W.fast ? 2.2 : W.heavy ? 1.3 : 1.7)));
+      const a0 = W.arc ? W.arc[0] : -1.35, a1 = W.arc ? W.arc[1] : 1.1, e = easeOut(Math.min(1, p * (W.fast ? 2.2 : W.heavy ? 1.3 : 1.7)));
       th = S.ang + side * (a0 + (a1 - a0) * e);
       // 호 궤적 (무기 끝 반경)
       const r = off + len, aS = S.ang + side * a0, aE = th;
@@ -2025,9 +2062,22 @@ const Render = (() => {
       ctx.globalAlpha = 0.5 * fade; ctx.strokeStyle = W.trail; ctx.lineWidth = W.fist ? 4 : 3;
       ctx.beginPath(); ctx.moveTo(Math.cos(th) * 4, Math.sin(th) * 4); ctx.lineTo(Math.cos(th) * (off + len * 0.9), Math.sin(th) * (off + len * 0.9)); ctx.stroke();
     }
+    if (W.wire) { // 힐 끝(뒤꿈치) 위치를 기록 → 와이어가 그 궤적을 따라 끌려옴
+      const hx = off + ((W.heelX || 25) + 1) * sc, hy = (side < 0 ? -1 : 1) * (W.heelY || 5) * sc, c = Math.cos(th), s2 = Math.sin(th);
+      const tip = [Math.round(hx * c - hy * s2), Math.round(hx * s2 + hy * c)];
+      (S.pts || (S.pts = [])).push(tip); if (S.pts.length > 14) S.pts.shift();
+      const back = [Math.round(-Math.cos(S.ang) * 18), Math.round(-Math.sin(S.ang) * 18 - 6)]; // 와이어 끝: 몸 뒤쪽
+      ctx.globalAlpha = 0.95 * fade; ctx.fillStyle = W.wire;
+      const pts = [back, ...S.pts];
+      for (let i = 0; i < pts.length - 1; i++) { // 픽셀 와이어 (1px 점 이어 찍기, 살짝 출렁임)
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 2));
+        for (let j = 0; j < n; j++) { const k = j / n, sag = Math.sin((i + k) * 1.3 + p * 9) * (i === 0 ? 3 : 1); ctx.fillRect(Math.round(x0 + (x1 - x0) * k), Math.round(y0 + (y1 - y0) * k + sag), 2, 1); }
+      }
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(tip[0] - 1, tip[1] - 1, 2, 2); // 연결점 반짝임
+    }
     if (W.fist) glowAt(ctx, Math.cos(th) * (off + len * 0.85), Math.sin(th) * (off + len * 0.85), 10 * Math.max(sc, 0.8), W.fist, 0.6 * fade); // 기 오라
     ctx.globalAlpha = fade; ctx.rotate(th);
-    if (side < 0 && W.style === 'swing') ctx.scale(1, -1); // 왼쪽 향함: 날 방향 유지
+    if (side < 0 && (W.style === 'swing' || W.flip)) ctx.scale(1, -1); // 왼쪽 향함: 날/머리 방향 유지
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(img, off, -img.height * sc / 2, img.width * sc, img.height * sc);
     ctx.restore(); ctx.globalAlpha = 1;
