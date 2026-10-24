@@ -300,12 +300,12 @@
       this.n++; if (this.n % CHECK_EVERY === 0) R.check.push([Math.round(b.time * 1000) / 1000, hashB(b)]);
       if (b.time < this.nextS) return; this.nextS = b.time + 0.1;
       R.samples.push([Math.round(b.time * 100) / 100, ...teamHp(b)]);
-      for (const u of b.u) if (!u.summon && u.dead && !this.dead.has(u)) { this.dead.add(u); this.ev('kill', 1 - u.team, 45); }
+      for (const u of b.u) if (!u.summon && u.dead && !this.dead.has(u)) { this.dead.add(u); this.ev('kill', 1 - u.team, 8); }
       if (b.stageId !== this.stg) { this.stg = b.stageId; this.ev('stage', -1, 20); }
       for (const t of b.texts) { if (this.seen.has(t)) continue; this.seen.add(t); const s = String(t.txt || '');
         let hit = false; for (const [re, k, w] of HL_KW) if (re.test(s)) { this.ev(k, -1, w); hit = true; break; }
         if (!hit && t.size >= 14 && b.time - this.bigT > 0.6) { this.bigT = b.time; this.ev('big', -1, 8); } }
-      if (b.over && !this.overSeen) { this.overSeen = true; this.ev('end', b.winner ? b.winner.team : -1, 30); }
+      if (b.over && !this.overSeen) { this.overSeen = true; this.ev('end', b.winner ? b.winner.team : -1, 4); }
     },
     skill(u, sk) {
       if (!this.cur) return; const sl = (u.skills || []).find(s => s.name === sk);
@@ -315,7 +315,7 @@
     sys(t) { /* 스테이지 교체는 stageId 변화로 감지 */ },
     finish() { const R = this.cur; if (!R || R.done) return; R.dur = Math.round(this.b.time * 100) / 100; R.done = true; R.hl = computeHL(R); R.names = [pick[0].name, pick[1].name]; R.stageName = STAGE_DEFS[stageId].name; this.last = R; },
   };
-  function computeHL(R) { // 하이라이트: 8초 창마다 점수 (피해량 + 이벤트 가중치 + 역전), 상위 3개 (겹침 30% 미만)
+  function computeHL(R) { // 하이라이트: 8초 창마다 점수 (피해량 + 이벤트 가중치 + 역전), 상위 3개 (서로 겹치지 않음, 처치·결정타 가중치 낮음)
     const S = R.samples, D = R.dur, W = Math.min(8, Math.max(3, D)), out = [];
     if (!S.length) return [{ s: 0, e: D, score: 0, team: -1, why: [] }];
     const cand = [];
@@ -324,15 +324,17 @@
       const add = (k, w, team) => { why[k] = (why[k] || 0) + w; sc += w; if (team >= 0) cred[team] += w; };
       let lead0 = null, lmin = 9, lmax = -9;
       for (let i = 1; i < S.length; i++) { const [t, h0, h1] = S[i]; if (t < s || t > e) continue; const p = S[i - 1];
-        const d0 = Math.max(0, p[1] - h0), d1 = Math.max(0, p[2] - h1); if (d0) add('dmg', d0 * 100, 1); if (d1) add('dmg', d1 * 100, 0);
+        const fk = t > D - 1.5 ? 0.35 : 1; // 경기 마지막 1.5초(결정타) 피해는 35%만 반영 → 끝 장면 쏠림 방지
+        const d0 = Math.max(0, p[1] - h0), d1 = Math.max(0, p[2] - h1); if (d0) add('dmg', d0 * 100 * fk, 1); if (d1) add('dmg', d1 * 100 * fk, 0);
         const L = h0 - h1; if (lead0 === null) lead0 = L; lmin = Math.min(lmin, L); lmax = Math.max(lmax, L); }
       if (lead0 !== null && lmin < -0.05 && lmax > 0.05 && lmax - lmin > 0.2) add('comeback', 25, -1);
       for (const [t, k, team, w] of R.ev) if (t >= s && t <= e) add(k, w, team);
       cand.push({ s, e, score: sc, team: cred[0] === cred[1] ? -1 : cred[0] > cred[1] ? 0 : 1, why });
     }
     cand.sort((a, b) => b.score - a.score);
-    for (const c of cand) { if (out.length >= 3) break; if (out.length && c.score < out[0].score * 0.3) break;
-      if (out.some(o => Math.min(o.e, c.e) - Math.max(o.s, c.s) > W * 0.3)) continue; out.push(c); }
+    const gap = 0; // 하이라이트끼리 겹치지 않음 (맞닿는 건 허용)
+    for (const c of cand) { if (out.length >= 3) break; if (out.length && c.score < out[0].score * 0.15) break;
+      if (out.some(o => c.s < o.e + gap && o.s < c.e + gap)) continue; out.push(c); }
     for (const c of out) for (const [t, k] of R.ev) if ((k === 'kill' || k === 'end' || k === 'stage' || k === 'castle' || k === 'exodia') && t >= c.s && t <= c.e + 1 && t > c.e - 2) c.e = Math.min(D, Math.max(c.e, t + 1.8)); // 결정적 순간 직후 여운까지
     return out.map(c => ({ s: Math.round(c.s * 10) / 10, e: Math.round(Math.min(D, c.e) * 10) / 10, score: Math.round(c.score), team: c.team, why: Object.entries(c.why).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => HL_NAME[k] || k) }));
   }
