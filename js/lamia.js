@@ -89,7 +89,7 @@
         b.text(u.x, u.y - 66, why, '#bfe8ff', 10); b.say(u, 'orderFail'); };
       s.action = { type: 'lmHunt', step(dt) { // 빠르게 튕겨 다니며 상대를 쫓음 (방향 전환 제한 → 피할 수 있음)
         if (s.lmOrder !== O) { s.action = null; return; }
-        if (O.grab) { const a = angTo(e, s); s.x = e.x + Math.cos(a) * 22; s.y = e.y + Math.sin(a) * 10; return; }
+        if (O.grab) { const a = O.holdA = angTo(u, e); const q = b.clampPos(e.x + Math.cos(a) * 22, e.y + Math.sin(a) * 10, s.pad); s.x = q.x; s.y = q.y; s.facing = Math.cos(a) > 0 ? -1 : 1; return; } // 라미아 반대편에서 붙잡고 있음
         const t = angTo(s, e), df = Math.atan2(Math.sin(t - ang), Math.cos(t - ang)); ang += Math.max(-S.turn * dt, Math.min(S.turn * dt, df));
         let nx = s.x + Math.cos(ang) * S.spd * dt, ny = s.y + Math.sin(ang) * S.spd * dt; const q = b.clampPos(nx, ny, s.pad, s);
         if (q.x !== nx) ang = Math.PI - ang; if (q.y !== ny) ang = -ang; s.x = q.x; s.y = q.y; s.facing = Math.cos(ang) >= 0 ? 1 : -1;
@@ -97,7 +97,8 @@
         if (Math.random() < 0.6) b.fx.push({ type: 'after', x: s.x, y: s.y, def: s.fdef, back: false, facing: s.facing, t: 0, dur: 0.2 });
         if (!e.dead && !e.airborne && !e.hidden && dist(s, e) < 15 * (s.size + e.size) + 6) {
           if (e.counter || e.evadeT > b.time) { b.damage(s, e, 1, {}); return; }
-          O.grab = true; e.action = null; e.statuses = e.statuses.filter(x => x.id !== 'pin'); b.applyStatus(e, 'pin', S.limit + 3, s);
+          O.grab = true; O.holdA = angTo(u, e); e.action = null; // 스탠드는 상대 너머(라미아 반대쪽)로 돌아가 붙잡음 → 라미아 접근 경로 확보
+           e.statuses = e.statuses.filter(x => x.id !== 'pin'); b.applyStatus(e, 'pin', S.limit + 3, s);
           b.text(e.x, e.y - 70, '붙잡힘!', '#bfe8ff', 11); b.say(u, 'orderOk'); b.text(u.x, u.y - 70, '후후훗', '#ffe8b0', 10);
         }
       } };
@@ -106,9 +107,16 @@
         if (u.lmHurt && !O.slap) return fail('…쓸모없긴.');
         if (!O.grab) { if (O.t >= S.limit || s.dead || e.dead) fail('제때 못 잡다니, 한심하군.'); return; }
         if (e.dead) { s.lmOrder = null; s.action = null; u.action = null; return; }
+        { O.holdA = angTo(u, e); const q = b.clampPos(e.x + Math.cos(O.holdA) * 22, e.y + Math.sin(O.holdA) * 10, s.pad); s.x = q.x; s.y = q.y; s.push = null; } // 스탠드 붙잡기 위치 고정 (넉백 등으로 스탠드 동작이 풀려도 유지)
         const d = dist(u, e); O.wt = (O.wt || 0) + dt; // 여유롭게 걸어가기 (최대 S.walkMax초, 막히면 실패)
         if (O.wt > S.walkMax) return fail('…귀찮게 하는군.');
-        if (d > 30) { const st = Math.min(d - 30, S.walk * dt); u.x += (e.x - u.x) / d * st; u.y += (e.y - u.y) / d * st; u.facing = e.x >= u.x ? 1 : -1; u.moving = true; u.walk += dt * 18; return; }
+        const reach = 15 * (u.size + e.size) + 6; // 뺨 사거리 = 몸 접촉 거리 + 6 (큰 상대도 충돌에 밀려 못 닿는 일 없게)
+        if (d > reach) { // 붙잡힌 상대 쪽으로 (스탠드 반대편 지점 목표), 장애물은 미끄러지듯 우회
+          const ha = O.holdA ?? angTo(u, e), tx = e.x - Math.cos(ha) * (reach - 8), ty = e.y - Math.sin(ha) * (reach - 8) * 0.5, td = Math.hypot(tx - u.x, ty - u.y) || 1, st = Math.min(td, S.walk * dt);
+          const ox = u.x, oy = u.y; u.x += (tx - u.x) / td * st; u.y += (ty - u.y) / td * st;
+          if (b.blockAt(u.x, u.y - 4, u.pad + 4)) { u.x = ox; u.y = oy; const pa = Math.atan2(ty - oy, tx - ox) + (O.side || (O.side = Math.random() < 0.5 ? 1 : -1)) * Math.PI / 2; u.x += Math.cos(pa) * st; u.y += Math.sin(pa) * st; if (b.blockAt(u.x, u.y - 4, u.pad + 4)) { u.x = ox; u.y = oy; O.side = -O.side; } }
+          const q = b.clampPos(u.x, u.y, u.pad, u); u.x = q.x; u.y = q.y;
+          u.facing = e.x >= u.x ? 1 : -1; u.moving = true; u.walk += dt * 18; return; }
         O.slap = true; s.lmOrder = null; s.action = null; u.action = null; b.releasePin(e);
         b.damage(u, e, u.st.atk * S.mult, { element: 'blunt', delivery: 'melee', big: true, color: '#ffd0d0', airHit: true });
         b.slashFx(e.x, e.y - 30, u.facing, '#ffffff', 1.2); b.text(e.x, e.y - 66, '짝!', '#ffffff', 14); b.hitstop(0.08); b.shake(1.5);

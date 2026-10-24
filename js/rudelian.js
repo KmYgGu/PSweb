@@ -104,7 +104,7 @@
         : { x: u.x + ox, y: u.y + oy, vx: rand(-40, 40), vy: rand(-90, -20), life: 0.55, max: 0.55, color: col[i % col.length], size: 2 }); }
   }
   SKILLS.hellFire = {
-    desc: '몸이 분해되며 사라져(무적) 상대와 중거리의 다른 곳으로 순간이동합니다. 붉은 오라 속에서 몸이 다시 나타나고, 상대를 향해 화염구를 한 줄(직렬)로 일제히 발사합니다(유도 없음).',
+    desc: '몸이 분해되며 사라져(무적) 상대와 중거리의 다른 곳으로 순간이동합니다. 붉은 오라 속에서 몸이 다시 나타나고, 상대를 향해 화염구를 가로 한 줄(나란히)로 일제히 발사합니다(유도 없음).',
     canUse: (u, e, d) => d < 340,
     use(u, e, b, slot) {
       const S = slot, dest = pickSpot(b, u, e, S) || { x: u.x, y: u.y };
@@ -121,7 +121,8 @@
           const a = Math.atan2(t.y - 18 - (u.y - 24), t.x - u.x); u.facing = Math.cos(a) >= 0 ? 1 : -1;
           for (let i = 0; i < S.n; i++) {
             b.shoot(u, { angle: a, spd: S.spd, dmg: u.st.atk * S.mult, kind: 'rdHF', hit: { element: 'fire', delivery: 'ranged', color: '#ffae6b' } });
-            Object.assign(b.proj[b.proj.length - 1], { x: u.x + Math.cos(a) * (12 - i * S.space), y: u.y - 24 + Math.sin(a) * (12 - i * S.space), life: S.life + i * S.space / S.spd, r: 8, draw: drawHF });
+            const off = (i - (S.n - 1) / 2) * S.space; // 발사 방향에 수직으로 가로 한 줄
+            Object.assign(b.proj[b.proj.length - 1], { x: u.x + Math.cos(a) * 12 - Math.sin(a) * off, y: u.y - 24 + Math.sin(a) * 12 + Math.cos(a) * off, life: S.life, r: 8, draw: drawHF });
           }
           b.ring(u.x + Math.cos(a) * 12, u.y - 24 + Math.sin(a) * 12, 4, 18, 0.25, '#ffb05a');
         });
@@ -245,7 +246,7 @@
     skills: [
       { id: 'hellInferno', name: '헬 인페르노', cd: 11, wind: 0.35, R0: 150, dur: 1.3, spin: 3.6, s0: 48, s1: 10, m0: 3.0, m1: 0.6, element: 'fire', delivery: 'ranged' },
       { id: 'darkParallel', name: '다크 패럴', cd: 6, n: 3, gap: 0.2, v0: 760, vMin: 110, decel: 2.4, life: 1.8, mult: 1.0, pullR: 60, pull: 55, element: 'dark', element2: 'fire', delivery: 'ranged' },
-      { id: 'hellFire', name: '헬 파이어', cd: 10, out: 0.35, gap: 0.2, aura: 0.4, dMin: 140, dMax: 200, n: 5, space: 20, spd: 430, life: 1.4, mult: 0.75, element: 'fire', delivery: 'ranged' },
+      { id: 'hellFire', name: '헬 파이어', cd: 10, out: 0.35, gap: 0.2, aura: 0.4, dMin: 140, dMax: 200, n: 5, space: 18, spd: 430, life: 1.4, mult: 0.75, element: 'fire', delivery: 'ranged' },
       { id: 'deepBloodEye', name: '딥 블러드 아이 섀도우', cd: 13, wind: 0.3, dur: 0.8, turns: 1.5, len: 320, width: 10, tick: 0.1, mult: 0.9, element: 'dark', delivery: 'ranged' },
     ],
     // 패시브 블러드 엣지: js/rudelian.js (근접 공격 방어 무시 + 무시한 만큼 자기 체력 차감)
