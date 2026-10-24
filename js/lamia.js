@@ -235,8 +235,8 @@
       { id: 'lmStand', name: '스탠드 전개', cd: 4 },
       { id: 'lmFreeze', name: '광역 빙결 마법', cd: 14, h: 34, delay: 1.0, fall: 0.35, after: 0.35, dur: 1.8, mult: 0.4, element: 'ice', delivery: 'ranged' },
       { id: 'lmOrder', name: '명령', cd: 11, limit: 4, spd: 430, turn: 3.2, walk: 120, walkMax: 3, mult: 2.4 },
-      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, len: 300, width: 16, mult: 0.7, element: 'light', delivery: 'ranged' },
-      { id: 'lmSpread', name: '스탠드 산개', cd: 13, n: 6, gap: 0.3, lock: 0.35, len: 360, width: 16, mult: 0.55, element: 'light', delivery: 'ranged' },
+      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, len: 300, width: 16, mult: 2.0, element: 'light', delivery: 'ranged' },
+      { id: 'lmSpread', name: '스탠드 산개', cd: 13, n: 6, gap: 0.3, lock: 0.35, len: 360, width: 16, mult: 2.6, element: 'light', delivery: 'ranged' },
     ],
     lm: { stay: 9 }, // 스탠드 전개 유지 시간(초) 뒤 호출 (또는 상대가 70 안으로 붙으면)
     extraDefs: [STAND, ARM],
