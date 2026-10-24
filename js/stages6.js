@@ -84,7 +84,7 @@
     },
     targets(b) {
       const K = b.claw, L = K.dolls.filter(d => !d.grab).map(d => ({ doll: d }));
-      for (const u of b.u) if (!u.dead && !u.hidden && !u.airborne && !u.climb && !u.inTrain) L.push({ u });
+      for (const u of b.u) if (!u.dead && !u.hidden && !u.airborne && !u.climb && !u.inTrain && !u.schPin) L.push({ u });
       return L;
     },
     pos: t => t.doll ? t.doll : t.u,
@@ -126,7 +126,7 @@
       const K = b.claw, C = K.C, Cr = K.crane;
       const cand = [];
       for (const d of K.dolls) if (!d.grab && Math.hypot(d.x - Cr.x, d.y - Cr.y) < C.grabR) cand.push({ doll: d, k: Math.hypot(d.x - Cr.x, d.y - Cr.y) });
-      for (const u of b.u) if (!u.dead && !u.hidden && !u.airborne && !u.climb && !u.inTrain && Math.hypot(u.x - Cr.x, u.y - Cr.y) < C.grabR + u.pad) cand.push({ u, k: Math.hypot(u.x - Cr.x, u.y - Cr.y) - (Cr.tgt.u === u ? 6 : 0) });
+      for (const u of b.u) if (!u.dead && !u.hidden && !u.airborne && !u.climb && !u.inTrain && !u.schPin && Math.hypot(u.x - Cr.x, u.y - Cr.y) < C.grabR + u.pad) cand.push({ u, k: Math.hypot(u.x - Cr.x, u.y - Cr.y) - (Cr.tgt.u === u ? 6 : 0) });
       cand.sort((a, c) => a.k - c.k); const g = cand[0];
       if (!g && early) return false;
       Cr.state = 'lift'; Cr.t = 0; b.ring(Cr.x, Cr.y, 3, C.grabR, 0.25, '#ffd0ec'); K.stats = K.stats || { doll: 0, fighter: 0, miss: 0 };

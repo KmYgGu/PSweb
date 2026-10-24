@@ -9,6 +9,9 @@
 (() => {
   const TAU = Math.PI * 2, ID = 'schurf', IMG = 'assets/Schurf/';
   const angTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  // 주 상대: 소환수가 아닌 상대 캐릭터 본체 (가장 가까운 생존자). 듀얼리스트 LP는 코드베이스 환산(DUEL_LP_SCALE)으로 일반 HP 단위로 비교
+  const mainFoe = (b, u) => { const L = b.u.filter(o => o.team !== u.team && !o.summon && !o.dead); if (!L.length) return b.enemy(u); let m = L[0]; for (const o of L) if (dist(u, o) < dist(u, m)) m = o; return m; };
+  const realHp = o => o.def.duelist ? o.hp / (window.DUEL_LP_SCALE || 1) : o.hp;
   const turn = (a, t, m) => { const d = Math.atan2(Math.sin(t - a), Math.cos(t - a)); return a + Math.max(-m, Math.min(m, d)); };
   const form = (k, name, scale, size, src) => ({ id: ID + '@' + k, name, color: '#c8a870', size, sprite: { src, scale, foot: 1 } }); // src 는 전체 경로 문자열 (영상용 에셋 수집기가 경로를 찾음)
   const FORMS = { rabbit: form('rabbit', '토끼', 3, 1, 'assets/Schurf/forms/rabbit.png'), snake: form('snake', '뱀', 3, 1, 'assets/Schurf/forms/snake.png'), octopus: form('octopus', '문어', 3, 1, 'assets/Schurf/forms/octopus.png'),
@@ -28,9 +31,9 @@
   }
   SKILLS.absorb = {
     desc: '상대의 액티브 스킬 하나를 무작위로 흡수해 자신의 능력치로 똑같이 사용합니다. 흡수한 스킬을 가진 동안 흡수는 쓸 수 없고, 최대 체력의 20%를 잃을 때마다 흡수가 초기화됩니다(듀얼리스트 상대: 카드 날리기).',
-    canUse: (u, e, d) => !u.schCopy && d < 380 && !u.schForm,
-    use(u, e, b, slot) {
-      myBase(u);
+    canUse: (u, e, d, b) => !u.schCopy && !u.schForm && dist(u, mainFoe(b, u)) < 380,
+    use(u, e0, b, slot) {
+      myBase(u); const e = mainFoe(b, u);
       b.streak(e.x, e.y - 20, u.x, u.y - 20, '#e8d8a8', 8, 0.4); b.glow(u.x, u.y - 22, 26, '#e8d8a8', 0.4);
       b.windup(u, slot.wind, () => {
         if (u.dead || b.over || u.schCopy) return;
@@ -40,7 +43,7 @@
         u.skills.push(copy); u.skillT.push(0.6); u.schCopy = copy;
         b.text(u.x, u.y - 70, '흡수! ' + copy.name, '#ffe8b0', 11);
         b.shock(u.x, u.y - 20, 6, 40, '#e8d8a8', 0.4, 4);
-        b.hooks.onSystem && b.hooks.onSystem(`슈르프가 ${e.def.name}의 '${copy.name}'을(를) 흡수했습니다!`);
+        b.hooks.onSystem && b.hooks.onSystem(pick ? `슈르프가 ${e.def.name}에게서 스킬 '${copy.name}' 흡수!` : `슈르프가 ${e.def.name}에게서 카드의 힘 흡수! ('${copy.name}')`);
       });
     },
   };
@@ -192,8 +195,10 @@
   // ---------- 4. 최후의 변신 ----------
   SKILLS.schFinal = {
     desc: '(1회) 몸을 회전시키며 돌진해 회전 공격으로 상대를 띄운 뒤 드래곤으로 변신합니다. 제자리에 고정된 채 체력을 소모하며 상대 쪽으로 불을 계속 뿜고, 체력이 다하면 쓰러집니다.',
-    canUse: (u, e, d, b) => !u.schFinalUsed && d < 260 && (u.hp < u.maxHp * u.def.sch.fin.hpAt || (e.hp / (e.def.duelist ? 10 : 1)) < u.st.atk * 4),
-    use(u, e, b, slot) {
+    canUse: (u, e0, d0, b) => { if (u.schFinalUsed) return false; const D = u.def.sch.fin, e = mainFoe(b, u); if (!e || e.dead || dist(u, e) > 260) return false;
+      if (u.hp < u.maxHp * D.hpAt) return true;
+      return realHp(e) < u.st.atk * D.lethalK && u.hp > D.drain * 1.5; }, // 마무리: 상대 실제 남은 체력이 회전 공격+짧은 불길로 확실히 끝날 만큼일 때만
+    use(u, e0, b, slot) { const e = mainFoe(b, u);
       const D = u.def.sch.fin; u.schFinalUsed = true; endForm(b, u, true); if (u.schGlue) { u.schGlue.e.schGlueBy = null; u.schGlue = null; }
       b.glow(u.x, u.y - 20, 40, '#ffb060', 0.5);
       const A = { type: 'schSpin', t: 0, hit: false, trail: '#f0d8a0', step(dt) {
@@ -209,11 +214,12 @@
     },
   };
   function dragon(b, u) {
-    const D = u.def.sch.fin; setForm(b, u, 'dragon', 1e9); u.schForm.aim = angTo(u, b.enemy(u)); u.schForm.tick = 0;
+    const D = u.def.sch.fin; setForm(b, u, 'dragon', 1e9); u.schForm.aim = angTo(u, mainFoe(b, u)); u.schForm.tick = 0;
+    u.air = null; u.push = null; u.pull = null; u.v = null; u.schPin = { x: u.x, y: u.y, stage: b.stageId }; // 제자리 고정
     b.shock(u.x, u.y - 30, 10, 80, '#ff6a3a', 0.6, 6); b.shake(3); b.burst(u.x, u.y - 30, '#ff8a3a', 24);
     b.hooks.onSystem && b.hooks.onSystem('슈르프가 드래곤으로 변신했습니다!');
-    u.action = { type: 'schDragon', step(dt) { // 제자리 고정, 회전 속도 제한된 조준으로 계속 불 뿜기
-      const F = u.schForm, e = b.enemy(u); if (!F || u.dead) return;
+    u.schDragonA = u.action = { type: 'schDragon', step(dt) { // 제자리 고정, 회전 속도 제한된 조준으로 계속 불 뿜기
+      const F = u.schForm, e = mainFoe(b, u); if (!F || u.dead) return;
       if (e && !e.dead) F.aim = turn(F.aim, angTo(u, e), D.turn * dt);
       u.facing = Math.cos(F.aim) >= 0 ? 1 : -1;
       const c = Math.cos(F.aim), s = Math.sin(F.aim); let L = 0;
@@ -239,6 +245,12 @@
     ctx.restore();
   }
 
+  const oStep = Battle.prototype.step; Battle.prototype.step = function (dt) { // 드래곤: 모든 이동(넉백·충돌·지형·끌어당김 등) 뒤에 위치를 되돌림
+    oStep.call(this, dt);
+    for (const u of this.u) { const P = u.schPin; if (!P || u.dead) continue;
+      if (P.stage !== this.stageId) { P.stage = this.stageId; P.x = u.x; P.y = u.y; } // 루인 등 스테이지 교체: 새 위치에서 다시 고정
+      u.x = P.x; u.y = P.y; u.push = null; u.pull = null; u.v = null; if (u.air) u.air = null; }
+  };
   window.__sch = { setForm, dragon, FORMS }; // 테스트용
 
   // ---------- 공용 훅 ----------
@@ -251,6 +263,7 @@
         if (u.dead) { if (u.schGlue) { u.schGlue.e.schGlueBy = null; u.schGlue = null; } continue; }
         const lost = Math.floor((u.maxHp - u.hp) / (u.maxHp * u.def.sch.unit)); // 체력 단위 감소 → 흡수 초기화
         if (lost > (u.schLost || 0)) { u.schLost = lost; if (u.schCopy) dropCopy(b, u, '흡수 초기화'); }
+        if (u.schDragonA && u.action !== u.schDragonA) u.action = u.schDragonA; // 다른 효과가 행동을 지워도 드래곤 불길 유지
         if (u.schForm) formStep(b, u, b.enemy(u), dt);
         if (u.schGlue) glueStep(b, u, dt);
       }
@@ -285,7 +298,7 @@
       snake: { every: 1.2, len: 220, spd: 560, dur: 0.4, mult: 1.0, poisonDur: 4, poisonK: 0.25 },
       octo: { spd: 230, glue: 3 },
       bear: { reach: 150, mult: 1.8, stun: 1.5, dr: 0.75 },
-      fin: { hpAt: 0.3, spin: 0.7, spinSpd: 300, spinMult: 1.4, lift: 1.0, turn: 5, len: 190, half: 0.22, tick: 0.15, mult: 0.55, drain: 45 },
+      fin: { hpAt: 0.3, lethalK: 2.5, spin: 0.7, spinSpd: 300, spinMult: 1.4, lift: 1.0, turn: 5, len: 190, half: 0.22, tick: 0.15, mult: 0.55, drain: 45 },
     },
     extraDefs: Object.values(FORMS),
     sprite: { src: IMG + 'front.png', back: IMG + 'back.png', scale: 3, foot: 1 },
