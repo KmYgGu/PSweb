@@ -23,9 +23,9 @@
   STAGE_DEFS.snake = {
     name: '뱀꼬리 맵', desc: '외곽 벽이 없어 반대편으로 이어짐! (돌진 중에만 외곽이 벽) 중앙 구역엔 움직이는 벽. 뱀먹이를 먹으면 나를 따라오는 분신(기본 공격만 따라 함)이 생기지만, 내 꼬리(분신)에 부딪히면 즉사!', theme: 'snake',
     // zone: 움직이는 벽의 이동 범위, wall: 벽 크기/속도, food: 먹이 { first, gap, max(동시), r }, tail: 분신 { gap(경로 간격 px), max(최대 수), grace(생성 후 무해 시간), mult(복사 기본 공격 배율), safe(머리 바로 뒤 무해 분신 수) }
-    snake: { zone: { x: 110, y: 270, w: 140, h: 110 }, wall: { w: 44, h: 16, spd: 55 }, food: { first: 2.5, gap: 3.5, max: 2, r: 7, ai: 0.6 },
-      tail: { gap: 26, max: 5, grace: 1.2, mult: 0.35, safe: 1, hitR: 9 } },
-    spawns: [{ x: 90, y: 210 }, { x: 270, y: 450 }],
+    snake: { zones: [{ x: 110, y: 270, w: 140, h: 110, ww: 44, wh: 16 }, { x: 12, y: 136, w: 72, h: 66, ww: 30, wh: 12 }, { x: 276, y: 136, w: 72, h: 66, ww: 30, wh: 12 }, { x: 12, y: 462, w: 72, h: 66, ww: 30, wh: 12 }, { x: 276, y: 462, w: 72, h: 66, ww: 30, wh: 12 }], wall: { spd: 55 }, food: { first: 2.5, gap: 3.5, max: 2, r: 7 },
+      tail: { gap: 26, max: 5, grace: 1.2, mult: 0.35, safe: 1, hitR: 9, steal: 1.0 } },
+    spawns: [{ x: 110, y: 240 }, { x: 250, y: 420 }],
   };
 
   // ===================== 농구장 =====================
@@ -197,11 +197,9 @@
     match: st => !!st.snake,
     init(b) {
       const S = b.stage.snake; if (!S) return;
-      const Z = S.zone, Wl = S.wall;
-      const wall = { x: Z.x + Z.w / 2 - Wl.w / 2, y: Z.y + Z.h / 2 - Wl.h / 2, w: Wl.w, h: Wl.h, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, cracks: [[], [], []], rubble: [], windows: [], solid: true, snWall: true, draw: SN.drawWall };
-      const a = rand(0, TAU); wall.vx = Math.cos(a) * Wl.spd; wall.vy = Math.sin(a) * Wl.spd;
-      b.buildings.push(wall);
-      b.sn = { S, wall, food: [], nextT: S.food.first };
+      const walls = S.zones.map(Z => { const w = { x: Z.x + Z.w / 2 - Z.ww / 2, y: Z.y + Z.h / 2 - Z.wh / 2, w: Z.ww, h: Z.wh, Z, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, cracks: [[], [], []], rubble: [], windows: [], solid: true, snWall: true, draw: SN.drawWall };
+        const a = rand(0, TAU); w.vx = Math.cos(a) * S.wall.spd; w.vy = Math.sin(a) * S.wall.spd; b.buildings.push(w); return w; });
+      b.sn = { S, walls, food: [], nextT: S.food.first };
       for (const u of b.u) SN.track(u, true);
       Object.assign(b.stats, { snFood: 0, snBite: 0 });
     },
@@ -216,11 +214,12 @@
     },
     step(b, dt) {
       const D = b.sn; if (!D) return;
-      const S = D.S, Z = S.zone, Wl = D.wall;
-      // ---- 움직이는 벽 (정해진 구역 안에서만) ----
+      const S = D.S;
+      // ---- 움직이는 벽 (각자 정해진 구역 안에서만: 중앙 + 네 모서리) ----
+      for (const Wl of D.walls) { const Z = Wl.Z;
       Wl.x += Wl.vx * dt; Wl.y += Wl.vy * dt;
       if (Wl.x < Z.x) { Wl.x = Z.x; Wl.vx = Math.abs(Wl.vx); } if (Wl.x + Wl.w > Z.x + Z.w) { Wl.x = Z.x + Z.w - Wl.w; Wl.vx = -Math.abs(Wl.vx); }
-      if (Wl.y < Z.y) { Wl.y = Z.y; Wl.vy = Math.abs(Wl.vy); } if (Wl.y + Wl.h > Z.y + Z.h) { Wl.y = Z.y + Z.h - Wl.h; Wl.vy = -Math.abs(Wl.vy); }
+      if (Wl.y < Z.y) { Wl.y = Z.y; Wl.vy = Math.abs(Wl.vy); } if (Wl.y + Wl.h > Z.y + Z.h) { Wl.y = Z.y + Z.h - Wl.h; Wl.vy = -Math.abs(Wl.vy); } }
       for (const u of b.u) if (!u.dead && !u.airborne && !u.hidden) b.resolveBuildings(u, true);
       // ---- 순환 (캐릭터·소환수·투사체) ----
       for (const u of b.u) { if (u.dead) continue; u.x = wrapX(u.x); u.y = wrapY(u.y); }
@@ -251,16 +250,19 @@
           const a = Math.atan2(c.y - u.y, c.x - u.x), df = Math.atan2(Math.sin(a - u.dir), Math.cos(a - u.dir)); if (Math.abs(df) < 1.2) { steer(u, a + (df > 0 ? -1.9 : 1.9), 7, dt); break; } }
       }
       for (const u of mains(b)) if (u.dead && u.snT && u.snT.tail.length) u.snT.tail = [];
-      // ---- AI: 뱀먹이 노리기 (가끔, 가까운 먹이) ----
-      for (const u of mains(b)) { if (u.dead) continue; const A = u.snAI || (u.snAI = { mode: 'free', t: rand(0.5, 1.5) }); A.t -= dt;
-        if (A.t <= 0) { A.mode = Math.random() < S.food.ai ? 'food' : 'free'; A.t = rand(1.5, 3.0); }
-        if (A.mode !== 'food' || !D.food.length || !canSteer(u) || (u.snT && u.snT.tail.length >= S.tail.max)) continue;
-        let f = D.food[0]; for (const g of D.food) if (Math.hypot(g.x - u.x, g.y - u.y) < Math.hypot(f.x - u.x, f.y - u.y)) f = g;
-        if (Math.hypot(f.x - u.x, f.y - u.y) < 220) steer(u, Math.atan2(f.y - u.y, f.x - u.x), 5, dt); }
+      // ---- 상대 분신 강탈: 닿은 분신 1개만 내 꼬리 끝으로 (최대치면 소멸) ----
+      for (const u of mains(b)) { if (u.dead || u.hidden || u.airborne) continue;
+        for (const o of mains(b)) { if (o.team === u.team || !o.snT || !o.snT.tail.length) continue;
+          const i = o.snT.tail.findIndex(c => c.age > S.tail.steal && tdist(u.x, u.y, c.x, c.y) < S.tail.hitR + 4 + u.pad); if (i < 0) continue;
+          const c = o.snT.tail.splice(i, 1)[0], T = SN.track(u); b.stats.snSteal = (b.stats.snSteal || 0) + 1;
+          b.glow(c.x, c.y - 16, 30, '#ffffff', 0.35); b.ring(c.x, c.y - 10, 3, 22, 0.3, TEAM_COL[u.team]);
+          if (T.tail.length < S.tail.max) { T.tail.push({ x: c.x, y: c.y, age: 0, face: c.face, stolen: true }); b.text(u.x, u.y - 66, `분신 강탈! (${T.tail.length})`, '#ffe27a', 11); sys(b, `${u.def.name}: ${o.def.name}의 분신 강탈!`); }
+          else { b.text(u.x, u.y - 66, '분신 파괴!', '#ffe27a', 10); b.burst(c.x, c.y - 16, '#c8e8b0', 10); }
+          break; } }
       // ---- 뱀먹이 ----
       D.nextT -= dt;
       if (D.nextT <= 0 && D.food.length < S.food.max) { D.nextT = S.food.gap; let x, y, n = 0;
-        do { x = rand(AR.x + 24, AR.x + AR.w - 24); y = rand(AR.y + 40, AR.y + AR.h - 20); n++; } while (n < 25 && (b.u.some(u => Math.hypot(u.x - x, u.y - y) < 50) || (x > Z.x - 10 && x < Z.x + Z.w + 10 && y > Z.y - 10 && y < Z.y + Z.h + 10)));
+        do { x = rand(AR.x + 24, AR.x + AR.w - 24); y = rand(AR.y + 40, AR.y + AR.h - 20); n++; } while (n < 25 && (b.u.some(u => Math.hypot(u.x - x, u.y - y) < 50) || S.zones.some(Z => x > Z.x - 10 && x < Z.x + Z.w + 10 && y > Z.y - 10 && y < Z.y + Z.h + 10)));
         D.food.push({ x, y, t: 0 }); }
       for (const f of D.food) f.t += dt;
       for (let i = D.food.length - 1; i >= 0; i--) { const f = D.food[i];
@@ -280,7 +282,7 @@
       const S = st.snake; if (!S) return;
       const T = 16;
       for (let j = 0; j * T < AR.h; j++) for (let i = 0; i * T < AR.w; i++) { x.fillStyle = (i + j) % 2 ? '#1f3a26' : '#234029'; x.fillRect(AR.x + i * T, AR.y + j * T, T, T); }
-      const Z = S.zone; x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(Z.x, Z.y, Z.w, Z.h); x.strokeStyle = 'rgba(200,230,120,0.35)'; x.setLineDash([3, 3]); x.strokeRect(Z.x + 0.5, Z.y + 0.5, Z.w - 1, Z.h - 1); x.setLineDash([]);
+      for (const Z of S.zones) { x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(Z.x, Z.y, Z.w, Z.h); x.strokeStyle = 'rgba(200,230,120,0.35)'; x.setLineDash([3, 3]); x.strokeRect(Z.x + 0.5, Z.y + 0.5, Z.w - 1, Z.h - 1); x.setLineDash([]); }
     },
     drawUnder(ctx, b, thumb) {
       const D = b.sn; if (!D) return;
