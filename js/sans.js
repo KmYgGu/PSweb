@@ -51,10 +51,17 @@
   };
 
   // ---------- 뼈 줄 (세로 줄이 가로로 쓸고 지나감) ----------
-  function boneWave(b, u, o) { // o: { dir, blue, gap, mult, kr, spd, delay }
-    const L = AR.x + 6, R = AR.x + AR.w - 6, T = AR.y + 24, B = AR.y + AR.h - 4;
-    const gapH = o.gap ? 46 : 0, gy = o.gap ? rand(T + 30, B - 30 - gapH) : 0;
-    objs(b).push({ k: 'bone', src: u, x: o.dir > 0 ? L : R, dir: o.dir, spd: o.spd || 210, y0: T, y1: B, gy, gh: gapH, blue: !!o.blue, mult: o.mult, kr: o.kr, hit: new Set(), t: -(o.delay || 0), still: new Map() });
+  // 방향: axis 'x' = 세로 줄이 좌우로 이동, 'y' = 가로 줄이 위아래로 이동. dir +1 = 오른쪽/아래로
+  function boneWave(b, u, o) { // o: { axis, dir, blue, gap, mult, kr, spd, delay }
+    const L = AR.x + 6, R = AR.x + AR.w - 6, T = AR.y + 24, B = AR.y + AR.h - 4, ax = o.axis || 'x';
+    const c0 = ax === 'x' ? T : L, c1 = ax === 'x' ? B : R, gapH = o.gap ? 46 : 0, gy = o.gap ? rand(c0 + 30, c1 - 30 - gapH) : 0;
+    const p = ax === 'x' ? (o.dir > 0 ? L : R) : (o.dir > 0 ? T : B);
+    objs(b).push({ k: 'bone', src: u, axis: ax, p, dir: o.dir, spd: o.spd || 210, c0, c1, gy, gh: gapH, blue: !!o.blue, mult: o.mult, kr: o.kr, hit: new Set(), t: -(o.delay || 0), still: new Map() });
+  }
+  // 방향 고르기: 상하/좌우 중 상대와 더 많이 떨어진 축을 60%, 나머지 축 40% (시드 난수), 샌즈 쪽에서 상대 쪽으로
+  function pickDir(b, u, t) {
+    const dx = Math.abs(t.x - u.x), dy = Math.abs(t.y - u.y), main = dx >= dy ? 'x' : 'y', ax = rand(0, 1) < 0.6 ? main : (main === 'x' ? 'y' : 'x');
+    const d = ax === 'x' ? t.x - u.x : t.y - u.y; return { axis: ax, dir: d >= 0 ? 1 : -1 };
   }
   function blaster(b, u, tgt, n, mult, kr) {
     const a0 = rand(0, TAU);
@@ -66,12 +73,13 @@
     const L = objs(b); if (!L.length) return;
     for (const O of L) { O.t += dt; if (O.t < 0) continue; const u = O.src; if (u.dead) { O.dead = true; continue; }
       if (O.k === 'bone') {
-        O.x += O.dir * O.spd * dt; if (O.x < AR.x - 10 || O.x > AR.x + AR.w + 10) { O.dead = true; continue; }
+        O.p += O.dir * O.spd * dt; const lo = O.axis === 'x' ? AR.x : AR.y, hi = O.axis === 'x' ? AR.x + AR.w : AR.y + AR.h; if (O.p < lo - 10 || O.p > hi + 10) { O.dead = true; continue; }
         for (const o of b.foes(u)) { if (o.hidden || O.hit.has(o)) continue;
-          if (O.blue && !o.dead) { const ahead = (O.x - o.x) * -O.dir; // 파란 뼈 반응 AI: 다가오면 멈춤 (가끔 실패)
+          if (O.blue && !o.dead) { const ahead = (O.p - (O.axis === 'x' ? o.x : o.y)) * -O.dir; // 파란 뼈 반응 AI: 다가오면 멈춤 (가끔 실패)
             if (ahead > 0 && ahead < 70 && !O.still.has(o)) { const ok = rand(0, 1) < 0.7; O.still.set(o, ok); if (ok) { const s = o.status('snStill'); if (!s) o.statuses.push({ id: 'snStill', t: 0.45, dur: 0.45, src: u, tickT: 0 }); } } }
-          if (o.airborne || Math.abs(o.x - O.x) > 7 + o.pad) continue;
-          if (O.gh && o.y > O.gy && o.y < O.gy + O.gh) continue;
+          const oa = O.axis === 'x' ? o.x : o.y, oc = O.axis === 'x' ? o.y : o.x;
+          if (o.airborne || Math.abs(oa - O.p) > 7 + o.pad) continue;
+          if (O.gh && oc > O.gy && oc < O.gy + O.gh) continue;
           if (O.blue && !o.snMoving) continue; // 파란 뼈: 움직일 때만
           O.hit.add(o); b.damage(u, o, u.st.atk * O.mult, { element: 'blunt', delivery: 'ranged', color: O.blue ? '#7ab0ff' : '#ffffff' }); addKR(b, u, o, O.kr); }
       } else if (O.k === 'gb') {
@@ -86,9 +94,9 @@
   // ---------- 스킬 ----------
   const sl = (u, id) => u.skills.find(s => s.id === id);
   SKILLS.snBones = { desc: '뼈 줄이 한쪽 끝에서 반대쪽으로 쓸고 지나갑니다. 줄 중간의 빈틈으로 빠져나가거나 점프로 피할 수 있습니다. 맞으면 업보(KR) 누적.',
-    canUse: (u, e, d) => d < 420, use(u, e, b, s) { const t = foeOf(b, u); boneWave(b, u, { dir: t.x >= u.x ? 1 : -1, gap: true, mult: s.mult, kr: s.kr, spd: s.spd }); } };
+    canUse: (u, e, d) => d < 420, use(u, e, b, s) { const t = foeOf(b, u); boneWave(b, u, { ...pickDir(b, u, t), gap: true, mult: s.mult, kr: s.kr, spd: s.spd }); } };
   SKILLS.snBlue = { desc: '파란 뼈 줄이 쓸고 지나갑니다. 움직이는 상대만 맞습니다(가만히 있으면 안전). 맞으면 업보 누적.',
-    canUse: (u, e, d) => d < 420, use(u, e, b, s) { const t = foeOf(b, u); boneWave(b, u, { dir: t.x >= u.x ? 1 : -1, blue: true, mult: s.mult, kr: s.kr, spd: s.spd }); } };
+    canUse: (u, e, d) => d < 420, use(u, e, b, s) { const t = foeOf(b, u); boneWave(b, u, { ...pickDir(b, u, t), blue: true, mult: s.mult, kr: s.kr, spd: s.spd }); } };
   SKILLS.snGaster = { desc: '가스터 블래스터 2~4개가 여러 방향에서 나타나 입을 벌린 뒤(0.55초) 직선 광선을 쏩니다. 조준선이 보이니 피할 수 있습니다.',
     canUse: (u, e, d) => d < 400, use(u, e, b, s) { const t = foeOf(b, u); blaster(b, u, t, 2 + Math.floor(rand(0, 3)), s.mult, s.kr); } };
   SKILLS.snGravity = { desc: '상대의 영혼을 파랗게 물들여 가장 가까운 벽에 내리꽂고(벽 충돌 피해), 곧바로 뼈 공격이 이어집니다.',
@@ -100,7 +108,7 @@
       b.streak(o.x, o.y - 18, q.x, q.y - 18, '#5a8aff', 10, 0.3); b.text(o.x, o.y - 66, '파란 영혼!', '#7ab0ff', 10);
       b.later(0.28, () => { if (o.dead || b.over) return; playSfx('wall'); b.shake(2.5); b.debris(o.x, o.y, 8); b.ring(o.x, o.y - 10, 3, 24, 0.3, '#7ab0ff');
         b.damage(u, o, u.st.atk * s.mult, { element: 'blunt', big: true, color: '#7ab0ff' }); addKR(b, u, o, s.kr); b.stun(o, s.stun, u);
-        boneWave(b, u, { dir: o.x > AR.x + AR.w / 2 ? 1 : -1, gap: true, mult: 0.9, kr: 2, spd: 260 }); }); } };
+        { const side = m === L || m === R ? 'x' : 'y', toHi = m === R || m === Bm; boneWave(b, u, { axis: side, dir: toHi ? 1 : -1, gap: true, mult: 0.9, kr: 2, spd: 260 }); } /* 박힌 벽 쪽으로 */ }); } };
   SKILLS.snTele = { desc: '위험하면 순간이동으로 멀리 피합니다.',
     canUse: (u, e, d, b) => (b.threatTo(u) && d < 220) || (d < 80 && (!u.sn || u.sn.st < 50)),
     use(u, e0, b) { const e = foeOf(b, u); let best = null, bd = -1;
@@ -114,7 +122,7 @@
     u.action = { type: 'snFinal', step(dt) { t -= dt; const o = foeOf(b, u); if (!o || o.dead) { u.action = null; return; }
       if (t > 0) return; t = 0.45; n++;
       if (n > 10) { u.action = null; Z.final = false; Z.finalDone = true; sleep(b, u, ST.finalSleep); return; }
-      if (n % 2) blaster(b, u, o, 2, 1.0, 1); else boneWave(b, u, { dir: n % 4 ? 1 : -1, blue: n % 3 === 0, gap: n % 3 !== 0, mult: 0.8, kr: 1, spd: 240 }); } };
+      if (n % 2) blaster(b, u, o, 2, 1.0, 1); else boneWave(b, u, { axis: (n / 2) % 2 ? 'y' : 'x', dir: n % 8 < 4 ? 1 : -1, blue: n % 3 === 0, gap: n % 3 !== 0, mult: 0.8, kr: 1, spd: 240 }); } };
   }
 
   STAGE_HOOKS.push({
@@ -131,8 +139,10 @@
     },
     drawOver(ctx, b) {
       for (const O of objs(b)) { if (O.t < 0) continue;
-        if (O.k === 'bone') { ctx.save(); ctx.fillStyle = O.blue ? '#5a9aff' : '#f4f4f8'; const x = Math.round(O.x);
-          for (let y = O.y0; y < O.y1; y += 7) { if (O.gh && y > O.gy && y < O.gy + O.gh) continue; ctx.fillRect(x - 1, y - 14, 3, 12); ctx.fillRect(x - 2, y - 15, 5, 2); }
+        if (O.k === 'bone') { ctx.save(); ctx.fillStyle = O.blue ? '#5a9aff' : '#f4f4f8'; const P = Math.round(O.p);
+          for (let c = O.c0; c < O.c1; c += 7) { if (O.gh && c > O.gy && c < O.gy + O.gh) continue;
+            if (O.axis === 'x') { ctx.fillRect(P - 1, c - 14, 3, 12); ctx.fillRect(P - 2, c - 15, 5, 2); } // 서 있는 뼈
+            else { ctx.fillRect(c - 1, P - 12, 3, 12); ctx.fillRect(c - 2, P - 13, 5, 2); } }
           ctx.restore(); }
         else { const open = O.t >= O.tele, k = clamp(O.t / O.tele, 0, 1); ctx.save();
           if (!open) { ctx.globalAlpha = 0.25 + 0.3 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); ctx.setLineDash([]); }
