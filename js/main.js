@@ -143,7 +143,7 @@
   });
 
   function label(u) { return pick[0] === pick[1] ? `${u.def.name}(P${u.team + 1})` : u.def.name; }
-  function teamLabel(t) { const m = battle.u.filter(u => u.team === t); return m.length > 1 ? m.map(u => u.def.name).join(' & ') + (pick[0] === pick[1] ? `(P${t + 1})` : '') : label(m[0]); }
+  function teamLabel(t) { const m = battle.u.filter(u => u.team === t && !u.summon); return m.length > 1 ? m.map(u => u.def.name).join(' & ') + (pick[0] === pick[1] ? `(P${t + 1})` : '') : label(m[0]); }
   // 로그: 새 줄이 아래에서 들어오며 기존 줄을 위로 밀어 올림 (최대 3줄 표시, 위쪽은 잘림)
   const LOG_LINE = 20, LOG_KEEP = 4;
   // 전체 전투 로그: 표시되는 모든 로그 줄을 전투 시간과 함께 기록 (최대 5000줄)
@@ -197,7 +197,7 @@
   function showResult(w) {
     $('#winImg').src = Sprites.get(w.fdef).portrait;
     $('#winImg').style.borderColor = TEAM_COL[w.team];
-    const fl = battle.fallen, rt = battle.resultText && battle.resultText(label), duo = battle.u.filter(u => u.team === w.team).length > 1;
+    const fl = battle.fallen, rt = battle.resultText && battle.resultText(label), duo = battle.u.filter(u => u.team === w.team && !u.summon).length > 1;
     $('#winTxt').textContent = rt || (fl ? `${label(fl)} 크레바스에 추락! ${teamLabel(w.team)} 승리!` : `${teamLabel(w.team)} 승리!`);
     $('#winTxt').style.fontSize = (fl || rt || duo) ? '17px' : '';
     $('#winSub').textContent = `${STAGE_DEFS[stageId].name} · 전투 시간 ${battle.time.toFixed(1)}초 · 남은 체력 ${Math.ceil(w.hp)}/${w.maxHp}`;
