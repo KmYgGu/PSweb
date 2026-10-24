@@ -835,6 +835,12 @@
     },
   });
 
+  // 상단 UI 위 오버레이: 몬스터 몸체만 (카드 팝업·이름·광채·효과 제외)
+  STAGE_HOOKS.push({ match: () => false, drawAboveUI(ctx, b) {
+    for (const u of b.u) { const D = u.duel; if (!D) continue; for (const s of D.spirits) drawSpirit(ctx, b, s, true);
+      if (D.kuri && !u.dead) { const x = u.x + Math.cos(b.time * 3) * 20, y = u.y - 30 + Math.sin(b.time * 6) * 3, sp = DuelSprites.get('kuriboh'); if (sp) { ctx.save(); ctx.globalAlpha = 0.9; ctx.drawImage(sp.c, Math.round(x - sp.w / 2), Math.round(y - sp.h / 2)); ctx.restore(); } } }
+    if (b.duelSpirits) for (const s of b.duelSpirits) drawSpirit(ctx, b, s, true);
+  } });
   // ---------------- 그리기 (필터/블러 없음, 스프라이트는 미리 렌더한 캔버스) ----------------
   function drawPop(ctx, b, u, p, i) {
     const k = p.t / p.dur, a = k < 0.12 ? k / 0.12 : k > 0.78 ? (1 - k) / 0.22 : 1;
@@ -863,11 +869,11 @@
     if (p.line && i === 0) { ctx.font = 'bold 9px "Galmuri11", "Malgun Gothic", sans-serif'; ctx.strokeText(p.line, x, y - 18); ctx.fillStyle = '#fff6c0'; ctx.fillText(p.line, x, y - 18); }
     ctx.restore();
   }
-  function drawSpirit(ctx, b, s) {
+  function drawSpirit(ctx, b, s, bodyOnly) {
     const k = s.t / s.dur, a = (k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1);
     const sp = s.spr && DuelSprites.get(s.spr);
     ctx.save(); ctx.globalAlpha = a * 0.92; ctx.translate(Math.round(s.x), Math.round(s.y + (1 - Math.min(1, k * 5)) * 8));
-    ctx.fillStyle = 'rgba(255,236,190,0.22)'; ctx.beginPath(); ctx.ellipse(0, 4, s.big ? 30 : 18, s.big ? 10 : 6, 0, 0, TAU); ctx.fill();
+    if (!bodyOnly) { ctx.fillStyle = 'rgba(255,236,190,0.22)'; ctx.beginPath(); ctx.ellipse(0, 4, s.big ? 30 : 18, s.big ? 10 : 6, 0, 0, TAU); ctx.fill(); }
     if (sp) {
       const sc = sp.s, w = sp.w * sc, h = sp.h * sc; let f = (s.face || 1) < 0 ? -1 : 1; if (s.flip) f = -f;
       const lunge = k > 0.25 && k < 0.45 ? Math.sin((k - 0.25) / 0.2 * Math.PI) * 6 : 0; // 공격 동작

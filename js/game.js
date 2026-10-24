@@ -2470,13 +2470,14 @@ const Render = (() => {
     c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, c2.canvas.width, c2.canvas.height);
     if (!b || !hudH) return;
     const L = b.u.filter(u => !u.hidden && (u.y + u.ky - b.airZ(u)) - 90 * (u.size || 1) * (1 + b.airZ(u) / 110) < hudH + 6);
-    if (!L.length) return;
+    const HK = STAGE_HOOKS.filter(h => h.drawAboveUI); // 듀얼 몬스터 등 (몸체 스프라이트만)
+    if (!L.length && !HK.length) return;
     c2.setTransform(res, 0, 0, res, 0, 0); c2.imageSmoothingEnabled = false;
     c2.save(); c2.beginPath(); c2.rect(0, 0, W, hudH); c2.clip();
     if (b.zoom) { const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); c2.translate(z.x, z.y); c2.scale(k, k); c2.translate(-z.x, -z.y); }
     if (b._shk) c2.translate(b._shk[0], b._shk[1]);
     b._topPass = true;
-    try { for (const u of L.sort((a, c) => a.y - c.y)) { drawUnit(c2, u, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
+    try { for (const u of L.sort((a, c) => a.y - c.y)) { drawUnit(c2, u, b); c2.globalAlpha = 1; } for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
   return { draw, thumb, glowAt, drawTopUnits };
 })();
