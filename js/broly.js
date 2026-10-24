@@ -20,7 +20,7 @@
   // ===================== 캐릭터 정의 =====================
   const PARAGUS = {
     id: 'paragus', name: '파라가스', gender: 'male', color: '#8a6ac8',
-    stats: { hp: 327, atk: 15.4, spd: 235, range: 46, atkRate: 0.85, def: 6.2 },
+    stats: { hp: 370, atk: 17, spd: 235, range: 46, atkRate: 0.85, def: 7.5 },
     attack: { element: 'blunt', delivery: 'melee' }, // 지팡이
     resist: { dark: 0.9, light: 1.15, slash: 1.1 },
     statusResist: { confusion: 0.3 },
@@ -59,7 +59,7 @@
   };
   const BROLY = {
     id: 'broly', name: '브로리', gender: 'male', color: '#5ad07a',
-    stats: { hp: 541, atk: 19.2, spd: 220, range: 52, atkRate: 0.8, def: 12.3 },
+    stats: { hp: 610, atk: 21.5, spd: 220, range: 52, atkRate: 0.8, def: 14 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { blunt: 0.85, light: 0.9, elec: 1.2 },
     statusResist: { stun: 0.2 },

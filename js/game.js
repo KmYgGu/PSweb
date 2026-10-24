@@ -6,7 +6,9 @@ const AR = { x: 12, y: 120, w: 336, h: 410 };
 // 기본 공격 = 충돌(부딪힘) 피해: ATK x BUMP_K, 각자 atkRate 쿨타임. 근접 공격 = 무기 공격(사거리 < MELEE_RANGE 캐릭터만, 사거리 안에서 자동)
 // 근접 무기 캐릭터별 무기 스프라이트 키 (def.weapon 으로 덮어쓰기 가능)
 const WEAPON_KEY = { swordsman: 'sword', tank: 'mace', assassin: 'dagger', lancer: 'spear', berserker: 'axe', evelyn: 'heelLeg', kidomusha: 'tachi', duck: 'duckHead', galford: 'ninjato', broly: 'kiFistG', paragus: 'kiFistP' };
-const BUMP_K = 0.85, MELEE_RANGE = 80; // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
+const BUMP_K = 0.85, MELEE_RANGE = 80;
+// 원거리 공통(v2 밸런스): 사거리 ≥ MELEE_RANGE 캐릭터(듀얼리스트 포함)는 적과 부딪히면 혼자 더 멀리 튕겨 나감
+const RANGED_PUSH = { sep: 1.6, boost: 1.4, aim: 0.85 }; // sep: 위치 분리 배율, boost: 충돌 가속(일반 0.45), aim: 정반대 방향으로 꺾는 비율 // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
 const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
 const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
@@ -755,6 +757,13 @@ class Battle {
     b.dir = fixAngle(Math.atan2(vb[1], vb[0]) + rand(-0.2, 0.2));
     a.kx -= nx * 5; a.ky -= ny * 5; b.kx += nx * 5; b.ky += ny * 5;
     a.boost = Math.max(a.boost, 0.45); b.boost = Math.max(b.boost, 0.45); // 충돌 직후 가속
+    if (!ally) for (const [u, s] of [[a, -1], [b, 1]]) if ((u.st.range || 0) >= MELEE_RANGE && !u.airborne) { // 원거리 공통: 혼자 더 멀리 밀려남
+      const ax = nx * s, ay = ny * s, cur = u.dir, away = Math.atan2(ay, ax);
+      u.dir = fixAngle(cur + Math.atan2(Math.sin(away - cur), Math.cos(away - cur)) * RANGED_PUSH.aim);
+      u.x += ax * push * (RANGED_PUSH.sep - 1); u.y += ay * push * (RANGED_PUSH.sep - 1);
+      u.boost = Math.max(u.boost, RANGED_PUSH.boost); u.kx += ax * 4; u.ky += ay * 4;
+      if (u.v) { const sp = Math.hypot(u.v[0], u.v[1]) * RANGED_PUSH.sep; u.v = [Math.cos(u.dir) * sp, Math.sin(u.dir) * sp]; }
+    }
     if (impact > 420) this.shake(1.5);
     for (const u of [a, b]) { const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; }
     // 기본 공격 = 충돌 피해: 모든 캐릭터, 상대와 부딪히면 각자 쿨타임(1/atkRate)마다 (아군 제외)
@@ -1154,6 +1163,7 @@ class Battle {
     // 속성 / 전달 방식 배율
     const em = this.elemMult(tgt, o);
     dmg *= em;
+    if (tgt.def.takenMul) { const T = tgt.def.takenMul; dmg *= (o.delivery === 'melee' ? T.melee : T.ranged) ?? 1; } // 캐릭터별 받는 피해 배율 (광전사: 원거리/스킬 피해에 더 약함)
     dmg *= tgt.mult('dmgTaken') * tgt.smult('dmgTaken') * src.smult('dmgDealt') * src.mult('dmgDealt'); // 버프 dmgDealt (아이돌 무대 팬심 등)
     for (const s of [...tgt.statuses]) { const d = STATUS_DEFS[s.id]; if (d && d.onDamaged) dmg *= d.onDamaged(tgt, this, s, o) ?? 1; }
     dmg *= 1 + Math.max(0, this.time - RAMP_START) * RAMP_RATE; // 장기전 방지: RAMP_START초 이후 피해 점증

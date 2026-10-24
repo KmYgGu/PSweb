@@ -303,6 +303,7 @@ const CHARACTERS = [
     id: 'berserker', name: '광전사', gender: 'male', color: '#e07a5a',
     stats: { hp: 1150, atk: 42, spd: 270, range: 50, atkRate: 1.0, def: 20 },
     attack: { element: 'slash', delivery: 'melee' },
+    takenMul: { melee: 1.2, ranged: 2.2 }, // v2 밸런스: 받는 피해 증가 (근접 ×1.2, 원거리·스킬·기타 ×2.2) - 멀리서 깎이면 약함
     resist: { fire: 0.8, blunt: 0.85, ice: 1.35 },
     statusResist: { stun: 0.4, weaken: 0.3 },
     skills: [{ id: 'rage', name: '분노 폭발', cd: 10 }],
