@@ -44,6 +44,27 @@
       </div>
     </div>
 
+    <!-- 리플레이 뷰어 -->
+    <div id="rpTop" class="hidden"><span class="rpbadge">● 리플레이</span><span id="rpWarn"></span></div>
+    <div id="rpBar" class="hidden">
+      <span id="rpTime">0:00.0 / 0:00.0</span>
+      <div id="rpScrub"><div class="trk"><div id="rpFill"></div></div><div id="rpMarks"></div><div id="rpHead"></div></div>
+    </div>
+    <div id="rpCtl" class="hidden">
+      <button id="rpBack" title="처음으로">⏮</button><button id="rpPlay" title="재생/일시정지">▶</button>
+      <button data-rs="0.5">0.5x</button><button data-rs="1" class="on">1x</button><button data-rs="2">2x</button>
+      <button id="rpHl" class="hl" title="최고의 플레이">★</button><button id="rpA" title="구간 시작">A</button><button id="rpB" title="구간 끝">B</button>
+      <button id="rpSv" title="저장">저장</button><button id="rpX" title="닫기">✕</button>
+    </div>
+    <div id="rpSave" class="hidden">
+      <div class="rsh">리플레이 저장 (.psreplay)</div>
+      <button id="rpSvHl">★ 하이라이트 구간</button>
+      <button id="rpSvSeg">A~B 구간</button>
+      <button id="rpSvFull">전체 경기</button>
+    </div>
+    <div id="rpBanner" class="hidden"><div class="rpbt" id="rpBTitle">최고의 플레이</div><img id="rpBImg" alt=""><div class="rpbn" id="rpBName"></div><div class="rpbw" id="rpBWhy"></div></div>
+    <div id="rpToast" class="hidden"></div>
+
     <!-- 캐릭터 선택 -->
     <div id="select">
       <h1>픽셀 오토 배틀</h1>
@@ -57,6 +78,7 @@
         <button id="rnd" class="sub">랜덤</button>
         <button id="start" class="main" disabled>전투 시작</button>
       </div>
+      <button id="rpLoad" class="rpload" type="button">📂 리플레이 열기</button><input id="rpFile" type="file" accept=".psreplay,.json,application/json" hidden>
     </div>
 
     <!-- 스테이지 선택 -->
@@ -75,6 +97,7 @@
         <div id="winSub"></div>
         <button id="again" class="main">다시 싸우기</button>
         <button id="reselect" class="sub">다시 고르기</button>
+        <div class="rprow"><button id="rpOpen" class="sub">▶ 리플레이</button><button id="rpPotg" class="sub">★ 최고의 플레이</button></div>
         <button id="logBtn" class="sub">전투 로그</button>
       </div>
     </div>

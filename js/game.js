@@ -289,10 +289,11 @@ class Battle {
   }
   impact(x, y, ang, color, tier = 0, element = 'blunt') {
     // 짧은 간격의 다단 공격은 문양 수와 카메라 반응을 제한한다.
-    if (this.visualFx.filter(f => f.type === 'impact').length >= 18) return;
+    const IQ = this._impQ || (this._impQ = []); while (IQ.length && IQ[0] < this.time - 0.28) IQ.shift(); // 개수 제한은 게임 시간 기준 (리플레이 재현성)
+    if (IQ.length >= 18) return; IQ.push(this.time);
     this.visualFx.push({ type: 'impact', x, y, ang, color, tier, element, t: 0, dur: tier ? 0.28 : 0.18 });
-    if (tier && this.visualTime >= this.impactReady) {
-      this.impactReady = this.visualTime + 0.14;
+    if (tier && this.time >= this.impactReady) { // 게임 시간 기준 (리플레이 재현성: 실시간 프레임과 무관)
+      this.impactReady = this.time + 0.14;
       this.hitstop(tier === 2 ? 0.055 : 0.035);
       this.shake(tier === 2 ? 2.2 : 1.2);
       this.zoomAt(x, y, tier === 2 ? 0.035 : 0.018);

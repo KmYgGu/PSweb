@@ -177,3 +177,40 @@ img { image-rendering: pixelated; }
 .duelhud .ex b { color: #f0e0a0; margin: 0 1px; }
 .duelhud .ex.hot b { color: #ffd040; }
 .duelhud .ex.hot { color: #ffb040; }
+
+/* ---------- 리플레이 ---------- */
+#result .rprow { display: flex; gap: 8px; width: 100%; }
+#result .rprow .sub { flex: 1; font-size: 13px; }
+#rpPotg { background: #5a4a1e; color: #ffe27a; }
+.rpload { display: block; margin: 8px auto 0; height: 30px; padding: 0 14px; border-radius: 6px; font-size: 12px; background: #2e3346; color: #c9cee0; box-shadow: 0 2px 0 #14151f; }
+#rpTop { position: absolute; left: 6px; top: 114px; display: flex; gap: 6px; align-items: center; pointer-events: none; z-index: 6; }
+.rpbadge { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: rgba(200,40,60,.85); color: #fff; letter-spacing: 1px; }
+#rpWarn { font-size: 10px; color: #ffd27a; text-shadow: 0 1px 0 #000; }
+#rpBar { position: absolute; left: 0; top: 508px; width: 360px; height: 32px; padding: 3px 10px 0; background: linear-gradient(rgba(20,22,34,0), rgba(20,22,34,.85) 40%); z-index: 6; }
+#rpTime { position: absolute; right: 10px; top: -2px; font-size: 10px; color: #dfe3f0; text-shadow: 0 1px 0 #000; font-variant-numeric: tabular-nums; }
+#rpScrub { position: absolute; left: 10px; right: 10px; top: 12px; height: 18px; cursor: pointer; touch-action: none; }
+#rpScrub .trk { position: absolute; left: 0; right: 0; top: 7px; height: 4px; background: #3a3f56; border-radius: 2px; overflow: hidden; }
+#rpFill { height: 100%; width: 0; background: #ffe27a; }
+#rpMarks { position: absolute; inset: 0; pointer-events: none; }
+#rpMarks .hlb { position: absolute; top: 4px; height: 10px; background: rgba(255,170,60,.35); border-radius: 2px; }
+#rpMarks .hlb.best { background: rgba(255,210,60,.55); box-shadow: 0 0 0 1px #ffd75e inset; }
+#rpMarks .ab { position: absolute; top: 2px; height: 14px; border: 1px dashed #7ae0ff; border-radius: 2px; }
+#rpMarks .mk { position: absolute; top: 0; width: 2px; height: 18px; margin-left: -1px; background: #7ae0ff; }
+#rpMarks .mk::after { content: attr(data-k); position: absolute; top: -11px; left: -3px; font-size: 9px; color: #7ae0ff; }
+#rpHead { position: absolute; top: 3px; width: 6px; height: 12px; margin-left: -3px; background: #fff; border-radius: 2px; box-shadow: 0 1px 0 #000; }
+#rpCtl { position: absolute; left: 0; top: 610px; width: 360px; height: 26px; padding: 0 6px; display: flex; gap: 3px; justify-content: space-between; align-items: center; z-index: 6; }
+#rpCtl button { flex: 1; min-width: 0; height: 24px; font-size: 12px; border-radius: 4px; background: #34394f; color: #c9cee0; box-shadow: 0 2px 0 #1a1c28; padding: 0; }
+#rpCtl button.on { background: #ffe27a; color: #3a2e10; }
+#rpCtl button.hl { color: #ffd75e; }
+#rpCtl button:disabled { opacity: .4; }
+#rpSave { position: absolute; right: 8px; bottom: 34px; width: 180px; padding: 8px; border-radius: 8px; background: #262a3c; border: 2px solid #ffd75e; display: flex; flex-direction: column; gap: 6px; z-index: 8; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+#rpSave .rsh { font-size: 11px; color: #9aa0b8; text-align: center; }
+#rpSave button { height: 32px; border-radius: 5px; font-size: 13px; font-weight: bold; background: #3a4058; color: #eef0f6; box-shadow: 0 2px 0 #14151f; }
+#rpSave button:disabled { opacity: .4; cursor: default; }
+#rpBanner { position: absolute; left: 30px; top: 230px; width: 300px; padding: 14px 10px 12px; border-radius: 10px; text-align: center; background: rgba(20,18,30,.88); border: 3px solid #ffd75e; z-index: 7; animation: rpban 2.2s ease-out both; pointer-events: none; }
+#rpBanner .rpbt { font-size: 22px; font-weight: 900; color: #ffe27a; letter-spacing: 2px; text-shadow: 0 2px 0 #6a4b1a; }
+#rpBanner img { width: 64px; height: 64px; margin: 8px auto 4px; display: block; image-rendering: pixelated; border: 2px solid #ffd75e; border-radius: 6px; background: #1a1c28; }
+#rpBanner .rpbn { font-size: 15px; font-weight: bold; color: #fff; }
+#rpBanner .rpbw { font-size: 11px; color: #ffcf8a; margin-top: 4px; }
+@keyframes rpban { 0% { opacity: 0; transform: scale(1.25); } 12% { opacity: 1; transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+#rpToast { position: absolute; left: 50%; top: 470px; transform: translateX(-50%); padding: 5px 10px; border-radius: 5px; background: rgba(20,18,30,.9); color: #fff; font-size: 12px; white-space: nowrap; z-index: 9; pointer-events: none; }
