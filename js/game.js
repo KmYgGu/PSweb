@@ -524,7 +524,7 @@ class Battle {
       if (!u.air.sfx) { u.air.sfx = 1; playSfx('jump'); }
       u.air.t += dt;
       if (u.air.fling) { const F = u.air.fling, k = easeInOut(clamp(u.air.t / u.air.dur, 0, 1)); u.x = F.x0 + (F.x1 - F.x0) * k; u.y = F.y0 + (F.y1 - F.y0) * k; }
-      if (u.air.t >= u.air.dur) { const ride = u.air.ride; u.air = null; u.padCd = this.time; if (!ride) this.landShock(u); } // ride(블레이드 탑승): 착지 충격 없음
+      if (u.air.t >= u.air.dur) { const ride = u.air.ride || u.air.noLand; u.air = null; u.padCd = this.time; if (!ride) this.landShock(u); } // ride(블레이드 탑승): 착지 충격 없음
       return;
     }
     for (const p of this.stage.pads || []) {
@@ -758,6 +758,7 @@ class Battle {
     if (a.v) a.v = [va[0], va[1]]; if (b.v) b.v = [vb[0], vb[1]]; // 빙판: 충돌은 즉시 반영
     b.dir = fixAngle(Math.atan2(vb[1], vb[0]) + rand(-0.2, 0.2));
     a.kx -= nx * 5; a.ky -= ny * 5; b.kx += nx * 5; b.ky += ny * 5;
+    for (const u of [a, b]) { const kk = Math.hypot(u.kx, u.ky); if (kk > 10) { u.kx *= 10 / kk; u.ky *= 10 / kk; } } // 연속 충돌 시 시각 반동 누적 상한
     a.boost = Math.max(a.boost, 0.45); b.boost = Math.max(b.boost, 0.45); // 충돌 직후 가속
     if (!ally) for (const [u, s] of [[a, -1], [b, 1]]) if ((u.st.range || 0) >= MELEE_RANGE && !u.airborne) { // 원거리 공통: 혼자 더 멀리 밀려남
       const ax = nx * s, ay = ny * s, cur = u.dir, away = Math.atan2(ay, ax);
@@ -1594,7 +1595,7 @@ const Render = (() => {
     const tmp = document.createElement('canvas'); tmp.width = W; tmp.height = H;
     const t = tmp.getContext('2d'); t.drawImage(f, 0, 0);
     (st.buildings || []).forEach((b, i) => drawBuilding(t, makeBuilding(b, i)));
-    if (st.circle) drawCapsule(t, st.circle, st.circle.r0, st.circle.r0, st.circle.r0, 0);
+    if (st.circle && !st.circle.hidden) drawCapsule(t, st.circle, st.circle.r0, st.circle.r0, st.circle.r0, 0);
     if (st.iceWalls || st.pads) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); if (st.iceWalls) drawIceWalls(t, fake); if (st.pads) drawPads(t, fake, 0); }
     if (STAGE_HOOKS.some(h => h.drawUnder && h.match(st))) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(t, fake, true); }
     if (st.balls) { const fake = new Battle(CHARACTERS[0], CHARACTERS[1], {}, stageId); drawBalls(t, fake.balls); }
@@ -1649,7 +1650,8 @@ const Render = (() => {
     if (PZ && !u.dead) { const k = u.air && u.air.fly ? 'fly' : u.poseT > 0 ? u.pose : u.flash > 0.05 ? 'hurt' : (u.zone && u.zone.splash && !u.air) ? 'swim' : null; if (k && PZ[k]) fdef = PZ[k]; }
     let s = Sprites.get(fdef);
     const TB = u.air && u.air.tumble; // 공중에서 굴러감: 앞/뒷모습 번갈아
-    const wantBack = TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
+    const SPV = b.bey && !u.dead ? b.time * 11 + u.team * 1.7 + (u.slot || 0) : null; // 메탈 팽이: 항상 회전 (앞/뒤 + 좌우 뒤집힘)
+    const wantBack = SPV != null ? Math.sin(SPV) < 0 : TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
     if (s.back && wantBack) s = s.back; // 상대보다 아래에 있으면 뒷모습
     const sx = spriteSX(u.def, !!(s.back === undefined && wantBack && Sprites.get(fdef).back), u.facing);
     let alpha = 1;
@@ -1686,6 +1688,8 @@ const Render = (() => {
     if (zk !== 1) ctx.scale(zk, zk);
     if (u.shrinkK && u.shrinkK !== 1) ctx.scale(u.shrinkK, u.shrinkK); // 수축
     if (u.spinT > 0) ctx.scale(Math.cos(u.spinT * 14) || 0.05, 1); // 에너미 컨트롤러: 제자리 한 바퀴
+    if (SPV != null) { const c = Math.cos(SPV); ctx.scale(Math.sign(c || 1) * Math.max(0.12, Math.abs(c)), 1); }
+    if (u.wiggle) ctx.rotate(Math.sin(b.time * 28) * 0.28); // 크레인에 매달림: 바둥바둥
     // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
     if (u.recoil && !stone && !F) {
       const r = u.recoil, p = r.t / r.dur;
@@ -2368,7 +2372,7 @@ const Render = (() => {
     for (const f of b.fx) drawFx(ctx, f, 0);
     for (const f of b.visualFx) drawFx(ctx, f, 0);
     drawWater(ctx, b);
-    if (b.stage.circle) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
+    if (b.stage.circle && !b.stage.circle.hidden) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
     if (b.balls.length) drawBalls(ctx, b.balls);
     if (b.iceSegs.length) drawIceWalls(ctx, b);
     if (b.stage.pads) drawPads(ctx, b, b.time);
@@ -2399,9 +2403,10 @@ const Render = (() => {
       if (f.winner) glowAt(ctx, f.winner.x, f.winner.y - 20, 65, '#ffe3a0', 0.6 * Math.sin(Math.PI * p));
     }
     // 유닛과 건물을 y 순서로 그림
-    const list = [...b.u.map(u => ({ y: u.y, u })), ...b.buildings.filter(x => !x.dead).map(bl => ({ y: bl.y + bl.h, bl }))].sort((a, c) => a.y - c.y);
+    const list = [...b.u.map(u => ({ y: u.y, u })), ...b.buildings.filter(x => !x.dead).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
     for (const it of list) {
       if (it.u) { drawUnit(ctx, it.u, b); drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); }
+      else if (it.draw) it.draw(ctx);
       else drawBuilding(ctx, it.bl);
     }
     for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(ctx, b);
