@@ -71,13 +71,15 @@
 
   // ---------- 1. 전기 형태 발사 ----------
   SKILLS.galShock = {
-    desc: '전기 덩어리를 상대에게 발사합니다. 적중 시 마비.',
+    desc: '전기 덩어리를 시전 순간 상대가 있던 방향으로 직선 발사합니다(유도 없음). 적중 시 마비.',
     canUse: (u, e, d) => d > 50 && d < 280 && !e.dead,
     use(u, e, b, slot) {
+      // 논타겟: 시전 순간의 상대 위치로 방향 고정 → 직선 비행 (유도 없음)
+      const tx = e.x, ty = e.y - b.airZ(e);
       b.glow(u.x + u.facing * 12, u.y - 18, 22, ELEC, 0.3);
       b.windup(u, 0.2, () => {
-        const a = Math.atan2(e.y - 18 - b.airZ(e) - (u.y - 18), e.x - u.x);
-        b.proj.push({ x: u.x + u.facing * 12, y: u.y - 18, vx: Math.cos(a) * 480, vy: Math.sin(a) * 480, spd: 480, src: u, tgt: e, homing: true, dmg: u.st.atk * (slot.mult || 1.4), kind: 'magic', life: 1.4, trail: 0, r: 12,
+        const a = Math.atan2(ty - u.y, tx - u.x);
+        b.proj.push({ x: u.x + u.facing * 12, y: u.y - 18, vx: Math.cos(a) * 480, vy: Math.sin(a) * 480, spd: 480, src: u, noAirLock: true, dmg: u.st.atk * (slot.mult || 1.4), kind: 'magic', life: 1.4, trail: 0, r: 12,
           hit: hitO(slot), draw: (ctx, p) => drawOrb(ctx, p),
           onHit: o => elecBurst(b, o.x, o.y - 18, 0.8) });
         elecBurst(b, u.x + u.facing * 14, u.y - 18, 0.5);
@@ -91,7 +93,7 @@
     canUse: (u, e, d) => d < 300 && !e.dead,
     use(u, e, b, slot) {
       shareCd(u, slot);
-      const t = slot.fall || 0.6, q = b.predict(e, t * 0.6), r = slot.r || 34;
+      const t = slot.fall || 0.6, q = { x: e.x, y: e.y }, r = slot.r || 34; // 시전 순간 위치에 고정 (예측·추적 없음)
       b.telegraphCircle(q.x, q.y, r, t, '#d8e4ff');
       b.text(u.x, u.y - 60, '포피!', '#e8f0ff', 10);
       fxList(b).push({ type: 'dogFall', x: q.x, y: q.y, face: u.facing, t: 0, dur: t });
@@ -114,7 +116,7 @@
     desc: '갈포드가 포피와 함께 높이 뛰어올라 상대 위로 떨어집니다. 적중 시 저항 감소 (강아지 낙하와 중첩되지 않고 갱신).',
     canUse: (u, e, d) => d > 40 && d < 240 && !u.airborne && !e.dead,
     use(u, e, b, slot) {
-      const dur = slot.dur || 0.75, q = b.predict(e, dur * 0.6), p = clampP(b, q.x, q.y, u), r = slot.r || 40;
+      const dur = slot.dur || 0.75, q = { x: e.x, y: e.y }, p = clampP(b, q.x, q.y, u), r = slot.r || 40;
       b.telegraphCircle(p.x, p.y, r, dur, '#bfe6ff');
       u.air = { t: 0, dur, h: slot.h || 80, fling: { x0: u.x, y0: u.y, x1: p.x, y1: p.y } };
       u.galDog = { t: 0, dur }; b.dust(u.x, u.y);
@@ -181,43 +183,69 @@
   }
 
   // ---------- 5. 더블 메가 스트라이크 헤즈 ----------
+  // 논타겟: 시전 순간 방향 고정 → 그 방향으로 돌진하며 연속 베기(앞쪽 작은 판정) → 짧은 잡기 돌진(작은 판정).
+  // 순간이동·추적 없음. 잡기가 빗나가면 헛잡음 + 경직(무방비).
   SKILLS.galMega = {
-    desc: '상대 곁으로 순간이동해 연속 베기 후 붙잡고 함께 뛰어올라 내리꽂습니다. 마지막 일격은 전기.',
-    canUse: (u, e, d) => d < 220 && !e.airborne && !u.airborne && !e.dead,
+    desc: '바라보는 방향으로 돌진하며 연속 베기 후, 짧게 뛰어들어 붙잡기를 시도합니다. 잡으면 함께 뛰어올라 전기 내리꽂기. 빗나가면 잠시 무방비.',
+    canUse: (u, e, d) => d < 95 && !e.airborne && !u.airborne && !e.dead,
     use(u, e, b, slot) {
-      const side = u.x <= e.x ? -1 : 1, p = clampP(b, e.x + side * 24, e.y, u);
-      b.smoke(u.x, u.y - 18, '#c8d8ff', 8); u.x = p.x; u.y = p.y; u.facing = -side; b.smoke(u.x, u.y - 18, '#c8d8ff', 6);
+      const a = Math.atan2(e.y - u.y, e.x - u.x), cx = Math.cos(a), cy = Math.sin(a);
+      const fx = cx >= 0 ? 1 : -1; u.facing = fx;
       b.text(u.x, u.y - 66, '더블 메가 스트라이크 헤즈!', ELEC2, 10);
-      const hits = slot.hits || 4, gap = slot.gap || 0.11;
-      const st = { type: 'galMega', t: 0, phase: 0, n: 0 };
+      const hits = slot.hits || 4, gap = slot.gap || 0.11, dashD = slot.dashDist || 60, reach = slot.slashReach || 24, sr = slot.slashR || 20;
+      const gT = slot.grabT || 0.14, gD = slot.grabDist || 34, gR = slot.grabR || 13, gReach = slot.grabReach || 18, whiff = slot.whiff || 0.7;
+      const dashT = hits * gap;
+      const inBox = (o, rch, rad) => !o.dead && !o.airborne && Math.hypot(o.x - (u.x + cx * rch), (o.y - (u.y + cy * rch)) / 0.75) <= rad + (o.pad || 10);
+      const move = (dist) => { // 직선 이동 (앞에 상대 몸이 막고 있으면 멈춤 — 몸 겹침/튕김 방지, 방향은 그대로)
+        const nx = u.x + cx * dist, ny = u.y + cy * dist;
+        if (b.foes(u).some(o => !o.dead && !o.airborne && Math.hypot(o.x - nx, o.y - ny) < (u.pad || 10) + (o.pad || 10) + 4 && (o.x - u.x) * cx + (o.y - u.y) * cy > 0)) return;
+        const q = clampP(b, nx, ny, u); u.x = q.x; u.y = q.y; };
+      const st = { type: 'galMega', t: 0, phase: 0, n: 0, tgt: null };
       st.step = (dt) => {
         st.t += dt;
-        if (e.dead || b.over) { u.action = null; return; }
-        if (st.phase === 0) {
+        if (u.dead || b.over) { u.action = null; return; }
+        u.facing = fx;
+        if (st.phase === 0) { // 돌진 베기 (방향 고정)
+          if (st.t <= dashT) { move(dashD / dashT * dt); if (Math.random() < 0.4) b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.18, a: 0.35 }); }
           while (st.n < hits && st.t >= st.n * gap) {
             st.n++; u.swing = 0.12;
-            b.damage(u, e, u.st.atk * (slot.mult || 0.5), hitO(slot, { noCrit: st.n > 1, element: 'slash' }));
-            b.slashFx(e.x + rand(-6, 6), e.y - 18 + rand(-6, 6), st.n % 2 ? u.facing : -u.facing, '#e8f4ff', 0.9);
+            const hx = u.x + cx * reach, hy = u.y + cy * reach;
+            b.slashFx(hx + rand(-4, 4), hy - 18 + rand(-4, 4), st.n % 2 ? u.facing : -u.facing, '#e8f4ff', 0.9);
+            for (const o of b.foes(u)) if (inBox(o, reach, sr)) b.damage(u, o, u.st.atk * (slot.mult || 0.5), hitO(slot, { noCrit: st.n > 1, element: 'slash' }));
           }
-          if (st.t >= hits * gap + 0.08) { // 붙잡기 → 함께 도약
-            st.phase = 1; st.t = 0;
+          if (st.t >= dashT + 0.06) { st.phase = 1; st.t = 0; b.dust(u.x, u.y); }
+        } else if (st.phase === 1) { // 잡기 돌진 (짧은 사거리·작은 판정)
+          move(gD / gT * dt);
+          if (Math.random() < 0.5) b.spark(u.x + cx * gReach, u.y - 18 + cy * gReach, ELEC, -10);
+          const o = b.foes(u).find(o => inBox(o, gReach, gR));
+          if (o) {
+            st.phase = 2; st.t = 0; st.tgt = o;
             const dur = slot.air || 0.85;
-            b.applyStatus(e, 'stun', dur + 0.25, u, { noResistScale: true });
-            e.action = null;
-            u.air = { t: 0, dur, h: slot.h || 90 }; e.air = { t: 0, dur, h: (slot.h || 90) + 6 };
-            b.text(e.x, e.y - 60, '잡았다!', '#ffffff', 10); b.dust(u.x, u.y);
+            b.applyStatus(o, 'stun', dur + 0.25, u, { noResistScale: true });
+            o.action = null;
+            u.air = { t: 0, dur, h: slot.h || 90 }; o.air = { t: 0, dur, h: (slot.h || 90) + 6 };
+            b.text(o.x, o.y - 60, '잡았다!', '#ffffff', 10); b.dust(u.x, u.y);
+          } else if (st.t >= gT) { // 헛잡음 → 경직
+            st.phase = 3; st.t = 0;
+            b.text(u.x, u.y - 60, '헛잡음!', '#c8d0e0', 10); b.dust(u.x + cx * gReach, u.y + cy * gReach);
+            b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.3, a: 0.4 });
+            b.stats.galWhiff = (b.stats.galWhiff || 0) + 1;
           }
-        } else if (st.phase === 1) {
-          if (!e.dead) { e.x = u.x - side * 20; const q = clampP(b, e.x, e.y, e); e.x = q.x; e.y = u.y; }
+        } else if (st.phase === 2) { // 잡은 상대와 함께 도약 → 내리꽂기
+          const e2 = st.tgt;
+          if (!e2.dead) { const q = clampP(b, u.x + fx * 20, u.y, e2); e2.x = q.x; e2.y = q.y; }
           if (Math.random() < 0.5) b.spark(u.x, u.y - 18 - b.airZ(u), ELEC, -20);
           if (!u.air) {
             u.action = null;
-            const x = e.x, y = e.y - 18;
-            b.bolt(x, e.y, 90, ELEC2); b.bolt(x + 6, e.y, 70, ELEC); b.bolt(x - 8, e.y, 60, '#ffffff');
-            b.shock(x, e.y, 8, 80, ELEC, 0.5, 6); b.glow(x, y, 60, ELEC, 0.5); b.sparks(x, y, ELEC2, 28, 280);
+            const x = e2.x, y = e2.y - 18;
+            b.bolt(x, e2.y, 90, ELEC2); b.bolt(x + 6, e2.y, 70, ELEC); b.bolt(x - 8, e2.y, 60, '#ffffff');
+            b.shock(x, e2.y, 8, 80, ELEC, 0.5, 6); b.glow(x, y, 60, ELEC, 0.5); b.sparks(x, y, ELEC2, 28, 280);
             b.zoomAt(x, y, 0.06); b.shake(3.5); b.hitstop(0.15);
-            b.damage(u, e, u.st.atk * (slot.finMult || 2.6), hitO(slot, { big: true, element: 'elec' }));
+            if (!e2.dead) b.damage(u, e2, u.st.atk * (slot.finMult || 2.6), hitO(slot, { big: true, element: 'elec' }));
           }
+        } else { // 헛잡음 경직: 제자리, 무방비
+          if (Math.random() < 0.15) b.text(u.x + rand(-6, 6), u.y - 50, '…', '#c8d0e0', 9);
+          if (st.t >= whiff) u.action = null;
         }
       };
       u.action = st;
@@ -226,12 +254,12 @@
 
   // ---------- 6. 플라즈마 독 ----------
   SKILLS.plasmaDog = {
-    desc: '전기를 두른 포피가 상대에게 돌진합니다. 갈포드는 반대 방향으로 살짝 뒤로 뛰어 물러납니다. 강아지 낙하와 쿨타임 공유.',
+    desc: '전기를 두른 포피가 시전 순간 상대 방향으로 직선 돌진합니다(유도 없음). 갈포드는 반대 방향으로 살짝 뒤로 뛰어 물러납니다. 강아지 낙하와 쿨타임 공유.',
     canUse: (u, e, d) => d > 30 && d < 260 && !e.dead,
     use(u, e, b, slot) {
       shareCd(u, slot);
-      const a = Math.atan2(e.y - 18 - (u.y - 18), e.x - u.x), face = e.x >= u.x ? 1 : -1;
-      b.proj.push({ x: u.x + face * 14, y: u.y - 14, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, spd: 520, src: u, tgt: e, homing: true, dmg: u.st.atk * (slot.mult || 1.8), kind: 'magic', life: 1.2, trail: 0, r: 16, face,
+      const a = Math.atan2(e.y - u.y, e.x - u.x), face = e.x >= u.x ? 1 : -1;
+      b.proj.push({ x: u.x + face * 14, y: u.y - 14, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, spd: 520, src: u, noAirLock: true, dmg: u.st.atk * (slot.mult || 1.8), kind: 'magic', life: 1.2, trail: 0, r: 16, face,
         hit: hitO(slot, { big: true }),
         draw: (ctx, p, g) => { p.face = p.vx >= 0 ? 1 : -1; drawDog(ctx, p.x, p.y + 12, p.face, 1, 1, b.time); },
         onHit: o => { elecBurst(b, o.x, o.y - 18, 1.1); b.say(u, 'poppyHit'); } });
@@ -281,7 +309,7 @@
     resist: { fire: 1.15 },
     statusResist: { paralysis: 0.2 },
     skills: [
-      { id: 'galMega', name: '더블 메가 스트라이크 헤즈', cd: 16, hits: 4, gap: 0.11, mult: 0.5, finMult: 2.6, air: 0.85, h: 90, element: 'elec', delivery: 'melee', pierce: 0.2 },
+      { id: 'galMega', name: '더블 메가 스트라이크 헤즈', cd: 16, hits: 4, gap: 0.11, dashDist: 60, slashReach: 24, slashR: 20, grabT: 0.14, grabDist: 34, grabReach: 18, grabR: 13, whiff: 0.7, mult: 0.5, finMult: 2.6, air: 0.85, h: 90, element: 'elec', delivery: 'melee', pierce: 0.2 },
       { id: 'galClone', name: '분신술', cd: 13, dur: 2.4, off: 42, fakeChance: 0.5, surpriseStun: 0.8 },
       { id: 'galDrop', name: '동반 낙하', cd: 11, dur: 0.75, h: 80, r: 40, mult: 2.0, element: 'blunt', delivery: 'melee', applies: [{ status: 'resistDown', duration: 5 }] },
       { id: 'plasmaDog', name: '플라즈마 독', cd: 9, sharedCd: 'poppy', mult: 1.8, hop: 46, element: 'elec', delivery: 'ranged', applies: [{ status: 'paralysis', duration: 1.6, chance: 0.5 }] },
