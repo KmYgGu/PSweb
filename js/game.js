@@ -1650,10 +1650,10 @@ const Render = (() => {
     if (PZ && !u.dead) { const k = u.air && u.air.fly ? 'fly' : u.poseT > 0 ? u.pose : u.flash > 0.05 ? 'hurt' : (u.zone && u.zone.splash && !u.air) ? 'swim' : null; if (k && PZ[k]) fdef = PZ[k]; }
     let s = Sprites.get(fdef);
     const TB = u.air && u.air.tumble; // 공중에서 굴러감: 앞/뒷모습 번갈아
-    const SPV = b.bey && !u.dead ? b.time * 11 + u.team * 1.7 + (u.slot || 0) : null; // 메탈 팽이: 항상 회전 (앞/뒤 + 좌우 뒤집힘)
-    const wantBack = SPV != null ? Math.sin(SPV) < 0 : TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
+    const SPF = b.bey && !u.dead ? [[0, 1], [1, 1], [1, -1], [0, -1]][(Math.floor(b.time * 10) + u.team * 2 + (u.slot || 0)) % 4] : null; // 메탈 팽이: 앞·오른쪽 → 뒤·오른쪽 → 뒤·왼쪽 → 앞·왼쪽 프레임 순환 (10fps)
+    const wantBack = SPF ? !!SPF[0] : TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
     if (s.back && wantBack) s = s.back; // 상대보다 아래에 있으면 뒷모습
-    const sx = spriteSX(u.def, !!(s.back === undefined && wantBack && Sprites.get(fdef).back), u.facing);
+    const sx = spriteSX(u.def, !!(s.back === undefined && wantBack && Sprites.get(fdef).back), SPF ? SPF[1] : u.facing);
     let alpha = 1;
     if (u.spirit) alpha = 0.5 + 0.08 * Math.sin(b.time * 6); // 혼령: 반투명
     if (u.buff('invis')) alpha = 0.35;
@@ -1688,7 +1688,6 @@ const Render = (() => {
     if (zk !== 1) ctx.scale(zk, zk);
     if (u.shrinkK && u.shrinkK !== 1) ctx.scale(u.shrinkK, u.shrinkK); // 수축
     if (u.spinT > 0) ctx.scale(Math.cos(u.spinT * 14) || 0.05, 1); // 에너미 컨트롤러: 제자리 한 바퀴
-    if (SPV != null) { const c = Math.cos(SPV); ctx.scale(Math.sign(c || 1) * Math.max(0.12, Math.abs(c)), 1); }
     if (u.wiggle) ctx.rotate(Math.sin(b.time * 28) * 0.28); // 크레인에 매달림: 바둥바둥
     // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
     if (u.recoil && !stone && !F) {

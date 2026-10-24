@@ -689,7 +689,7 @@
       D.lastD = d;
     } else if (e) D.lastD = dist(u, e);
     if (u.dead || b.over || D.lost || b.exodia) return;
-    if (u.blocked('blocksAct') || u.action || u.pull || u.push || u.climb || u.inTrain) return;
+    if (u.blocked('blocksAct') || u.action || u.pull || u.push || u.climb || u.inTrain || u.beyBusy) return; // beyBusy: 팽이 경기장 외곽 회전·돌진 중엔 턴 진행 멈춤 (함정은 위에서 그대로 발동)
     D.t += dt;
     if (D.phase === 'start') { if (D.t >= CFG.FIRST_DRAW) { D.phase = 'draw'; D.t = 0; } return; }
     if (D.phase === 'draw') {
@@ -703,7 +703,7 @@
       if (D.t < (D.plays ? CFG.PLAY_GAP : 0.25)) return;
       let plan = null;
       if (D.plays < CFG.MAX_PLAYS && D.hand.length) {
-        if (u.blocked('blocksSkill')) { if (!D.sealNote) { D.sealNote = true; b.text(u.x, u.y - 70, '봉인: 카드 사용 불가', '#a8a0ff', 9); } }
+        if (u.blocked('blocksSkill')) { if (!D.sealNote && !u.beyBusy) { D.sealNote = true; b.text(u.x, u.y - 70, '봉인: 카드 사용 불가', '#a8a0ff', 9); } }
         else plan = AI.choose(b, u);
       }
       if (plan) { play(b, u, plan); D.plays++; D.t = 0; return; }

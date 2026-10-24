@@ -28,7 +28,7 @@
       const K = b.claw, Bd = CLAW.bounds(b); if (!K.pool.length) return;
       const used = new Set(K.dolls.map(d => d.def.id)); const free = K.pool.filter(c => !used.has(c.id)); const def = (free.length ? free : K.pool)[Math.floor(Math.random() * (free.length || K.pool.length))];
       let x, y; for (let i = 0; i < 30; i++) { x = rand(Bd.L, Bd.R); y = rand(Bd.T, Bd.B); if (b.u.every(u => Math.hypot(u.x - x, u.y - y) > 60) && K.dolls.every(d => Math.hypot(d.x - x, d.y - y) > 30)) break; }
-      const a = rand(0, TAU), d = { def, x, y, vx: Math.cos(a) * K.C.wander, vy: Math.sin(a) * K.C.wander, ph: rand(0, TAU), face: Math.random() < 0.5 ? 1 : -1, hitT: 0, pop: initial ? 1 : 0, z: 0, grab: false };
+      const a = rand(0, TAU), d = { r: K.C.r * (def.size || 1), def, x, y, vx: Math.cos(a) * K.C.wander, vy: Math.sin(a) * K.C.wander, ph: rand(0, TAU), face: Math.random() < 0.5 ? 1 : -1, hitT: 0, pop: initial ? 1 : 0, z: 0, grab: false };
       K.dolls.push(d); if (!initial) { b.ring(x, y, 4, 22, 0.35, '#ffd0ec'); for (let i = 0; i < 8; i++) b.parts.push({ x, y: y - 12, vx: rand(-60, 60), vy: rand(-80, -20), g: 200, life: 0.6, max: 0.6, color: i % 2 ? '#ffb0e0' : '#ffffff', size: 2 }); }
     },
     bump(b, d, ax, ay, sp) { const m = Math.hypot(ax, ay) || 1; d.vx += ax / m * sp; d.vy += ay / m * sp; d.hitT = 0.3; },
@@ -49,7 +49,7 @@
       }
       for (let i = 0; i < K.dolls.length; i++) for (let j = i + 1; j < K.dolls.length; j++) { // 인형끼리
         const a = K.dolls[i], c = K.dolls[j]; if (a.grab || c.grab) continue;
-        const dx = c.x - a.x, dy = c.y - a.y, dd = Math.hypot(dx, dy), R = C.r * 2; if (dd >= R || dd < 0.01) continue;
+        const dx = c.x - a.x, dy = c.y - a.y, dd = Math.hypot(dx, dy), R = a.r + c.r; if (dd >= R || dd < 0.01) continue;
         const nx = dx / dd, ny = dy / dd, p = (R - dd) / 2; a.x -= nx * p; a.y -= ny * p; c.x += nx * p; c.y += ny * p;
         const rv = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny; if (rv < 0) { a.vx += rv * nx; a.vy += rv * ny; c.vx -= rv * nx; c.vy -= rv * ny; }
       }
@@ -58,7 +58,7 @@
         if (u.dead || u.airborne || u.hidden) continue;
         for (const d of K.dolls) {
           if (d.grab) continue;
-          const dx = d.x - u.x, dy = d.y - u.y, dd = Math.hypot(dx, dy), R = C.r + 10 * u.size; if (dd >= R || dd < 0.01) continue;
+          const dx = d.x - u.x, dy = d.y - u.y, dd = Math.hypot(dx, dy), R = d.r + 15 * u.size; if (dd >= R || dd < 0.01) continue; // 캐릭터끼리 충돌 반경과 같은 규칙 (15 × 크기)
           const nx = dx / dd, ny = dy / dd, p = R - dd;
           d.x += nx * p * 0.7; d.y += ny * p * 0.7; const q = b.clampPos(u.x - nx * p * 0.3, u.y - ny * p * 0.3, u.pad, u); u.x = q.x; u.y = q.y;
           const vx = Math.cos(u.dir), vy = Math.sin(u.dir), dot = vx * nx + vy * ny;
@@ -68,7 +68,7 @@
       }
       for (const pr of b.proj) for (const d of K.dolls) { // 투사체가 스치면 인형만 튕김 (투사체는 그대로)
         if (d.grab || d.hitT > 0 || pr.life <= 0) continue;
-        if (Math.hypot(pr.x - d.x, pr.y + 18 - d.y - 6) < C.r + 4) CLAW.bump(b, d, pr.vx || (d.x - pr.x), pr.vy || (d.y - pr.y), 170);
+        if (Math.hypot(pr.x - d.x, pr.y + 18 - d.y - 6) < d.r + 4) CLAW.bump(b, d, pr.vx || (d.x - pr.x), pr.vy || (d.y - pr.y), 170);
       }
       // --- 재등장 ---
       for (const r of K.respawn) r.t -= dt;
@@ -80,7 +80,7 @@
     // 공격 이펙트 위치 → 근처 인형 튕김 (사라지지 않음)
     hitArea(b, x, y, r) {
       const K = b.claw; if (!K) return;
-      for (const d of K.dolls) if (!d.grab && d.hitT <= 0 && Math.hypot(d.x - x, d.y - y) < r + K.C.r) { CLAW.bump(b, d, d.x - x || rand(-1, 1), d.y - y || rand(-1, 1), 210); d.squash = 0.25; }
+      for (const d of K.dolls) if (!d.grab && d.hitT <= 0 && Math.hypot(d.x - x, d.y - y) < r + d.r) { CLAW.bump(b, d, d.x - x || rand(-1, 1), d.y - y || rand(-1, 1), 210); d.squash = 0.25; }
     },
     targets(b) {
       const K = b.claw, L = K.dolls.filter(d => !d.grab).map(d => ({ doll: d }));
@@ -90,7 +90,7 @@
     pos: t => t.doll ? t.doll : t.u,
     startCrane(b) {
       const K = b.claw, C = K.C, Bd = CLAW.bounds(b), L = CLAW.targets(b); if (!L.length) { K.next = 2; return; }
-      const tgt = L[Math.floor(Math.random() * L.length)], side = Math.random() < 0.5 ? -1 : 1; // -1: 왼쪽 아래에서 등장 → 위로 1번, 오른쪽 1번
+      const LF = L.filter(t => t.u), LD = L.filter(t => t.doll), pool = LF.length && (!LD.length || Math.random() < (C.fighterBias ?? 0.6)) ? LF : (LD.length ? LD : L); const tgt = pool[Math.floor(Math.random() * pool.length)], side = Math.random() < 0.5 ? -1 : 1; // -1: 왼쪽 아래에서 등장 → 위로 1번, 오른쪽 1번
       K.crane = { tgt, side, x: side < 0 ? Bd.L - 4 : Bd.R + 4, y: Bd.B, z: C.h, state: 'in', t: 0, open: 1, held: null };
       sys(b, `크레인 등장! 목표: ${tgt.doll ? tgt.doll.def.name + ' 인형' : tgt.u.def.name}`);
     },
@@ -114,7 +114,7 @@
       } else if (Cr.state === 'lift') {
         Cr.z = Math.min(C.h + 30, Cr.z + 90 * dt); Cr.open = Math.max(0, Cr.open - dt * 6);
         const H = Cr.held;
-        if (H && H.doll) { H.doll.x = Cr.x; H.doll.y = Cr.y; H.doll.z = Math.max(0, Cr.z - 14); if (Cr.t > 1.0) { H.doll.fade = Math.min(1, (Cr.t - 1.0) / 0.5); } if (Cr.t > 1.5) { K.dolls.splice(K.dolls.indexOf(H.doll), 1); K.got.push({ def: H.doll.def, t: 0 }); K.respawn.push({ t: rand(...C.respawn) }); sys(b, `${H.doll.def.name} 인형 GET!`); Cr.held = null; Cr.state = 'out'; Cr.t = 0; } }
+        if (H && H.doll) { H.doll.x = Cr.x; H.doll.y = Cr.y; H.doll.z = Math.max(0, Cr.z - 14); if (Cr.t > 1.0) { H.doll.fade = Math.min(1, (Cr.t - 1.0) / 0.5); } if (Cr.t > 1.5) { K.dolls.splice(K.dolls.indexOf(H.doll), 1); K.got.push({ def: H.doll.def, t: 0 }); sys(b, `${H.doll.def.name} 인형 GET!`); Cr.held = null; Cr.state = 'out'; Cr.t = 0; } }
         else if (H && H.u) {
           const u = H.u; u.x = Cr.x; u.y = Cr.y; if (u.air) u.air.z = Math.max(0, Cr.z - 16); u.wiggle = 1;
           if (u.dead || Cr.t >= C.dangle || b.over) CLAW.release(b, u), Cr.held = null, Cr.state = 'out', Cr.t = 0;
@@ -182,14 +182,15 @@
     },
     drawCrane(ctx, b) {
       const Cr = b.claw && b.claw.crane; if (!Cr) return;
-      const x = Math.round(Cr.x), hy = Math.round(Cr.y - Cr.z - 22), barY = Math.max(AR.y + 6, hy - 46), a = 1 - (Cr.fade || 0);
+      const x = Math.round(Cr.x), S = C_SC, hy = Math.round(Cr.y - Cr.z - 22 * S), barY = Math.max(AR.y + 6, hy - 46 * S), a = 1 - (Cr.fade || 0);
       ctx.save(); ctx.globalAlpha = a;
       // 갠트리 (가로 레일: 크레인 높이를 따라 이동) + 트롤리 + 케이블
       ctx.fillStyle = 'rgba(40,36,60,0.55)'; ctx.fillRect(AR.x + 4, barY - 2, AR.w - 8, 6);
       ctx.fillStyle = '#c8ccd8'; ctx.fillRect(AR.x + 4, barY - 2, AR.w - 8, 2); ctx.fillStyle = '#8a8ea0'; ctx.fillRect(AR.x + 4, barY, AR.w - 8, 2);
-      ctx.fillStyle = '#ff7ab8'; ctx.fillRect(x - 7, barY - 4, 14, 8); ctx.fillStyle = '#ffd0ec'; ctx.fillRect(x - 7, barY - 4, 14, 2);
-      ctx.fillStyle = '#d8dce8'; ctx.fillRect(x - 1, barY + 4, 2, hy - barY - 4);
-      // 집게 머리 + 3갈래 집게 (open 1 = 벌림)
+      ctx.fillStyle = '#ff7ab8'; ctx.fillRect(x - 12, barY - 6, 24, 12); ctx.fillStyle = '#ffd0ec'; ctx.fillRect(x - 12, barY - 6, 24, 3);
+      ctx.fillStyle = '#d8dce8'; ctx.fillRect(x - 1, barY + 6, 3, hy - barY - 6);
+      // 집게 머리 + 3갈래 집게 (open 1 = 벌림), C_SC배 크기 (픽셀 단위 확대)
+      ctx.translate(x, hy); ctx.scale(S, S); ctx.translate(-x, -hy);
       const o = Cr.open, sw = Math.round(3 + o * 5);
       ctx.fillStyle = '#3a3448'; ctx.fillRect(x - 7, hy - 1, 14, 9); ctx.fillStyle = '#e8ecf4'; ctx.fillRect(x - 6, hy, 12, 7); ctx.fillStyle = '#a8aec0'; ctx.fillRect(x - 6, hy + 5, 12, 2);
       ctx.fillStyle = '#ffd860'; ctx.fillRect(x - 1, hy + 2, 2, 2);
@@ -230,6 +231,7 @@
       ctx.restore();
     },
   };
+  const C_SC = 2; // 크레인 그림 배율
   const CFG_LP = () => (window.DUEL_LP_SCALE || 1);
   // 공격 이펙트 → 인형 튕김
   const wrapFx = (name, geo) => { const o = P[name]; if (!o) return; P[name] = function (...a) { const r = o.apply(this, a); if (this.claw) { const g = geo(...a); CLAW.hitArea(this, g.x, g.y, g.r); } return r; }; };
@@ -245,13 +247,21 @@
   };
 
   // ================= 메탈 팽이 경기장 =================
+  // 외곽 회전·돌진 중엔 스킬/카드 사용 안 함 (blocksSkill 만 추가, 다른 상태 판정은 그대로)
+  const _blocked = Unit.prototype.blocked;
+  Unit.prototype.blocked = function (k) { if (k === 'blocksSkill' && this.beyBusy) return true; return _blocked.call(this, k); };
   const BEY = {
     match: st => !!st.bey,
     init(b) { if (b.stage.bey) b.bey = { S: b.stage.bey }; },
     lapOk(b, u) { return !u.dead && !u.action && !u.push && !u.pull && !u.airborne && !u.climb && !u.inTrain && !u.ghostChain && !u.hidden && !u.blocked('blocksMove') && !u.blocked('blocksAct'); },
     step(b, dt) {
       if (!b.bey) return;
-      for (const u of b.u) if (u.beyLap && !BEY.lapOk(b, u)) u.beyLap = null;
+      for (const u of b.u) {
+        if (u.beyLap && !BEY.lapOk(b, u)) u.beyLap = null;
+        const R = u.beyRush; // 돌진: 목표 지점까지 이동했거나 1.2초가 지나면 종료
+        if (R) { R.t += dt; if (u.dead || u.action || u.push || u.pull || u.airborne || u.blocked('blocksMove') || R.t > 1.2 || Math.hypot(u.x - R.sx, u.y - R.sy) >= R.d) u.beyRush = null; else u.boost = Math.max(u.boost, b.bey.S.chargeBoost); }
+        u.beyBusy = !!(u.beyLap || u.beyRush);
+      }
     },
     floor(x, st) {
       if (!st.bey) return;
@@ -285,6 +295,7 @@
       if (L.acc >= TAU || L.t > this.bey.S.lapMax) { // 한 바퀴 완료 → 돌진 방향 고정 (비유도)
         u.beyLap = null; const e = this.enemy(u);
         if (e && !e.dead) u.dir = Math.atan2(e.y - u.y, e.x - u.x); else u.dir = Math.atan2(-dy, -dx);
+        u.beyRush = { sx: u.x, sy: u.y, d: e && !e.dead ? Math.hypot(e.x - u.x, e.y - u.y) : R, t: 0 }; u.beyBusy = true;
         u.boost = Math.max(u.boost, this.bey.S.chargeBoost); u.beyCharge = this.time;
         this.ring(u.x, u.y, 3, 20, 0.25, '#ffd860'); this.text(u.x, u.y - 54, '돌진!', '#ffd860', 9); this.lastBeyCharge = (this.lastBeyCharge || 0) + 1;
       }
@@ -294,7 +305,7 @@
     if (!BEY.lapOk(this, u) || this.time - (u.beyCharge || -9) < 0.15 || this.time < (u.beyNoLap || 0)) return _cw.call(this, u);
     const nx = dx / d, ny = dy / d, vx = Math.cos(u.dir), vy = Math.sin(u.dir), cross = nx * vy - ny * vx;
     u.x = C.cx + nx * R; u.y = C.cy + ny * R;
-    u.beyLap = { a: Math.atan2(dy, dx), acc: 0, s: cross >= 0 ? 1 : -1, t: 0 };
+    u.beyLap = { a: Math.atan2(dy, dx), acc: 0, s: cross >= 0 ? 1 : -1, t: 0 }; u.beyBusy = true;
     u.dir = fixAngle(u.beyLap.a + u.beyLap.s * (Math.PI / 2 + 0.06));
     this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 12, 0.2, '#ffd860'); playSfx('wall'); this.lastBeyLap = (this.lastBeyLap || 0) + 1;
   };
@@ -304,7 +315,7 @@
   P.collide = function (a, c) {
     const hit = this.bey && !a.airborne && !c.airborne && Math.hypot(a.x - c.x, a.y - c.y) < 15 * (a.size + c.size);
     const r = _col.call(this, a, c);
-    if (hit) for (const u of [a, c]) { u.beyLap = null; u.beyNoLap = this.time + 0.6; } // 충돌 직후 0.6초는 일반 반사
+    if (hit) for (const u of [a, c]) { u.beyLap = null; u.beyRush = null; u.beyBusy = false; u.beyNoLap = this.time + 0.6; } // 충돌 직후 0.6초는 일반 반사
     return r;
   };
   STAGE_HOOKS.push(CLAW, BEY);

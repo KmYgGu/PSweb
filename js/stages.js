@@ -136,16 +136,16 @@ const STAGE_DEFS = {
   },
   claw: {
     name: '인형뽑기 크레인', short: '인형뽑기', desc: '인형뽑기 기계 안! 인형들은 튕기기만 하는 장애물. 가끔 크레인이 아래에서 나타나 위로 한 번, 옆으로 한 번 움직인 뒤 집게를 내립니다 (표시된 곳을 피하세요).', theme: 'claw',
-    // claw: dolls = 인형 수, r = 인형 반지름, wander = 인형 이동 속도, scale = 인형 크기, first/gap = 크레인 등장 [초], spd = 크레인 이동 속도(px/s)
-    // h = 집게 높이, aim = 집게 위치 표시 시간, drop = 내려가는 시간, grabR = 집는 반경, dangle = 캐릭터가 매달리는 시간, fallDmg = 떨어질 때 최대 체력 비율 피해, respawn = 인형 재등장 [min,max]
-    claw: { dolls: 4, r: 10, wander: 32, scale: 0.62, first: 4, gap: [5, 8], spd: 170, h: 64, aim: 0.55, drop: 0.35, grabR: 26, dangle: 1.6, fallDmg: 0.04, respawn: [2.5, 4] },
+    // claw: dolls = 인형 수, r = 인형 반지름(× 캐릭터 크기, 캐릭터 충돌 반경과 같은 규칙), wander = 인형 이동 속도, scale = 인형 그림 배율(싸우는 캐릭터와 같은 1), first/gap = 크레인 등장 [초], spd = 크레인 이동 속도(px/s)
+    // h = 집게 높이, aim = 집게 위치 표시 시간, drop = 내려가는 시간, grabR = 집는 반경, dangle = 캐릭터가 매달리는 시간, fallDmg = 떨어질 때 최대 체력 비율 피해
+    claw: { dolls: 4, r: 15, wander: 32, scale: 1, first: 2.5, gap: [2.5, 4], spd: 190, h: 90, aim: 0.55, drop: 0.35, grabR: 42, fighterBias: 0.6, dangle: 1.6, fallDmg: 0.04 },
     spawns: [{ x: 110, y: 330 }, { x: 250, y: 330 }],
   },
   bey: {
     name: '메탈 팽이 경기장', short: '팽이 경기장', desc: '원형 팽이 스타디움. 모두 팽이처럼 회전! 벽에 닿으면 외곽을 크게 한 바퀴 돈 뒤, 그 순간 상대가 있던 곳으로 일직선 돌진.', theme: 'bey',
     // circle.hidden: 기존 원형 경기장 판정만 사용(캡슐 그림 없음, 축소 없음). bey: lapBoost = 외곽 회전 중 가속, chargeBoost = 돌진 가속, lapMax = 한 바퀴 최대 시간(안전장치)
     circle: { cx: 180, cy: 330, r0: 158, rMin: 158, start: 1e9, dur: 1, hidden: true },
-    bey: { lapBoost: 0.6, chargeBoost: 1.1, lapMax: 5 },
+    bey: { lapBoost: 2.6, chargeBoost: 1.1, lapMax: 3 },
     spawns: [{ x: 120, y: 330 }, { x: 240, y: 330 }],
   },
   // 새 스테이지 예) 빙판: terrain: [{ id: 'ice', shape: { type: 'rect', x: 12, y: 120, w: 336, h: 410 }, spdMul: 1.3, resist: { fire: 1.2 } }]
