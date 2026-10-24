@@ -26,9 +26,18 @@
     const x0 = u.x + Math.cos(angTo(u, t)) * 12, y0 = u.y, a = o.ang != null ? o.ang : Math.atan2(t.y - y0, t.x - x0), ca = Math.cos(a), sa = Math.sin(a);
     const w = o.w || 24, wu = o.windup ?? 0.45, L = rayLen(b, x0, y0, ca, sa, o.len || 520), H = 26;
     b.telegraphLine(x0, y0 - H, x0 + ca * L, y0 + sa * L - H, w, wu, o.tele || '#d8f0ff');
+    if (o.epic) kfx(b).push({ type: 'charge', x: x0, y: y0 - H, w, t: 0, dur: wu, col: o.col || '#8ad0ff', col2: o.col2 || '#e8f8ff', seed: Math.random() * 99 });
     b.later(wu, () => {
       if (u.dead || b.over) return;
-      kfx(b).push({ type: 'beam', x: x0, y: y0 - H, ca, sa, L, w, t: 0, dur: o.fxDur || 0.4, col: o.col || '#8ad0ff', col2: o.col2 || '#e8f8ff' });
+      if (o.epic) { // 백룡 계열: 강화 연출 (판정은 동일)
+        const ex = x0 + ca * L, ey = y0 + sa * L - H;
+        kfx(b).push({ type: 'ebeam', x: x0, y: y0 - H, ca, sa, L, w, t: 0, dur: o.fxDur || 0.9, col: o.col || '#8ad0ff', col2: o.col2 || '#e8f8ff', seed: Math.random() * 99 });
+        kfx(b).push({ type: 'impact', x: ex, y: ey, w, t: 0, dur: 0.6, col: o.col || '#8ad0ff', col2: o.col2 || '#e8f8ff' });
+        b.shake(o.shake || 6); b.glow(x0, y0 - H, w * 2.4, '#ffffff', 0.35); b.glow(ex, ey, w * 2.2, o.col || '#8ad0ff', 0.6);
+        b.ring(ex, ey, 6, w * 2.2, 0.45, o.col2 || '#e8f8ff');
+        for (let d = 40; d < L; d += 60) b.sparks(x0 + ca * d, y0 + sa * d - H, d % 120 < 60 ? '#ffffff' : (o.col || '#8ad0ff'), 4, 140);
+        b.sparks(ex, ey, '#ffffff', 18, 300); b.sparks(ex, ey, o.col || '#8ad0ff', 14, 220);
+      } else kfx(b).push({ type: 'beam', x: x0, y: y0 - H, ca, sa, L, w, t: 0, dur: o.fxDur || 0.4, col: o.col || '#8ad0ff', col2: o.col2 || '#e8f8ff' });
       b.shake(o.shake || 2.5); b.glow(x0, y0 - H, w * 1.5, o.col || '#8ad0ff', 0.4);
       for (const f of b.foes(u)) {
         const dx = f.x - x0, dy = f.y - y0, al = dx * ca + dy * sa, pp = Math.abs(-dx * sa + dy * ca);
@@ -102,7 +111,7 @@
   const KAIBA_CARDS = [
     { id: 'K01', name: '푸른 눈의 백룡', type: 'monster', level: 8, atk: 3000, def: 2500, element: 'light', sprite: 'bewd', shout: '멸망을 부르는 우뢰탄!',
       text: '[릴리스 2] 시전 순간 상대 방향으로 고정된 전방 광선 (ATK×1.3, 폭 26, 벽·장애물에서 멈춤).',
-      effect(ctx) { kbeam(ctx, ctx.atk(1.3), { w: 26, windup: 0.45 }); },
+      effect(ctx) { kbeam(ctx, ctx.atk(1.3), { w: 30, windup: 0.28, epic: true }); },
       ai: { tags: ['damage'], range: 420, dmg: 1.3, priority: 10, keep: 22 } },
     { id: 'K04', name: '드래곤 자각의 선율', type: 'spell', text: '패 1장을 버리고 덱에서 레벨 8 몬스터 2장(백룡 우선)을 패로.',
       effect(ctx) { ctx.discardWorst(1); let n = 0; for (const p of [BW, BW, 'K24', d => d.level === 8]) { if (n >= 2) break; if (ctx.deck.search(p)) n++; } ctx.text(`레벨 8 ×${n} 서치`, '#bfe8ff'); },
@@ -209,7 +218,7 @@
       ai: { tags: ['defense'], range: 400, when: S => !(S.e && S.e.buff('kShrink')), score: S => 6 + (S.oppSkillHeavy ? 8 : 0) + (S.oppMelee && S.d < 120 ? 6 : 0) } },
     { id: 'K24', name: '푸른 눈의 아백룡', type: 'monster', level: 8, atk: 3000, def: 2500, element: 'light', sprite: 'bewdAlt', shout: '멸망의 번 스트림!',
       text: '[릴리스 2] 패에 "푸른 눈의 백룡"이 있으면 릴리스 없이 사용. 백룡과 같은 전방 광선 (ATK×1.3).',
-      effect(ctx) { kbeam(ctx, ctx.atk(1.3), { w: 26, windup: 0.45, col: '#a0c8ff' }); },
+      effect(ctx) { kbeam(ctx, ctx.atk(1.3), { w: 30, windup: 0.28, col: '#a0c8ff', epic: true }); },
       ai: { tags: ['damage'], range: 420, dmg: 1.3, priority: 10, keep: 16, freeSummon: S => S.inHand(BW) } },
     { id: 'K25', name: '블레이드 나이트', type: 'monster', level: 4, atk: 1600, def: 1000, element: 'slash', sprite: 'bladeKnight', shout: '라이트닝 블레이드!',
       text: '전방 강한 베기 (반경 100). 패가 적을수록 강함: ATK×(1.5 - 0.15×패 수), 최소 ×0.6.',
@@ -390,12 +399,18 @@
       ai: { tags: ['damage'], range: 9999, dmg: 1.5, priority: 12 } },
     { id: 'KX5', name: '궁극의 푸른 눈의 백룡', type: 'monster', level: 12, atk: 4500, def: 3800, element: 'light', sprite: 'ultimate', extra: true, shout: '멸망을 부르는 궁극의 우레탄!',
       text: '[융합: 백룡 ×3] 0.7초 충전 후 매우 넓은 전방 광선 (폭 64, ATK×1.35, 시전 방향 고정, 벽에서 멈춤).',
-      effect(ctx) { ctx.b.shake(2); ctx.b.glow(ctx.u.x, ctx.u.y - 60, 70, '#bfe8ff', 0.7); kbeam(ctx, ctx.atk(1.35), { w: 64, windup: 0.7, fxDur: 0.6, shake: 5, col: '#7ac8ff', col2: '#ffffff' }); },
+      effect(ctx) { ctx.b.shake(2); ctx.b.glow(ctx.u.x, ctx.u.y - 60, 70, '#bfe8ff', 0.7); kbeam(ctx, ctx.atk(1.35), { w: 68, windup: 0.45, fxDur: 1.1, shake: 9, col: '#7ac8ff', col2: '#ffffff', epic: true }); },
       ai: { tags: ['damage'], range: 9999, dmg: 1.35, priority: 12 } },
   ];
   for (const c of [...KAIBA_CARDS, ...EXTRA_CARDS]) { if (!c.shout) c.shout = c.name + '!'; CARD_DEFS[c.id] = c; }
   const KAIBA_DECK = Object.fromEntries(KAIBA_CARDS.map(c => [c.id, c.id === BW ? 3 : 1])); // 40장
   window.KAIBA = { RECIPES, fusionPlan, KAIBA_DECK, EXTRA: EXTRA_CARDS.map(c => c.id) };
+  // 융합 지향: 재료/융합 카드는 버림·릴리스 대상에서 뒤로 (keepFn)
+  const fusAvail = D => D.hand.some(c => c.id === 'K27') || D.deck.some(c => c.id === 'K27' || c.id === 'K38');
+  const matsIn = D => D.hand.filter(c => isMat(c.id)).length;
+  for (const id of ['K19', 'K20', 'K21', 'K28']) CARD_DEFS[id].ai.keepFn = S => { const D = S.u.duel; return D && fusAvail(D) && matsIn(D) >= 2 ? 22 : D && fusAvail(D) ? 12 : 0; };
+  CARD_DEFS.K01.ai.keepFn = S => { const D = S.u.duel; return D && fusAvail(D) && D.hand.filter(c => c.id === BW).length >= 2 ? 10 : 0; };
+  CARD_DEFS.K27.ai.keepFn = S => { const D = S.u.duel; return !D ? 0 : fusionPlan(D) ? 60 : matsIn(D) || D.hand.filter(c => c.id === BW).length >= 2 ? 40 : 28; };
 
   // ---------- AI 규칙 (카이바 전용, 계획 점수 보정) ----------
   DUEL.planHooks.push((b, u, plan, S) => {
@@ -406,6 +421,9 @@
     const FP = fusionPlan(D);
     if (FP && c.id !== 'K27' && D.hand.some(h => h.id === 'K27') && FP.mats.includes(plan.inst)) v -= 40; // 융합 재료는 아껴 둠
     if (FP && plan.tributes.some(t => FP.mats.includes(t)) && D.hand.some(h => h.id === 'K27')) v -= 30;
+    if (c.id === 'K27' && FP) v += 30; // 재료가 있으면 융합 최우선
+    if (!FP && S.deck > 8 && isMat(c.id) && fusAvail(D)) v -= matsIn(D) >= 2 ? 20 : 8; // 융합을 찾는 동안 재료 보존
+    if (c.id === 'K38' && !D.hand.some(h => h.id === 'K27') && D.deck.some(h => h.id === 'K27') && (matsIn(D) >= 2 || D.hand.filter(h => h.id === BW).length >= 2)) v += 22; // 왼팔의 대가로 융합 서치
     if (c.type === 'monster' && D.nextMonMult && (c.atk || 0) >= 2000) v += 14; // 거대화 다음엔 강한 몬스터
     if (D.kAbsorb) v += c.type === 'spell' ? 6 : -4;
     return v;
@@ -503,7 +521,7 @@
       if (D.kPhant) { b.text(tgt.x, tgt.y - 56, '가호: 무효', '#dff2ff', 9); b.sparks(tgt.x, tgt.y - 20, '#dff2ff', 6, 140); return true; }
       if (D.kGirl) {
         const ctx = D.kGirl.ctx; D.kGirl.t = 0; b.text(tgt.x, tgt.y - 60, '파란 눈의 소녀: 보호!', '#bfe8ff', 10);
-        DUEL.spawnSpirit(b, tgt, CARD_DEFS[BW], 1.4); b.later(0.05, () => { if (!tgt.dead && !b.over && !src.dead) kbeam(ctx, CARD_DEFS[BW].atk * A * 1.3, { target: src, w: 26, windup: 0.25 }); });
+        DUEL.spawnSpirit(b, tgt, CARD_DEFS[BW], 1.4); b.later(0.05, () => { if (!tgt.dead && !b.over && !src.dead) kbeam(ctx, CARD_DEFS[BW].atk * A * 1.3, { target: src, w: 30, windup: 0.25, epic: true }); });
         return true;
       }
       if (D.kGlider) { const G = D.kGlider; if (amount <= G.hp) { b.sparks(tgt.x, tgt.y - 22, '#ffd040', 6, 140); b.text(tgt.x, tgt.y - 56, '황금 날개: 막음', '#ffe080', 8); return true; } const left = amount - G.hp; gliderBreak(b, tgt, '돌파'); return left; }
@@ -528,7 +546,10 @@
     },
     drawOver(ctx, b) {
       for (const f of b.kfx || []) {
-        if (f.type === 'beam') drawBeam(ctx, f.x, f.y, f.ca, f.sa, f.L, f.w * (1 - 0.4 * f.t / f.dur), f.col, f.col2, 1 - f.t / f.dur, b.time);
+        if (f.type === 'ebeam') drawEpicBeam(ctx, f, b.time);
+        else if (f.type === 'charge') drawCharge(ctx, f, b.time);
+        else if (f.type === 'impact') drawImpact(ctx, f);
+        else if (f.type === 'beam') drawBeam(ctx, f.x, f.y, f.ca, f.sa, f.L, f.w * (1 - 0.4 * f.t / f.dur), f.col, f.col2, 1 - f.t / f.dur, b.time);
         else if (f.type === 'jump') { const k = f.t / f.dur, x = f.sx + (f.tx - f.sx) * k, y = f.sy + (f.ty - f.sy) * k - 4 * f.h * k * (1 - k); drawSpr(ctx, f.spr, x, y, f.tx >= f.sx ? 1 : -1, 1, 1); }
       }
       for (const p of b.kproj || []) {
@@ -560,6 +581,44 @@
     ctx.restore();
   }
 
+  // 백룡 강화 광선 (도트풍: 사각형만 사용)
+  const hsh = n => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
+  function drawCharge(ctx, f, t) { // 입 앞 충전: 빨려드는 입자 + 맥동 구체 + 십자 섬광
+    const k = Math.min(1, f.t / f.dur), x = Math.round(f.x), y = Math.round(f.y), r = Math.round(3 + k * f.w * 0.35 + (Math.floor(t * 30) % 2));
+    ctx.save();
+    ctx.globalAlpha = 0.3 + 0.3 * k; ctx.fillStyle = f.col; ctx.fillRect(x - r - 4, y - r - 4, (r + 4) * 2, (r + 4) * 2);
+    ctx.globalAlpha = 0.9; ctx.fillStyle = f.col2; ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(x - r + 2, y - r + 2, r * 2 - 4, r * 2 - 4);
+    const fl = Math.round(r * (1.5 + 2.5 * k)); ctx.globalAlpha = 0.85; ctx.fillRect(x - fl, y - 1, fl * 2, 2); ctx.fillRect(x - 1, y - fl, 2, fl * 2);
+    ctx.fillStyle = f.col2;
+    for (let i = 0; i < 14; i++) { const a = hsh(f.seed + i) * TAU, d = (1 - ((k * 2 + hsh(f.seed + i * 3)) % 1)) * (30 + f.w); ctx.globalAlpha = 0.9; ctx.fillRect(Math.round(x + Math.cos(a) * d) - 1, Math.round(y + Math.sin(a) * d) - 1, 3, 3); }
+    ctx.restore();
+  }
+  function drawEpicBeam(ctx, f, t) { // 섬광(0~0.1) → 굵은 코어 → 잔광(얇아지며 사라짐)
+    const p = f.t / f.dur, flash = f.t < 0.1, fire = Math.max(0, 1 - p / 0.5), glow = 1 - p;
+    const w = f.w * (flash ? 1.7 : 0.35 + 0.95 * fire), L = f.L, fr = Math.floor(t * 30);
+    ctx.save(); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.rotate(Math.atan2(f.sa, f.ca));
+    ctx.fillStyle = f.col; ctx.globalAlpha = 0.25 * glow; ctx.fillRect(0, -w / 2 - 8, L, w + 16);   // 외곽 광륜 (잔광)
+    ctx.globalAlpha = 0.75 * glow; ctx.fillRect(0, -w / 2, L, w);
+    ctx.fillStyle = f.col2; ctx.globalAlpha = Math.min(1, 0.4 + fire); ctx.fillRect(0, -w * 0.32, L, w * 0.64);
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha = flash ? 1 : fire; ctx.fillRect(0, -w * 0.16 - 1, L, w * 0.32 + 2); // 밝은 코어
+    if (fire > 0) { // 코어 줄무늬(흐름)
+      ctx.fillStyle = f.col; ctx.globalAlpha = 0.5 * fire; for (let i = (fr * 9) % 24 - 24; i < L; i += 24) ctx.fillRect(i, -w * 0.3, 10, 2), ctx.fillRect(i + 12, w * 0.3 - 2, 10, 2);
+    }
+    ctx.globalAlpha = Math.min(1, glow * 1.4); // 광선을 따라 튀는 입자
+    for (let i = 0; i < L / 9; i++) { const s = f.seed + i, d = hsh(s) * L, side = hsh(s * 2) > 0.5 ? 1 : -1, off = (w / 2 + 2 + (hsh(s * 3) * 18 + p * 40) * (0.4 + hsh(s * 5))) * side; ctx.fillStyle = hsh(s * 7) > 0.5 ? '#ffffff' : f.col2; const z = hsh(s * 11) > 0.7 ? 3 : 2; ctx.fillRect(Math.round(d + p * 30 * hsh(s * 13)), Math.round(off), z, z); }
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha = flash ? 1 : 0.8 * fire; ctx.fillRect(-6, -w / 2 - 4, 12, w + 8); // 입 섬광
+    ctx.restore();
+  }
+  function drawImpact(ctx, f) { // 끝점 폭발: 퍼지는 사각 고리 + 방사 광선
+    const p = f.t / f.dur, x = Math.round(f.x), y = Math.round(f.y), r = Math.round(6 + p * (f.w * 1.6 + 20));
+    ctx.save(); ctx.globalAlpha = 1 - p;
+    ctx.fillStyle = '#ffffff'; if (p < 0.35) { const c = Math.round(f.w * 0.8 * (1 - p)); ctx.fillRect(x - c, y - c, c * 2, c * 2); }
+    ctx.fillStyle = f.col2; ctx.fillRect(x - r, y - r, r * 2, 3); ctx.fillRect(x - r, y + r - 3, r * 2, 3); ctx.fillRect(x - r, y - r, 3, r * 2); ctx.fillRect(x + r - 3, y - r, 3, r * 2);
+    ctx.fillStyle = f.col; for (let i = 0; i < 8; i++) { const a = i * TAU / 8, d0 = r * 0.6, d1 = r * 1.3; for (let d = d0; d < d1; d += 4) ctx.fillRect(Math.round(x + Math.cos(a) * d) - 1, Math.round(y + Math.sin(a) * d) - 1, 3, 3); }
+    ctx.restore();
+  }
+
   // ---------- 디버그: 융합 강제 ----------
   DUEL.debug.fusion = (b, u, ex) => { const D = u.duel, c = D.extra.find(x => x.id === ex) || DUEL.inst(ex); if (!c) return false; DUEL.useMonster(b, u, c, { label: '융합 소환(강제)' }); return true; };
   DUEL.debug.kaibaIds = () => [...KAIBA_CARDS.map(c => c.id), ...EXTRA_CARDS.map(c => c.id)];
@@ -570,6 +629,7 @@
     stats: { hp: 4000, atk: 22, spd: 240, range: 110, atkRate: 0.75, def: 0 },
     attack: { element: 'light', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: KAIBA_DECK, extra: EXTRA_CARDS.map(c => c.id), noExodia: true,
+      atkMul: 1.45, cfg: { PLAY_GAP: 0.45, MIN_WAIT: 0.55, WAIT_TIMEOUT: 3.3, MAX_PLAYS: 3 }, // v2: 몬스터 피해 ×1.45, 카드 사용 템포 상향
       blurb: '<b style="color:#8ad0ff">특수 승리 없음 · 엑스트라 덱 5장(융합) · 상대 듀얼리스트의 덱/패를 공격</b>' },
     skills: [{ id: 'duelCard', name: '듀얼리스트의 카드', cd: 1e9, hidden: true, canUse: () => false }],
     sprite: { src: 'assets/kaiba/front.png', back: 'assets/kaiba/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'right' } },

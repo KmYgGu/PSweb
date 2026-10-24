@@ -241,9 +241,9 @@
     keepValue(ci, S, noScore) {
       const d = ci.def, ai = d.ai || {};
       if (piece(d)) return S.desperate ? 20 : 999;
-      return 6 + (d.level || 0) * 2.5 + (ai.keep || 0) + (noScore ? 0 : Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.25);
+      return 6 + (d.level || 0) * 2.5 + (ai.keep || 0) + (ai.keepFn ? ai.keepFn(S, ci) : 0) + (noScore ? 0 : Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.25);
     },
-    worst(list, n, S) { return list.map(c => ({ c, k: c.def.type === 'monster' ? AI.keepValue(c, S) : 6 + Math.max(0, AI.rawScore(c.def, S, { tributes: [] })) * 0.3 })).sort((a, z) => a.k - z.k).slice(0, n).map(x => x.c); },
+    worst(list, n, S) { return list.map(c => ({ c, k: c.def.type === 'monster' ? AI.keepValue(c, S) : 6 + Math.max(0, AI.rawScore(c.def, S, { tributes: [] })) * 0.3 + (c.def.ai && c.def.ai.keepFn ? c.def.ai.keepFn(S, c) : 0) })).sort((a, z) => a.k - z.k).slice(0, n).map(x => x.c); },
     bestGrave(b, u, S, pred) { // 묘지 몬스터 중 지금 효과를 쓰면 가장 좋은 것 (레벨·릴리스 무시). pred: 추가 조건 (흑마술의 베일: Lv6~7)
       let best = null;
       for (const c of u.duel.grave) {
@@ -318,7 +318,7 @@
       b, u, card, inst: ci, ev, mult: mul, spirit: o.spirit || null,
       get e() { return E(); }, foes: () => b.foes(u), S,
       origin: () => ctx.spirit && ctx.spirit.t < ctx.spirit.dur ? { x: ctx.spirit.x, y: ctx.spirit.y } : { x: u.x + u.facing * 10, y: u.y - 24 },
-      atk: (m = 1) => ((card && card.atk) || 0) * CFG.ATK_SCALE * m * mul,
+      atk: (m = 1) => ((card && card.atk) || 0) * CFG.ATK_SCALE * m * mul * ((u.def.duelist && u.def.duelist.atkMul) || 1), // atkMul: 듀얼리스트별 몬스터 피해 배율
       val: n => n * CFG.ATK_SCALE * mul,
       damage: (t, amt, x) => b.damage(u, t || E(), amt, hitO(x)),
       shoot(x = {}) {
@@ -631,7 +631,7 @@
   function discardValue(ci, S, D) {
     const d = ci.def;
     if (piece(d)) return D.hand.every(c => piece(c.def)) ? 500 : 9999;
-    let k = d.type === 'monster' ? AI.keepValue(ci, S) : 6 + Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.3;
+    let k = d.type === 'monster' ? AI.keepValue(ci, S) : 6 + Math.max(0, AI.rawScore(d, S, { tributes: [] })) * 0.3 + (d.ai && d.ai.keepFn ? d.ai.keepFn(S, ci) : 0);
     if (d.type === 'monster') {                                  // 묘지 시너지: 버리면 오히려 좋은 카드
       if (d.id === 'Y02' && (S.inHand('Y27') || S.inDeck('Y27'))) k -= 14; // 블랙 매지션 걸 ×2
       if ((d.level || 0) >= 6 && (S.inHand('Y13') || D.traps.some(t => t.inst.id === 'Y19') || ((d.level === 6 || d.level === 7) && S.inHand('Y25')))) k -= 10; // 소생·흑마술의 베일 대상
@@ -669,8 +669,10 @@
   }
 
   // ---------------- 턴 진행 ----------------
+  const CFG0 = CFG;
   function tick(b, u, dt) {
-    const D = u.duel;
+    const D = u.duel, CFG = u.def.duelist && u.def.duelist.cfg ? Object.assign({}, CFG0, u.def.duelist.cfg) : CFG0; // 듀얼리스트별 템포 보정
+
     for (const T of D.traps) T.t += dt;
     const e = b.enemy(u);
     if (D.traps.length && e) {

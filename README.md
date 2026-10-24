@@ -525,3 +525,9 @@ skills: [{ id, cost: { ember: 50 } /* 소모 */, requires: { mark: 3 } /* 조건
 
 ### 듀얼 프레임워크 확장 (duel.js)
 `DUEL.planHooks / playHooks / setupHooks`, 개별 레벨 수정 `lvMod` + `effLv`, 릴리스 감소 `tribCut`, `D.nextDraw`(다음 드로우 지정), `def.onDraw`, `D.nextMonMult`, `D.extra`(엑스트라 덱), `duelist.noExodia`(엑조디아 HUD 대신 EX 수). 디버그: `DUEL.debug.force(b,u,id)`, `DUEL.debug.fusion(b,u,ex)`.
+
+### 카이바 v2 (강화)
+- 몬스터 피해 배율 `duelist.atkMul` = 1.45 (모든 `ctx.atk` 피해에 곱함, 유희 영향 없음).
+- 카드 템포 `duelist.cfg`: PLAY_GAP 0.65→0.45, MIN_WAIT 0.8→0.55, WAIT_TIMEOUT 4.5→3.3, 턴당 사용 2→3장. (duel.js가 듀얼리스트별 CFG 덮어쓰기 지원)
+- 융합 AI: 재료/융합 카드에 `ai.keepFn`(버림·릴리스 회피, 엔진 공통 훅), 재료 있으면 융합 +30, 융합 찾는 동안 재료 단독 사용 억제, 왼팔의 대가로 융합 서치 +22, 버사고 대체.
+- 백룡/아백룡/파란 눈의 소녀 반격/궁극: 시전 0.45→0.28초(궁극 0.7→0.45), 폭 26→30(궁극 64→68). 연출: 입 앞 충전 섬광(빨려드는 입자·십자광) → 발사 섬광 → 굵고 밝은 코어 + 흐르는 줄무늬 + 광선 따라 튀는 입자 → 잔광 → 끝점 폭발(사각 고리·방사광) + 화면 흔들림 6(궁극 9). 판정·텔레그래프는 그대로 회피 가능.
