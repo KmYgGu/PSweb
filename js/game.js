@@ -1671,10 +1671,10 @@ const Render = (() => {
     const bob = stone ? 0 : u.moving ? Math.abs(Math.sin(u.walk)) * -2 : Math.sin(b.time * 3 + u.team) * 0.6;
     const jx = u.status('paralysis') && u.blocked('blocksAct') ? rand(-1, 1) : 0; // 마비 경련
     const rage = u.buff('rage');
-    if (rage && !u.dead) glowAt(ctx, u.x, u.y - 20, 30 + Math.sin(b.time * 8) * 3, '#ff6a4a', 0.35);
+    if (rage && !u.dead && !b._topPass) glowAt(ctx, u.x, u.y - 20, 30 + Math.sin(b.time * 8) * 3, '#ff6a4a', 0.35);
     const x = u.x + u.kx + fox, y = u.y + u.ky + foy;
     // 그림자 & 팀 링 (공중이면 그림자가 작아지고 분리됨)
-    if (!F) {
+    if (!F && !b._topPass) {
       const sk = Math.max(0.15, 1 - z / 70); // 높은 점프(>60px)에서도 음수 반경 방지
       ctx.globalAlpha = 0.35 * alpha * sk; ctx.fillStyle = '#000';
       const zs = u.size; ctx.beginPath(); ctx.ellipse(x, y + 2, 14 * sk * zs, 5 * sk * zs, 0, 0, 6.28); ctx.fill();
@@ -2365,7 +2365,7 @@ const Render = (() => {
       const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur));
       ctx.translate(z.x, z.y); ctx.scale(k, k); ctx.translate(-z.x, -z.y);
     }
-    if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA; ctx.translate(Math.round(rand(-k, k)), Math.round(rand(-k, k))); }
+    b._shk = [0, 0]; if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA; b._shk = [Math.round(rand(-k, k)), Math.round(rand(-k, k))]; ctx.translate(b._shk[0], b._shk[1]); }
     ctx.drawImage(floors[sid], 0, 0);
     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
     for (const f of b.fx) drawFx(ctx, f, 0);
@@ -2465,5 +2465,18 @@ const Render = (() => {
       ctx.restore();
     }
   }
-  return { draw, thumb, glowAt };
+  // 상단 UI(DOM) 위 오버레이: 상단 UI 영역에 걸친 캐릭터 스프라이트만 한 번 더 그림 (UI 영역으로 클립 → 같은 자리 픽셀만 덮어 이중으로 보이지 않음, 그림자 제외)
+  function drawTopUnits(c2, b, res, hudH) {
+    c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, c2.canvas.width, c2.canvas.height);
+    if (!b || !hudH) return;
+    const L = b.u.filter(u => !u.hidden && (u.y + u.ky - b.airZ(u)) - 90 * (u.size || 1) * (1 + b.airZ(u) / 110) < hudH + 6);
+    if (!L.length) return;
+    c2.setTransform(res, 0, 0, res, 0, 0); c2.imageSmoothingEnabled = false;
+    c2.save(); c2.beginPath(); c2.rect(0, 0, W, hudH); c2.clip();
+    if (b.zoom) { const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); c2.translate(z.x, z.y); c2.scale(k, k); c2.translate(-z.x, -z.y); }
+    if (b._shk) c2.translate(b._shk[0], b._shk[1]);
+    b._topPass = true;
+    try { for (const u of L.sort((a, c) => a.y - c.y)) { drawUnit(c2, u, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
+  }
+  return { draw, thumb, glowAt, drawTopUnits };
 })();

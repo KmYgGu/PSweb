@@ -1,7 +1,7 @@
 /* UI / 화면 흐름 / 메인 루프 */
 (() => {
   const $ = s => document.querySelector(s);
-  const stage = $('#stage'), cv = $('#cv'), ctx = cv.getContext('2d');
+  const stage = $('#stage'), cv = $('#cv'), ctx = cv.getContext('2d'), cvTop = $('#cvTop'), ctxTop = cvTop.getContext('2d'), hudEl = $('#hud');
   const RES = 2; // 내부 해상도 배율 (글자 선명도)
 
   function fit() {
@@ -259,6 +259,7 @@
     }
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     Render.draw(ctx, battle);
+    Render.drawTopUnits(ctxTop, battle, RES, battle && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
