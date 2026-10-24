@@ -541,7 +541,10 @@
       magnetPull(dur, dot) { const t = E(); if (!D || !t) return; D.magnet = { t: dur, tgt: t, dot, tick: 0.5, strain: 0, lx: t.x, ly: t.y }; b.wireFx(u, t, 0.4, 2); },
       repel(t, dur) { if (D && t) D.repel = { t: dur, tgt: t }; },
       berserker(max) {
-        if (!D || !D.lastPlay) return; const L = D.lastPlay.def; let n = 0;
+        // 대상 = 버서커 소울 '바로 전'에 쓴 Lv4 이하 몬스터 (lastPlay 는 이미 버서커 소울 자신이므로 prevPlay 사용 — 자기 자신을 재발동하던 버그 수정)
+        const P = D && D.prevPlay, cur = D && D.lastPlay;
+        if (!P || !cur || P.def.type !== 'monster' || (P.def.level || 0) > 4 || P.turn !== D.turn || P.seq !== cur.seq - 1) { if (D) sys(b, '버서커 소울: 바로 전에 쓴 Lv4 이하 몬스터가 없어 불발'); return; }
+        const L = P.def; let n = 0;
         const step = () => {
           if (u.dead || b.over || D.lost) return;
           if (n >= max) { sys(b, `버서커 소울: 최대 ${max}회로 종료`); return; }
@@ -593,6 +596,7 @@
     }
     if (c.type === 'monster') D.monsters++;
     D.grave.push(ci);
+    D.prevPlay = D.lastPlay; // 버서커 소울: 이 카드 '바로 전' 카드 기억
     D.lastPlay = { def: c, turn: D.turn, seq: D.plays + 1 };
     if (c.type !== 'monster') { popup(b, u, c, false, null, shoutOf(c)); }
     say(b, u, `${cardTag(c)} ${c.name}`, c.shoutLater ? null : shoutOf(c));
