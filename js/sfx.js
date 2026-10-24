@@ -132,8 +132,20 @@ const Sfx = (() => {
   };
   const SYN_LAYER = 0.55; // 샘플이 있을 때 합성 레이어 비율
 
+  // 동영상 녹화: 압축기 출력을 MediaStreamAudioDestination 으로도 보냄 (스피커 음소거 상태여도 파일에는 들어감)
+  let rec = null, hold = false;
+  function recStart() {
+    const c = ac(); if (!c || !c.createMediaStreamDestination) return null;
+    if (!rec) { rec = c.createMediaStreamDestination(); comp.connect(rec); }
+    if (!on) { try { comp.disconnect(c.destination); } catch (e) { /* 이미 끊김 */ } }
+    return rec.stream;
+  }
+  function recStop() {
+    if (!rec) return; try { comp.disconnect(rec); } catch (e) { /* 무시 */ }
+    try { comp.disconnect(ctx.destination); } catch (e) { /* 무시 */ } comp.connect(ctx.destination); rec = null;
+  }
   function play(name, o) {
-    if (!on || !SYN[name] || !ENABLED.has(name)) return;
+    if (hold || !(on || rec) || !SYN[name] || !ENABLED.has(name)) return;
     const c = ac(); if (!c) return;
     const now = performance.now();
     if (now - (last.get(name) || 0) < (GAP[name] || 50)) return;
@@ -164,6 +176,7 @@ const Sfx = (() => {
     get enabled() { return on; },
     volume(v) { if (typeof v === 'number') { vol = Math.max(0, Math.min(1, v)); if (master) master.gain.value = vol; } return vol; },
     get loaded() { return bufs.size; },
+    recStart, recStop, hold(v) { hold = !!v; }, // 녹화용 오디오 스트림 / 빨리감기 중 소리 막기
   };
 })();
 window.Sfx = Sfx;

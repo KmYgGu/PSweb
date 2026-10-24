@@ -217,6 +217,8 @@ img { image-rendering: pixelated; }
 
 #rpSave .vrow { display: flex; gap: 4px; }
 #rpSave .vrow button { flex: 1; font-size: 12px; padding: 0; }
+#rpSave .vfmt { font-weight: normal; color: #9fd0ff; margin-left: 4px; }
+#rpSave .vaud { display: block; font-size: 11px; color: #c8cce0; margin: 2px 0 4px; }
 #rpSave .vpick { height: 24px; font-size: 11px; font-weight: normal; background: #2e3346; color: #aab0c8; }
 #rpSave { bottom: 34px; }
 #vidRec { position: absolute; left: 10px; right: 10px; top: 600px; height: 36px; padding: 4px 8px; border-radius: 6px; background: rgba(20,18,30,.92); border: 1px solid #ff6a7a; display: flex; align-items: center; gap: 8px; z-index: 9; }

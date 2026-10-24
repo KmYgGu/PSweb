@@ -374,8 +374,8 @@
     seek(T) {
       T = clamp(T, this.range[0], this.range[1]);
       if (T < battle.time - 1e-6) this.restart();
-      RPQ.quiet = true; let g = 0;
-      try { while (battle.time < T - 1e-9 && g++ < 200000) { this.step1(); battle.updateVisual(STEP); } } finally { RPQ.quiet = false; }
+      RPQ.quiet = true; Sfx.hold(true); let g = 0;
+      try { while (battle.time < T - 1e-9 && g++ < 200000) { this.step1(); battle.updateVisual(STEP); } } finally { RPQ.quiet = false; Sfx.hold(false); }
       const log = $('#log'); log.innerHTML = fullLog.slice(-LOG_KEEP).map(r => `<div class="logl${r.cls}">${r.html}</div>`).join('');
       updateHud(9); updateHud(9); this.ui();
     },
@@ -462,7 +462,7 @@
     sc.addEventListener('pointermove', e => { if (RP.drag) { RP.drag.t = tAt(e); RP.ui(); } });
     const up = () => { if (!RP.drag) return; const d = RP.drag; RP.drag = null; RP.seek(d.t); if (d.was) RP.play(true); };
     sc.addEventListener('pointerup', up); sc.addEventListener('pointercancel', up); }
-  // ================= 동영상 저장 (webm) =================
+  // ================= 동영상 저장 (MP4 우선, 안 되면 webm) + 효과음 =================
   // file:// 에서는 PNG 를 그린 캔버스가 '오염'되어 녹화가 막힘 → 녹화하는 동안만 그림을 data:/blob: 사본(js/assets_data.js 또는 사용자가 고른 assets 폴더)으로 바꿔
   // 별도 녹화용 캔버스(720x1280)에 전장 + 상단 UI(DOM) + 상단 UI 위 캐릭터 + 하단 로그 + 배너를 합성해서 MediaRecorder 로 실시간 녹화.
   const VID = {
@@ -539,9 +539,11 @@
       try {
         this.active = A; RP.seek(range[0]); this.frame(); A.x.getImageData(0, 0, 1, 1); // 오염 검사
         const stream = c.captureStream(30);
-        const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || '';
-        mr = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6e6 });
-      } catch (e) { this.active = null; restore(); console.warn('[video]', e); toast('녹화 실패: 그림 사본 문제 (tools\\에셋갱신.bat 실행 후 새로고침)', 3500); return; }
+        const au = this.wantAudio() ? Sfx.recStart() : null; A.audio = !!(au && au.getAudioTracks().length);
+        if (A.audio) au.getAudioTracks().forEach(tr => stream.addTrack(tr));
+        const F = this.format(A.audio); A.ext = F.ext;
+        mr = new MediaRecorder(stream, { mimeType: F.mime, videoBitsPerSecond: 6e6, audioBitsPerSecond: 128000 });
+      } catch (e) { this.active = null; restore(); Sfx.recStop(); console.warn('[video]', e); toast('녹화 실패: 그림 사본 문제 (tools\\에셋갱신.bat 실행 후 새로고침)', 3500); return; }
       A.mr = mr; mr.ondataavailable = ev => { if (ev.data && ev.data.size) A.chunks.push(ev.data); };
       mr.onstop = () => this.finish(A);
       $('#vidRec').classList.remove('hidden'); ['#rpBar', '#rpCtl'].forEach(s => $(s).classList.add('hidden'));
@@ -549,19 +551,30 @@
       RP.spd = 1; RP.speedUI();
       if (kind === 'hl') { RP.potg(potgI); } else { RP.stopAt = range[1]; RP.play(true); }
     },
+    // 형식: MP4 (최근 Chrome/Edge) → 안 되면 webm. 소리 포함이면 오디오 코덱이 있는 형식 우선
+    format(audio) {
+      const ok = m => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } };
+      const mp4 = audio ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1,opus', 'video/mp4'] : ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/mp4'];
+      const webm = audio ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'] : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+      const m = mp4.find(ok); if (m) return { mime: m, ext: 'mp4' };
+      return { mime: webm.find(ok) || '', ext: 'webm' };
+    },
+    wantAudio() { const el = $('#vidAudio'); return !el || el.checked; },
+    fmtUI() { const el = $('#vidFmt'); if (!el || !window.MediaRecorder) return; el.textContent = '형식: ' + this.format(this.wantAudio()).ext.toUpperCase(); },
     stop(cancel) { const A = this.active; if (!A || A.stopping) return; A.stopping = true; A.cancel = cancel; RP.pause(); RP.stopAt = null; try { A.mr.stop(); } catch (e) { this.finish(A); } },
     finish(A) {
-      if (this.active !== A) return; this.active = null; A.restore();
+      if (this.active !== A) return; this.active = null; A.restore(); Sfx.recStop();
       $('#vidRec').classList.add('hidden'); ['#rpBar', '#rpCtl'].forEach(s => $(s).classList.remove('hidden')); RP.banner = 0; $('#rpBanner').classList.add('hidden');
       if (A.cancel) { toast('녹화 취소'); return; }
-      this.fixDur(new Blob(A.chunks, { type: 'video/webm' }), (performance.now() - A.t0)).then(blob => this.save(A, blob));
+      if (A.ext === 'mp4') this.save(A, new Blob(A.chunks, { type: 'video/mp4' }));
+      else this.fixDur(new Blob(A.chunks, { type: 'video/webm' }), (performance.now() - A.t0)).then(blob => this.save(A, blob));
     },
     save(A, blob) {
       this.last = { blob, secs: (performance.now() - A.t0) / 1000, len: A.e - A.s };
       const d = new Date(), p = n => String(n).padStart(2, '0'), nm = { hl: '하이라이트', seg: '구간', full: '전체' }[A.kind];
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `PS_${RP.rec.a}_vs_${RP.rec.b}_동영상_${nm}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.webm`;
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `PS_${RP.rec.a}_vs_${RP.rec.b}_동영상_${nm}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.${A.ext || 'webm'}`;
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      toast(`동영상 저장 (${(blob.size / 1048576).toFixed(1)}MB)`, 2500);
+      toast(`동영상 저장 (${(A.ext || 'webm').toUpperCase()}${A.audio ? ', 소리 포함' : ', 무음'}, ${(blob.size / 1048576).toFixed(1)}MB)`, 2500);
     },
     async fixDur(blob, ms) { // MediaRecorder webm 에는 길이 정보가 없음 → Segment Info 에 Duration 추가 (탐색 가능한 동영상)
       try {
@@ -590,6 +603,7 @@
   window.Replay.VID = VID;
   $('#vidHl').onclick = () => VID.start('hl'); $('#vidSeg').onclick = () => VID.start('seg'); $('#vidFull').onclick = () => VID.start('full');
   $('#vidCancel').onclick = () => VID.stop(true);
+  if ($('#vidAudio')) $('#vidAudio').onchange = () => VID.fmtUI(); VID.fmtUI();
   $('#vidPick').onclick = () => { $('#vidDir').onchange = e => { const n = VID.useFiles(e.target.files); e.target.value = ''; $('#vidPick').textContent = n ? `📁 폴더 그림 사용 중 (${n}개)` : '📁 assets 폴더에서 읽기'; toast(n ? `PNG ${n}개를 녹화에 사용` : 'PNG 를 찾지 못했어요'); }; $('#vidDir').click(); };
   // 테스트/밸런싱용: 헤드리스 시뮬레이션
   window.BattleSim = {
