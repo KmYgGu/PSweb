@@ -686,6 +686,10 @@ class Battle {
     if (o.element && r[o.element] != null) m *= r[o.element];
     if (o.delivery && r[o.delivery] != null) m *= r[o.delivery];
     for (const b of tgt.buffs) if (b.resist && o.element && b.resist[o.element] != null) m *= b.resist[o.element];
+    if (o.element2) { const e2 = o.element2; // 이중 속성: 두 번째 속성 저항도 곱함 (예: 헬 파이어 = 어둠+화염)
+      if (r[e2] != null) m *= r[e2];
+      if (tgt.zone && !waterImmune(tgt, tgt.zone) && tgt.zone.resist && tgt.zone.resist[e2] != null) m *= tgt.zone.resist[e2];
+      for (const b of tgt.buffs) if (b.resist && b.resist[e2] != null) m *= b.resist[e2]; }
     return m;
   }
   // 상태이상 저항: 캐릭터 statusResist(all + 개별) + 버프 statusResist 합산 (최대 0.9)
@@ -2003,6 +2007,7 @@ const Render = (() => {
   // ── 근접 무기 스프라이트 (무기 공격 때만 휘두름, 충돌 기본 공격엔 없음). 오프스크린 캔버스에 1회 프리렌더
   //  모양: 손잡이(x=0) → 끝(+x) 방향, 세로 중앙 정렬. style: swing(호) / thrust(찌르기)
   const WEAPONS = {
+    demonSword: { w: 36, h: 9, style: 'swing', trail: '#ff2a3a', draw(g) { R(g, 0, 3, 7, 3, '#2a1018'); R(g, 1, 4, 5, 1, '#5a1a28'); R(g, 7, 0, 2, 9, '#c8a040'); R(g, 9, 3, 24, 3, '#2a2030'); R(g, 9, 3, 24, 1, '#ff4a5a'); R(g, 9, 5, 24, 1, '#7a1020'); R(g, 33, 4, 2, 1, '#ff8090'); R(g, 11, 4, 18, 1, '#c0102a'); } }, // 루델리안 마검 (핏빛 칼날)
     sword: { w: 34, h: 9, style: 'swing', trail: '#bfe6ff', draw(g) { R(g, 0, 3, 7, 3, '#6a4528'); R(g, 1, 4, 5, 1, '#9a6a3a'); R(g, 7, 0, 2, 9, '#c8a050'); R(g, 9, 3, 22, 3, '#d8e2ec'); R(g, 9, 3, 22, 1, '#ffffff'); R(g, 9, 5, 22, 1, '#8aa0b8'); R(g, 31, 4, 2, 1, '#ffffff'); R(g, 10, 4, 18, 1, '#9fd8ff'); } },
     mace: { w: 28, h: 12, style: 'swing', trail: '#ffe7a0', draw(g) { R(g, 0, 5, 16, 2, '#5a4030'); R(g, 0, 5, 4, 2, '#2c2c34'); R(g, 15, 2, 9, 8, '#8a8f9c'); R(g, 16, 3, 7, 2, '#d0d6e0'); R(g, 18, 0, 3, 12, '#6a707c'); R(g, 24, 4, 3, 4, '#6a707c'); R(g, 19, 5, 2, 2, '#e8c050'); } },
     dagger: { w: 20, h: 7, style: 'swing', trail: '#c8a0ff', fast: true, draw(g) { R(g, 0, 2, 5, 3, '#2a2030'); R(g, 5, 0, 2, 7, '#5a5068'); R(g, 7, 2, 11, 3, '#b0b4cc'); R(g, 7, 2, 11, 1, '#e8eaff'); R(g, 18, 3, 2, 1, '#e8eaff'); R(g, 8, 4, 9, 1, '#6a50a0'); } },
