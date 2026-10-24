@@ -10,8 +10,9 @@
   const TAU = Math.PI * 2, ID = 'schurf', IMG = 'assets/Schurf/';
   const angTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
   const turn = (a, t, m) => { const d = Math.atan2(Math.sin(t - a), Math.cos(t - a)); return a + Math.max(-m, Math.min(m, d)); };
-  const form = (k, name, scale, size) => ({ id: ID + '@' + k, name, color: '#c8a870', size, sprite: { src: IMG + 'forms/' + k + '.png', scale, foot: 1 } });
-  const FORMS = { rabbit: form('rabbit', '토끼', 3, 1), snake: form('snake', '뱀', 3, 1), octopus: form('octopus', '문어', 3, 1), bear: form('bear', '곰', 3.6, 1.3), dragon: form('dragon', '드래곤', 5, 1.6) };
+  const form = (k, name, scale, size, src) => ({ id: ID + '@' + k, name, color: '#c8a870', size, sprite: { src, scale, foot: 1 } }); // src 는 전체 경로 문자열 (영상용 에셋 수집기가 경로를 찾음)
+  const FORMS = { rabbit: form('rabbit', '토끼', 3, 1, 'assets/Schurf/forms/rabbit.png'), snake: form('snake', '뱀', 3, 1, 'assets/Schurf/forms/snake.png'), octopus: form('octopus', '문어', 3, 1, 'assets/Schurf/forms/octopus.png'),
+    bear: form('bear', '곰', 3.6, 1.3, 'assets/Schurf/forms/bear.png'), dragon: form('dragon', '드래곤', 5, 1.6, 'assets/Schurf/forms/dragon.png') };
   const FORM_KO = { rabbit: '토끼', snake: '뱀', octopus: '문어', bear: '곰' };
 
   // ---------- 1. 흡수 ----------
