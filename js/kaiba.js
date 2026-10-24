@@ -629,7 +629,7 @@
     stats: { hp: 4000, atk: 22, spd: 240, range: 110, atkRate: 0.75, def: 0 },
     attack: { element: 'light', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: KAIBA_DECK, extra: EXTRA_CARDS.map(c => c.id), noExodia: true,
-      atkMul: 1.45, cfg: { PLAY_GAP: 0.45, MIN_WAIT: 0.55, WAIT_TIMEOUT: 3.3, MAX_PLAYS: 3 }, // v2: 몬스터 피해 ×1.45, 카드 사용 템포 상향
+      atkMul: 1.45, cfg: { PLAY_GAP: 0.45, MIN_WAIT: 0.55, WAIT_TIMEOUT: 2.3, MAX_PLAYS: 3 }, // v2: 몬스터 피해 ×1.45, 카드 사용 템포 상향
       blurb: '<b style="color:#8ad0ff">특수 승리 없음 · 엑스트라 덱 5장(융합) · 상대 듀얼리스트의 덱/패를 공격</b>' },
     skills: [{ id: 'duelCard', name: '듀얼리스트의 카드', cd: 1e9, hidden: true, canUse: () => false }],
     sprite: { src: 'assets/kaiba/front.png', back: 'assets/kaiba/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'right' } },

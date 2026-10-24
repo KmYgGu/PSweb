@@ -379,6 +379,7 @@ class Battle {
     if (Number.isFinite(u.hp)) u.lastHp = u.hp; else { console.warn('[battle] NaN HP 복구', u.def.id); u.hp = Number.isFinite(u.lastHp) ? u.lastHp : u.maxHp; } // 방어: HP NaN 방지
     u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt); if (u.wSwing && (u.wSwing.t += dt) >= u.wSwing.dur) u.wSwing = null;
     u.boost *= Math.pow(0.08, dt); // 충돌 가속 감쇠 (~0.6초)
+    if (u.def.spellCharge && !u.dead) { const SC = u.def.spellCharge; u.mCharge = Math.min(SC.cap, (u.mCharge || 0) + SC.rate * dt); } // 마법사: 맞지 않는 동안 다음 마법 강화 충전
     u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
     if (u.dead) { u.deadT += dt; return; }
     if (u.buffs.length > (u.nBuffs || 0)) this.say(u, 'buffed'); // 새 버프 감지
@@ -450,7 +451,8 @@ class Battle {
     if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
-    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); } // 근접 공격(무기) (meleeRateMul: 육망성의 저주 등): 근접 캐릭터만. 원거리 자동 발사는 없음
+    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); }
+    else if (!noAct && u.def.rangedBasic && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = u.def.rangedBasic.interval; } // 궁수만: 논타겟 화살 기본 공격 // 근접 공격(무기) (meleeRateMul: 육망성의 저주 등): 근접 캐릭터만. 원거리 자동 발사는 없음
   }
 
   // ---------- 상태이상 ----------
@@ -1030,7 +1032,7 @@ class Battle {
   // 기본 공격(충돌): ATK x BUMP_K. 기본 공격 속성/상태이상 유지. 무기 공격과 독립된 쿨타임(bumpT)
   fixedDamage(src, tgt, amount, o) {
     const dmg = Math.max(0, Math.round(Number.isFinite(amount) ? amount : 0)); if (!dmg) return 0;
-    tgt.hp -= dmg; tgt.flash = 0.12;
+    tgt.hp -= dmg; tgt.flash = 0.12; if (tgt.mCharge) tgt.mCharge = 0;
     if (src !== tgt) { this.resEvent(src, 'dealt'); this.resEvent(tgt, 'damaged'); }
     this.text(tgt.x + rand(-6, 6), tgt.y - 40, String(dmg), o.color || '#ffd060', 17);
     this.text(tgt.x, tgt.y - 60, '고정 피해!', '#ffe08a', 9);
@@ -1058,6 +1060,10 @@ class Battle {
         const a = Math.atan2(e.y - u.y, e.x - u.x) + (Math.random() < 0.5 ? -1 : 1) * rand(0.7, 1.6);
         this.shoot(u, { angle: a, spd: 560, dmg: u.st.atk, kind: u.def.projectile || 'arrow', hit: atk });
         this.text(u.x, u.y - 50, '?', '#e0b8ff', 12);
+      } else if (u.def.rangedBasic) { // 논타겟: 발사 순간 적 위치로 직선, 유도 없음 (회피 가능)
+        const RB = u.def.rangedBasic;
+        this.shoot(u, { angle: Math.atan2(e.y - u.y, e.x - u.x), spd: RB.spd, dmg: u.st.atk * RB.mult, kind: u.def.projectile || 'arrow', hit: atk });
+        playSfx('shot');
       } else {
         this.proj.push({ x: u.x + u.facing * 10, y: u.y - 18, tgt: e, src: u, spd: 560, dmg: u.st.atk, kind: u.def.projectile || 'arrow', homing: true, life: 2.5, trail: 0, hit: atk });
         playSfx('shot');
@@ -1170,7 +1176,7 @@ class Battle {
     const lpK = tgt.def.duelist ? (window.DUEL_LP_SCALE || 1) : 1; dmg *= lpK; // 듀얼리스트(LP 4000): 받는 피해를 LP 단위로 환산 (js/duel.js)
     dmg = Math.max(1, Math.round(dmg * rand(0.85, 1.15)));
     if (!Number.isFinite(dmg)) dmg = 0; // 방어: NaN 피해 무시
-    tgt.hp -= dmg;
+    tgt.hp -= dmg; if (dmg > 0 && tgt.mCharge) tgt.mCharge = 0; // 피격: 마법 충전 초기화
     if (o.dot) { // 지속 피해: 조용히 표시
       this.text(tgt.x + rand(-8, 8), tgt.y - 36, String(dmg), o.color || '#b8f08a', 9);
       if (tgt.hp <= 0) this.kill(tgt, src);
@@ -1633,6 +1639,11 @@ const Render = (() => {
 
   function drawUnit(ctx, u, b) {
     if (u.hidden) return;
+    if (u.def.spellCharge && !u.dead && u.mCharge > 0.02) { // 마법 충전 표시: 머리 위 도트 5칸
+      const k = u.mCharge / u.def.spellCharge.cap, n = Math.ceil(k * 5), x0 = Math.round(u.x) - 12, y0 = Math.round(u.y) - 58, full = k >= 1 && Math.floor(b.time * 8) % 2;
+      ctx.fillStyle = '#2a1a3a'; ctx.fillRect(x0 - 1, y0 - 1, 26, 5);
+      for (let i = 0; i < 5; i++) { ctx.fillStyle = i < n ? (full ? '#ffffff' : i >= 3 ? '#ffd060' : '#ff9a3a') : '#4a3a5a'; ctx.fillRect(x0 + i * 5, y0, 4, 3); }
+    }
     let fdef = u.fdef; // 오니화/변신 스프라이트
     const PZ = u.form ? u.form.poses : u.def.poses; // 상황별 스프라이트 (오리 등)
     if (PZ && !u.dead) { const k = u.air && u.air.fly ? 'fly' : u.poseT > 0 ? u.pose : u.flash > 0.05 ? 'hurt' : (u.zone && u.zone.splash && !u.air) ? 'swim' : null; if (k && PZ[k]) fdef = PZ[k]; }

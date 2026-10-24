@@ -94,6 +94,7 @@ const CHARACTERS = [
     id: 'archer', name: '궁수', gender: 'female', color: '#7cc47a',
     stats: { hp: 965, atk: 37, spd: 260, range: 130, atkRate: 1.1, def: 10 },
     attack: { element: 'slash', delivery: 'ranged', pierce: 0.3 },
+    rangedBasic: { interval: 1.1, mult: 0.6, spd: 520 }, // v3: 궁수만 원거리 기본 공격 (논타겟 직선 화살, 유도 없음)
     resist: { fire: 1.3, blunt: 1.2, ranged: 0.85 },
     statusResist: { poison: 0.5 },
     skills: [{ id: 'arrowVolley', name: '화살 세례', cd: 5, element: 'slash', delivery: 'ranged', pierce: 0.3, applies: [{ status: 'poison', duration: 4, chance: 0.35, power: 6 }] },
@@ -129,6 +130,7 @@ const CHARACTERS = [
     id: 'mage', name: '마법사', gender: 'male', color: '#b08ce8',
     stats: { hp: 1050, atk: 47, spd: 225, range: 120, atkRate: 0.8, def: 5 },
     attack: { element: 'fire', delivery: 'ranged' },
+    spellCharge: { rate: 0.1, cap: 1.0 }, // v3: 맞지 않는 동안 초당 +10%, 최대 +100% (10초). 화염구 사용 시 소모, 피격 시 초기화
     resist: { fire: 0.5, ice: 1.4, slash: 1.15 },
     statusResist: { confusion: 0.4 },
     skills: [{ id: 'fireball', name: '화염구', cd: 5.5, element: 'fire', delivery: 'ranged', applies: [{ status: 'weaken', duration: 4 }] },
@@ -506,7 +508,7 @@ const CHARACTERS = [
     skills: [
       { id: 'mysticBall', name: '미스틱 볼', cd: 5.5, out: 0.75, spd: 260, backSpd: 300, control: 2.0, wallMult: 2.0, wallCd: 0.4, element: 'dark', delivery: 'ranged' },
       { id: 'positioning', name: '포지셔닝', cd: 9, delay: 3.0 },
-      { id: 'accelerate', name: '액셀러레이트', cd: 10, spd: 640, spread: 0.75, bounces: 3, life: 3, mult: 0.35, dotDur: 2, dotPow: 4, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
+      { id: 'accelerate', name: '액셀러레이트', cd: 7, spd: 900, spread: 0.75, bounces: 6, life: 3, mult: 0.35, dotDur: 2, dotPow: 4, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
     ],
     // 패시브 (js/mystic.js): 리플레이스(피격 시 20%·내부 쿨 4초 위치 교환 + 해로운 상태 넘기기), 리스트레인트(적중 시 20% 봉인 2초)
     passives: { replace: { chance: 0.2, icd: 4 }, restraint: { chance: 0.2, dur: 2 } },

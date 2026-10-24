@@ -46,13 +46,14 @@ const SKILLS = {
     desc: '거대한 화염구를 떨어뜨려 넓은 범위에 큰 피해를 주고 쇠약시킵니다.',
     canUse: (u, e, d) => d < 240,
     use(u, e, b, slot) {
-      const t = 0.7, q = b.predict(e, t * 0.5), x = q.x, y = q.y, r = 58;
+      const t = 0.7, q = b.predict(e, t * 0.5), x = q.x, y = q.y, r = 58, chg = 1 + (u.mCharge || 0); // 마법 충전 소모
+      if (u.mCharge > 0.05) { b.text(u.x, u.y - 66, `충전 +${Math.round(u.mCharge * 100)}%`, '#ffd060', 9); b.ring(u.x, u.y - 20, 4, 18 + 20 * u.mCharge, 0.3, '#ffb060'); } u.mCharge = 0;
       b.telegraphCircle(x, y, r, t, '#ffae6b');
       b.glow(u.x, u.y - 30, 26, '#ffb36b', 0.5);
       b.meteor(x, y, t);
       b.later(t, () => {
         b.explosion(x, y, r);
-        if (Math.hypot(e.x - x, e.y - y) <= r + 8) b.damage(u, e, u.st.atk * 3.4, { big: true, color: '#ffc27a', ...hit(slot) });
+        if (Math.hypot(e.x - x, e.y - y) <= r + 8) b.damage(u, e, u.st.atk * 3.4 * chg, { big: true, color: '#ffc27a', ...hit(slot) });
       });
     },
   },
