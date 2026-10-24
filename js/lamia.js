@@ -137,22 +137,22 @@
       }
     } else if (P.t >= 0.3) u.lmSp = null;
   }
-  function fireBeam(b, u, A, S) { // A: {x, y(발 기준 -22), a} → 길이 계산 + 피해
+  function fireBeam(b, u, A, S, hit) { // A: {x, y(발 기준 -22), a} → 길이 계산 + 피해. 장애물·벽 오브젝트 관통 (경기장 밖에서만 끝남)
     const c = Math.cos(A.a), s = Math.sin(A.a); let L = 0;
-    for (; L < S.len; L += 5) { const x = A.x + c * L, y = A.y + 22 + s * L; if (x < AR.x || x > AR.x + AR.w || y < AR.y || y > AR.y + AR.h + 10 || (L > 8 && b.blockAt(x, y - 4))) break; }
+    for (; L < S.len; L += 5) { const x = A.x + c * L, y = A.y + 22 + s * L; if (x < AR.x - 4 || x > AR.x + AR.w + 4 || y < AR.y - 4 || y > AR.y + AR.h + 14) break; }
     A.L = L;
-    for (const o of b.foes(u)) { if (o.hidden) continue; const dx = o.x - A.x, dy = (o.y - 18) - A.y, t = dx * c + dy * s; if (t < 0 || t > L + o.pad) continue;
+    for (const o of b.foes(u)) { if (o.hidden || o.dead || (hit && hit.has(o))) continue; const dx = o.x - A.x, dy = (o.y - 18) - A.y, t = dx * c + dy * s; if (t < 0 || t > L + o.pad) continue;
       if (Math.abs(-dx * s + dy * c) > S.width + o.pad) continue;
-      b.damage(u, o, u.st.atk * S.mult * (opening(b, u) ? OPEN.mult : 1), { element: 'light', delivery: 'ranged', color: '#fff4c0' }); }
+      if (hit) hit.add(o); b.damage(u, o, u.st.atk * S.mult * (opening(b, u) ? OPEN.mult : 1), { element: 'light', delivery: 'ranged', color: '#fff4c0' }); }
   }
-  function drawBeams(ctx, arms, phase, t, lock, len) {
+  function drawBeams(ctx, arms, phase, t, lock, len, fade) {
     for (const A of arms) {
       if (phase === 'lock') { ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * Math.min(1, t / lock); ctx.strokeStyle = '#fff4c0'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(A.x + Math.cos(A.a) * len, A.y + Math.sin(A.a) * len); ctx.stroke(); ctx.restore(); }
-      if (phase === 'fire' && A.L != null) { const k = Math.max(0, 1 - t / 0.3); ctx.save(); ctx.lineCap = 'round'; const x1 = A.x + Math.cos(A.a) * A.L, y1 = A.y + Math.sin(A.a) * A.L;
+      if (phase === 'fire' && A.L != null) { const k = fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3); ctx.save(); ctx.lineCap = 'round'; const x1 = A.x + Math.cos(A.a) * A.L, y1 = A.y + Math.sin(A.a) * A.L;
         ctx.globalAlpha = 0.4 * k; ctx.strokeStyle = '#fff0a0'; ctx.lineWidth = 20; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(x1, y1); ctx.stroke();
         ctx.globalAlpha = 0.95 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.stroke(); ctx.restore(); }
-      drawArm(ctx, A, phase === 'fire' ? Math.max(0, 1 - t / 0.3) : 0.9);
+      drawArm(ctx, A, phase === 'fire' ? (fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3)) : 0.9);
     }
   }
   function drawArm(ctx, A, k) {
@@ -174,8 +174,11 @@
       b.ring(u.x, u.y - 20, 6, S.r + 8, 0.35, '#bfe8ff'); b.text(u.x, u.y - 70, '팔 ' + n + '개', '#bfe8ff', 9);
       u.action = { type: 'lmCircle', step(dt) { // 시전 중 제자리
         const C2 = u.lmCircle; if (!C2) { u.action = null; return; } C2.t += dt;
-        if (C2.phase === 'lock' && C2.t >= S.lock) { C2.phase = 'fire'; C2.t = 0; for (const A of C2.arms) fireBeam(b, u, A, S); b.shake(1.8); b.glow(u.x, u.y - 22, 40, '#fff4c0', 0.3); }
-        else if (C2.phase === 'fire' && C2.t >= 0.3) { u.lmCircle = null; u.action = null; }
+        if (C2.phase === 'lock' && C2.t >= S.lock) { C2.phase = 'fire'; C2.t = 0; C2.w = TAU / C2.arms.length / S.sweep; // 회전: 다음 팔 방향까지 S.sweep초 (팔 적을수록 빠름)
+          for (const A of C2.arms) { A.hit = new Set(); fireBeam(b, u, A, S, A.hit); } b.shake(1.8); b.glow(u.x, u.y - 22, 40, '#fff4c0', 0.3); }
+        else if (C2.phase === 'fire') { const da = C2.w * Math.min(dt, Math.max(0, S.sweep - (C2.t - dt)));
+          if (da > 0) for (const A of C2.arms) { A.a += da; A.x = u.x + Math.cos(A.a) * S.r; A.y = u.y - 22 + Math.sin(A.a) * S.r * 0.8; fireBeam(b, u, A, S, A.hit); } // 팔마다 같은 대상은 1회만
+          if (C2.t >= S.sweep) { u.lmCircle = null; u.action = null; } }
       } };
     },
   };
@@ -217,7 +220,7 @@
     drawOver(ctx, b) {
       for (const u of b.u) { if (u.def.id !== ID) continue;
         if (u.lmSp) drawSpread(ctx, b, u);
-        if (u.lmCircle) { const C = u.lmCircle; drawBeams(ctx, C.arms, C.phase, C.t, C.S.lock, C.S.len); }
+        if (u.lmCircle) { const C = u.lmCircle; drawBeams(ctx, C.arms, C.phase, C.t, C.S.lock, C.S.len, C.S.sweep); }
         const L = u.lmLev; if (L && L.thrown && !L.done) { const k = L.bt / u.skills.find(s => s.id === 'lmFreeze').fall, z = b.airZ(u) * (1 - k);
           ctx.save(); ctx.translate(Math.round(u.x + 8), Math.round(u.y - 30 - z + 30 * k)); ctx.rotate(L.bt * 12); ctx.fillStyle = '#3a2a5a'; ctx.fillRect(-5, -4, 10, 8); ctx.fillStyle = '#e8d8a8'; ctx.fillRect(-4, -3, 8, 1); ctx.fillStyle = '#bfe8ff'; ctx.fillRect(-1, -1, 2, 2); ctx.restore(); }
         const s = standOf(u); if (s && s.lmOrder) { ctx.save(); ctx.strokeStyle = '#bfe8ff'; ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 30); ctx.lineTo(s.x, s.y - 24); ctx.stroke(); ctx.restore(); }
@@ -235,7 +238,7 @@
       { id: 'lmStand', name: '스탠드 전개', cd: 4 },
       { id: 'lmFreeze', name: '광역 빙결 마법', cd: 14, h: 34, delay: 1.0, fall: 0.35, after: 0.35, dur: 1.8, mult: 0.4, element: 'ice', delivery: 'ranged' },
       { id: 'lmOrder', name: '명령', cd: 11, limit: 4, spd: 430, turn: 3.2, walk: 120, walkMax: 3, mult: 2.4 },
-      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, len: 300, width: 16, mult: 2.0, element: 'light', delivery: 'ranged' },
+      { id: 'lmCircle', name: '브릴리언스 서클', cd: 10, r: 26, lock: 0.45, sweep: 0.6, len: 300, width: 16, mult: 2.0, element: 'light', delivery: 'ranged' },
       { id: 'lmSpread', name: '스탠드 산개', cd: 13, n: 6, gap: 0.3, lock: 0.35, len: 360, width: 16, mult: 2.6, element: 'light', delivery: 'ranged' },
     ],
     lm: { stay: 9 }, // 스탠드 전개 유지 시간(초) 뒤 호출 (또는 상대가 70 안으로 붙으면)
