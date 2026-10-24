@@ -415,14 +415,14 @@ class Battle {
     u.atkT -= dt; u.bumpT = (u.bumpT || 0) - dt; const cdr = dt * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= cdr; // cdRate: 쿨타임 감소 속도 (성직자 기도)
     const noAct = u.blocked('blocksAct'), noMove = u.blocked('blocksMove');
     if (noAct && noMove) { u.moving = false; return; }
-    if (u.action) { if (!noAct) this.updateAction(u, e, dt); return; }
+    if (u.action) { if (!noAct) { try { this.updateAction(u, e, dt); } catch (err) { console.warn('action error', u.action && u.action.type, err); u.action = null; } } return; }
     const d = dist(u, e);
     const noSkill = u.blocked('blocksSkill'); // 봉인: 스킬 사용 불가 (패시브는 동작)
     for (let i = 0; i < u.skills.length && !noAct && !noSkill; i++) {
       const slot = u.skills[i], sk = SKILLS[slot.id];
       if (!sk || u.skillT[i] > 0) continue;
       if (!this.canPay(u, slot)) continue;
-      const ok = slot.canUse ? slot.canUse(u, e, d, this) : sk.canUse(u, e, d, this);
+      let ok; try { ok = slot.canUse ? slot.canUse(u, e, d, this) : sk.canUse(u, e, d, this); } catch (err) { console.warn('skill canUse error', slot.id, err); u.skillT[i] = 9999; continue; } // 오류난 스킬은 끄고 계속 (게임 멈춤 방지)
       if (!ok) continue;
       u.skillT[i] = slot.cd;
       this.pay(u, slot);
@@ -430,7 +430,7 @@ class Battle {
       this.hooks.onSkill && this.hooks.onSkill(u, slot.name, vl);
       if (vl) this.bubble(u, vl);
       if (this.emit('skill', u, slot, e)) { this.text(u.x, u.y - 60, '무효!', '#c8c0ff', 11); break; } // 함정 등으로 무효
-      sk.use(u, e, this, slot);
+      try { sk.use(u, e, this, slot); } catch (err) { console.warn('skill use error', slot.id, err); u.skillT[i] = 9999; u.action = null; }
       break;
     }
     if (u.action) return;

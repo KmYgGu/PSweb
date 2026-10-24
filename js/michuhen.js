@@ -12,7 +12,8 @@
   const foeOf = (b, u) => { const L = b.u.filter(o => o.team !== u.team && !o.summon && !o.dead); if (!L.length) return b.enemy(u); let m = L[0]; for (const o of L) if (dist(u, o) < dist(u, m)) m = o; return m; };
   const segD = (px, py, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1, t = clamp(((px - ax) * dx + (py - ay) * dy) / L, 0, 1); return [Math.hypot(px - ax - dx * t, py - ay - dy * t), t]; };
   const inArena = (x, y) => x > AR.x + 6 && x < AR.x + AR.w - 6 && y > AR.y + 24 && y < AR.y + AR.h - 4;
-  const M = u => u.mc || (u.mc = { ammo: u.def.mc.mag, axe: { state: 'hand' }, rl: null, ric: [] });
+  const MAG = u => (u.def.mc && u.def.mc.mag) || 6; // 슈르프 등 다른 캐릭터가 흡수해도 탄창 6
+  const M = u => u.mc || (u.mc = { ammo: MAG(u), axe: { state: 'hand' }, rl: null, ric: [] });
 
   STATUS_DEFS.mcShock = { name: '감전', color: '#9ff0ff', tint: '#c8faff', tintA: 0.45, particle: '#e8ffff', blocksAct: true, spdMul: 0.35, onApply(u) { u.action = null; } };
 
@@ -45,9 +46,14 @@
   };
   // ---------- 3. 속사 ----------
   SKILLS.mcQuick = {
-    desc: '눈에 보이지 않을 만큼 빠른 총알 한 발(유도 없음). 총알 1발 사용.',
+    desc: '눈에 보이지 않을 만큼 빠른 총알 한 발. 쏘는 순간 무조건 명중합니다. 총알 1발 사용.',
     canUse: (u, e, d) => M(u).ammo >= 1 && !u.mc.rl && d < 330,
-    use(u, e0, b, slot) { const e = foeOf(b, u), a = aimAt(u, e); u.facing = Math.cos(a) >= 0 ? 1 : -1; fire(b, u, a, slot.spd, slot.mult); },
+    use(u, e0, b, slot) { const e = foeOf(b, u), Mc = M(u); if (!e || Mc.ammo <= 0) return; Mc.ammo--; // 무조건 명중 (즉발 히트스캔)
+      const a = aimAt(u, e); u.facing = Math.cos(a) >= 0 ? 1 : -1; playSfx('shot');
+      const x0 = u.x + Math.cos(a) * 14, y0 = u.y - 20 + Math.sin(a) * 14;
+      b.streak(x0, y0, e.x, e.y - 18 - b.airZ(e), '#ffe9a0', 3, 0.15);
+      b.parts.push({ x: x0, y: y0, vx: 0, vy: 0, life: 0.06, max: 0.06, color: '#fff0a0', size: 4, glow: true });
+      b.damage(u, e, u.st.atk * slot.mult, { element: 'blunt', delivery: 'ranged', color: '#ffe9a0', piercesBarrier: true, sureHit: true }); },
   };
   // ---------- 4. 난사 ----------
   SKILLS.mcDump = {
@@ -74,7 +80,7 @@
   // ---------- 6. 장전 ----------
   SKILLS.mcReload = {
     desc: '총알을 모두 쓰거나 안전하다고 판단하면 한 발씩 장전합니다(움직이며). 공격받으면 장전을 멈추고 계속 싸웁니다.',
-    canUse: (u, e, d) => { const Mc = M(u); return !Mc.rl && Mc.ammo < u.def.mc.mag && ((Mc.ammo === 0 && d > 80) || d > 200 || (Mc.ammo <= 2 && d > 150)); },
+    canUse: (u, e, d) => { const Mc = M(u); return !Mc.rl && Mc.ammo < MAG(u) && ((Mc.ammo === 0 && d > 80) || d > 200 || (Mc.ammo <= 2 && d > 150)); },
     say(u, e, b) { return b.line(u, 'skill', '장전'); },
     use(u, e, b, slot) { M(u).rl = { t: 0, each: slot.each }; },
   };
@@ -82,7 +88,7 @@
   // 피격 시 장전 중단
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o = {}) {
     const r = oDmg.call(this, src, tgt, amt, o);
-    if (r > 0 && tgt && tgt.def.id === ID && tgt.mc && tgt.mc.rl && src !== tgt) { tgt.mc.rl = null; this.text(tgt.x, tgt.y - 70, '장전 중단!', '#ffd08a', 9); }
+    if (r > 0 && tgt && tgt.mc && tgt.mc.rl && src !== tgt) { tgt.mc.rl = null; this.text(tgt.x, tgt.y - 70, '장전 중단!', '#ffd08a', 9); }
     return r;
   };
 
@@ -136,15 +142,16 @@
     match: () => false,
     init(b) { for (const u of b.u) if (u.def.id === ID) M(u); },
     step(b, dt) {
-      for (const u of b.u) { if (u.def.id !== ID) continue; const Mc = M(u);
+      for (const u of b.u) { if (u.def.id !== ID && !u.mc) continue; const Mc = M(u), me = u.def.id === ID;
         if (u.dead) { Mc.rl = null; continue; }
-        if (Mc.axe.state !== 'hand') u.atkT = Math.max(u.atkT, 0.15); // 도끼가 없으면 근접 기본 공격 불가
-        if (Mc.rl) { Mc.rl.t += dt; if (Mc.rl.t >= Mc.rl.each) { Mc.rl.t = 0; Mc.ammo++; b.text(u.x + 12, u.y - 58, '+1', '#ffe08a', 8); if (Mc.ammo >= u.def.mc.mag) { Mc.rl = null; b.text(u.x, u.y - 70, '장전 완료', '#ffe08a', 9); } } }
+        if (!me && Mc.ammo <= 0 && !Mc.rl) Mc.rl = { t: 0, each: 0.4 }; // 흡수한 쪽은 장전 스킬이 없으니 0발이면 자동 장전
+        if (me && Mc.axe.state !== 'hand') u.atkT = Math.max(u.atkT, 0.15); // 도끼가 없으면 근접 기본 공격 불가
+        if (Mc.rl) { Mc.rl.t += dt; if (Mc.rl.t >= Mc.rl.each) { Mc.rl.t = 0; Mc.ammo++; b.text(u.x + 12, u.y - 58, '+1', '#ffe08a', 8); if (Mc.ammo >= MAG(u)) { Mc.rl = null; b.text(u.x, u.y - 70, '장전 완료', '#ffe08a', 9); } } }
         stepAxe(b, u, dt); stepRic(b, u, dt);
       }
     },
     drawOver(ctx, b) {
-      for (const u of b.u) { if (u.def.id !== ID || !u.mc) continue; const Mc = u.mc, A = Mc.axe;
+      for (const u of b.u) { if (!u.mc) continue; const Mc = u.mc, A = Mc.axe;
         if (A.state === 'spin' || (A.state === 'back' && A.emT > 0)) { // 전자기장 선
           ctx.save(); ctx.strokeStyle = '#9ff0ff'; ctx.globalAlpha = 0.5 + 0.4 * Math.sin(b.time * 50); ctx.lineWidth = 1.5; ctx.beginPath();
           const x0 = u.x - u.facing * 6, y0 = u.y - 18, x1 = A.x, y1 = A.y - 10, n = 8; ctx.moveTo(x0, y0);
@@ -155,8 +162,9 @@
         for (const r of Mc.ric) { ctx.save(); ctx.strokeStyle = '#ffe9a0'; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); r.trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y - 18) : ctx.moveTo(x, y - 18)); ctx.lineTo(r.x, r.y - 18); ctx.stroke();
           ctx.globalAlpha = 1; ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(r.x) - 1, Math.round(r.y - 18) - 1, 3, 3); ctx.restore(); }
         if (u.dead || u.hidden) continue;
+        if (u.def.id !== ID && !(u.schCopy && /^mc/.test(u.schCopy.id))) continue; // 흡수 중에만 탄창 표시
         // 탄창 UI (머리 위)
-        const mag = u.def.mc.mag, w = 4, gap = 1, x0 = Math.round(u.x - (mag * (w + gap) - gap) / 2), y0 = Math.round(u.y + u.ky - b.airZ(u) - 66);
+        const mag = MAG(u), w = 4, gap = 1, x0 = Math.round(u.x - (mag * (w + gap) - gap) / 2), y0 = Math.round(u.y + u.ky - b.airZ(u) - 66);
         ctx.save(); ctx.fillStyle = 'rgba(16,14,22,0.7)'; ctx.fillRect(x0 - 2, y0 - 2, mag * (w + gap) - gap + 4, 9);
         for (let i = 0; i < mag; i++) { const full = i < Mc.ammo, next = Mc.rl && i === Mc.ammo;
           ctx.fillStyle = full ? '#e8b84a' : next ? (Math.floor(b.time * 8) % 2 ? '#8a7040' : '#3a3240') : '#3a3240'; ctx.fillRect(x0 + i * (w + gap), y0 + 1, w, 4);
