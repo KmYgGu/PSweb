@@ -25,6 +25,9 @@
     for (let i = 0; i < n; i++) { const [x, y, a] = ARM_SLOTS[i]; ctx.save(); ctx.translate(x, y); ctx.rotate(a);
       ctx.drawImage(s.img, 0, 0, s.fw, s.fh, -3 * k * 2, -s.dh * k / 2, s.dw * k, s.dh * k); ctx.restore(); }
   }
+  // 초반 화력: 개전 '절대 계산' 구간
+  const TRACK = 0.3, OPEN = { dur: 14, mult: 1.9, cd: 1.6, first: 0.8 };
+  const opening = (b, u) => b.time < OPEN.dur && !u.dead;
   const standOf = u => u.lmStand && !u.lmStand.dead && u.lmStand.summon && !u.lmStand.summon.ended ? u.lmStand : null;
 
   // ---------- 1. 스탠드 전개 / 호출 ----------
@@ -123,9 +126,10 @@
   function spreadStep(b, u, dt) {
     const P = u.lmSp, S = P.S, e = mainFoe(b, u); P.t += dt;
     if (u.dead || b.over) { u.lmSp = null; return; }
+    for (const A of P.arms) if (A.age < TRACK) { A.age += dt; if (e) A.a = Math.atan2(e.y - 18 - A.y, e.x - A.x); }
     if (P.phase === 'plant') {
-      if ((P.next -= dt) <= 0 && P.arms.length < P.n) { P.next = S.gap; P.arms.push({ x: u.x, y: u.y - 22, a: e ? Math.atan2(e.y - 18 - (u.y - 22), e.x - u.x) : 0 }); /* 설치 순간 상대 방향으로 고정 */ b.ring(u.x, u.y - 22, 3, 16, 0.25, '#bfe8ff'); }
-      if (P.arms.length >= P.n) { P.phase = 'lock'; P.t = 0; b.text(u.x, u.y - 66, '쏴라.', '#fff4c0', 10); }
+      if ((P.next -= dt) <= 0 && P.arms.length < P.n) { P.next = S.gap; P.arms.push({ x: u.x, y: u.y - 22, a: e ? Math.atan2(e.y - 18 - (u.y - 22), e.x - u.x) : 0, age: 0 }); /* 설치 후 0.3초 추적 → 고정 */ b.ring(u.x, u.y - 22, 3, 16, 0.25, '#bfe8ff'); }
+      if (P.arms.length >= P.n && P.arms[P.arms.length - 1].age >= TRACK) { P.phase = 'lock'; P.t = 0; b.text(u.x, u.y - 66, '쏴라.', '#fff4c0', 10); }
     } else if (P.phase === 'lock') {
       if (P.t >= S.lock) { P.phase = 'fire'; P.t = 0;
         for (const A of P.arms) fireBeam(b, u, A, S);
@@ -139,7 +143,7 @@
     A.L = L;
     for (const o of b.foes(u)) { if (o.hidden) continue; const dx = o.x - A.x, dy = (o.y - 18) - A.y, t = dx * c + dy * s; if (t < 0 || t > L + o.pad) continue;
       if (Math.abs(-dx * s + dy * c) > S.width + o.pad) continue;
-      b.damage(u, o, u.st.atk * S.mult, { element: 'light', delivery: 'ranged', color: '#fff4c0' }); }
+      b.damage(u, o, u.st.atk * S.mult * (opening(b, u) ? OPEN.mult : 1), { element: 'light', delivery: 'ranged', color: '#fff4c0' }); }
   }
   function drawBeams(ctx, arms, phase, t, lock, len) {
     for (const A of arms) {
@@ -196,10 +200,16 @@
       for (const u of b.u) {
         if (u.def.id !== ID) continue;
         const s = standOf(u); if (s) { s.maxHp = u.maxHp; s.hp = u.hp; } else if (u.lmStand) u.lmStand = null;
+        if (opening(b, u)) { const ex = dt * (OPEN.cd - 1) * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= ex; // 쿨타임 1.6배 빠르게
+          if (!u.lmOpened && b.time >= OPEN.first) { const e = mainFoe(b, u), i = u.skills.findIndex(k => k.id === 'lmSpread');
+            if (e && i >= 0 && !u.lmSp && !u.lmLev && !u.lmCircle && !u.stunned && !u.statuses.some(x => x.id === 'lmFrozen' || x.id === 'stun')) { u.lmOpened = true; // 개전 즉시 산개
+              b.text(u.x, u.y - 78, '절대 계산!', '#fff4c0', 11); SKILLS.lmSpread.use(u, e, b, u.skills[i]); u.skillT[i] = u.skills[i].cd; } } }
         if (u.lmSp) spreadStep(b, u, dt);
       }
     },
     drawUnder(ctx, b) { // 전개하지 않은 스탠드: 라미아 뒤에 반투명으로
+      for (const u of b.u) if (u.def.id === ID && !u.dead && !u.hidden && opening(b, u)) { const k = 0.25 + 0.15 * Math.sin(b.time * 8), z = b.airZ(u); // 초반 화력 구간 빛
+        ctx.save(); ctx.globalAlpha = k * Math.min(1, (OPEN.dur - b.time) / 1.5); ctx.fillStyle = '#fff4c0'; ctx.beginPath(); ctx.ellipse(u.x, u.y - 16 - z, 17, 21, 0, 0, TAU); ctx.fill(); ctx.restore(); }
       for (const u of b.u) { if (u.def.id !== ID || u.dead || u.hidden || standOf(u)) continue;
         const sp = Sprites.get(STAND), z = b.airZ(u); ctx.save(); ctx.globalAlpha = u.lmLev ? 0.75 : 0.4; ctx.translate(Math.round(u.x - u.facing * 9), Math.round(u.y - 4 - z * (u.lmLev ? 0.6 : 1)));
         if (u.facing < 0) ctx.scale(-1, 1); if (!u.lmCircle) drawStandArms(ctx, armCount(u)); Sprites.draw(ctx, sp, 0); ctx.restore(); }
