@@ -1,5 +1,5 @@
 /* =========================================================
- * 구울즈 듀얼리스트 (세 번째 듀얼리스트) — 미소녀 카드 덱 40장 (전부 몬스터)
+ * 구울즈 (세 번째 듀얼리스트) — 미소녀 카드 덱 40장 (전부 몬스터)
  *  - 프레임워크: js/duel.js 재사용 (패/드로우/LP/릴리스/묘지/AI 점수/HUD/상단 UI 위 몬스터 훅)
  *  - 카드 id G01~G40 = 유저 목록 번호. 스프라이트: assets/Ghouls/monsters/Gxx.png (덮어쓰기로 교체)
  *  - 엔진 확장 (이 파일):
@@ -76,7 +76,7 @@
   STATUS_DEFS.gSleep = { name: '수면', color: '#c8b8ff', tint: '#8a7ad8', tintA: 0.25, blocksMove: true, blocksAct: true, particle: '#e0d8ff', onApply(u) { u.action = null; }, onDamaged(u, b, s, o) { if (!o.dot && s.src !== u) s.t = 0; return 1; } };
   STATUS_DEFS.gStop = { name: '시간 정지', color: '#e0e0e8', tint: '#b0b0c0', tintA: 0.5, blocksMove: true, blocksAct: true, noResistScale: true, onApply(u) { u.action = null; } };
   STATUS_DEFS.gFrozen = { name: '빙결', color: '#9fe0ff', tint: '#9fe0ff', tintA: 0.45, blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
-  STATUS_DEFS.gCastle = { name: '백은성', color: '#e8ecf8', tint: '#d8dcf0', tintA: 0.12, blocksMove: true, noResistScale: true };
+  STATUS_DEFS.gCastle = { name: '백은성', color: '#e8ecf8', tint: '#d8dcf0', tintA: 0.12, noResistScale: true }; // 작은 성 안에서 조금 움직일 수 있음 (step에서 성 안으로 제한)
 
   // ---------- 엔진 패치 ----------
   const BP = Battle.prototype;
@@ -193,6 +193,7 @@
       b.resolveBuildings(u, true); u.zone = b.zoneAt(u.x, u.y);
     }
     b.proj = b.proj.filter(p => !b.blockAt(p.x, p.y + 14));
+    for (const o of b.u) if (o.gCastle) { o.gCastle.cx = undefined; } b.gTS = null; // 스테이지 교체: 성 위치 재설정, 시간정지 연출 해제
     const el = document.getElementById('stageName'); if (el && typeof document !== 'undefined' && window.__battle === b) el.textContent = '🗺 ' + (STAGE_DEFS[id].short || STAGE_DEFS[id].name);
     sys(b, `스테이지 변경: ${STAGE_DEFS[id].name}`);
     return true;
@@ -238,9 +239,9 @@
       const c = L[Math.floor(Math.random() * L.length)]; D.deck.splice(D.deck.indexOf(c), 1); D.grave.push(c);
       b.later(0.4, () => { if (!u.dead && !b.over) ctx.useMonster(c, { label: `마스카레나(Lv${max} 이하)` }); });
     }, { tags: [], score: S => 6 + S.myHpR * 20 }),
-    mon(5, '백은성의 라뷰린스', 8, 2900, 'light', '상대를 내구도 (90 + ATK×0.6) 의 백은성에 7초 가둠: 이동 불가, 상대가 주는 피해는 성벽이 대신 받음. 오~호호호!', ctx => {
+    mon(5, '백은성의 라뷰린스', 8, 2900, 'light', '상대를 내구도 (90 + ATK×0.6) 의 작은 백은성에 7초 가둠: 성 안(좌우 14px·상하 6px)에서만 움직임, 상대가 주는 피해는 성벽이 대신 받음. 오~호호호!', ctx => {
       const { b, u } = ctx, e = mainFoe(b, u); if (!e) return;
-      const hp = 90 + ctx.atk(0.6) * 1.0; e.gCastle = { hp, max: hp, t: 7, src: u }; b.applyStatus(e, 'gCastle', 7, u, { noResistScale: true });
+      const hp = 90 + ctx.atk(0.6) * 1.0; e.gCastle = { hp, max: hp, t: 7, src: u, cx: e.x, cy: e.y }; b.applyStatus(e, 'gCastle', 7, u, { noResistScale: true });
       b.shock(e.x, e.y, 6, 40, '#e8ecf8', 0.5, 5); b.text(e.x, e.y - 70, '백은성!', '#f0f4ff', 12);
       u.gLaugh = { t: 7, n: 0 }; actor(b, SPR(5), u.x - u.facing * 18, u.y - 4, 7, { face: u.facing, upd: (A) => { A.x = u.x - u.facing * 18; A.y = u.y - 4; if (!e.gCastle) A.t = Math.max(A.t, A.dur - 0.3); } });
     }, { tags: ['control'], score: S => (S.oppStunned ? -20 : 14) + (S.oppCasting ? 6 : 0), priority: 6 }),
@@ -272,12 +273,12 @@
       actor(b, SPR(9), sx, sy, 0.75, { face: Math.cos(a) >= 0 ? 1 : -1, upd: (A) => { const k = Math.max(0, Math.min(1, (A.t - 0.35) / 0.2)); A.x = sx + (tx - sx) * k; A.y = sy + (ty - sy) * k; } });
       b.later(0.55, () => { if (u.dead || b.over) return; b.streak(sx, sy - 18, tx, ty - 18, '#e0e8ff', 14, 0.3); for (const f of b.foes(u)) { const dx = f.x - sx, dy = f.y - sy, al = dx * Math.cos(a) + dy * Math.sin(a), pp = Math.abs(-dx * Math.sin(a) + dy * Math.cos(a)); if (al > -10 && al < L + 20 && pp < 26 + f.pad) ctx.damage(f, amt, hitO(ctx, { delivery: 'melee', big: true })); } });
     }, { tags: ['damage', 'control'], est: S => DUEL.CFG.ATK_SCALE * 2800 * 1.3 * (0.6 + Math.min(S.d, 400) / 200), score: S => (S.d > 180 ? 10 : 0) }),
-    mon(10, '성전의 수견사', 4, 1600, 'light', '전장에 없는 무작위 캐릭터를 불러 스킬 1개를 쓰게 한 뒤 사라짐 (3.5초, 체력 120의 소환수).', ctx => {
+    mon(10, '성전의 수견사', 4, 1600, 'light', '전장에 없는 무작위 캐릭터를 불러 스킬 1개를 쓰게 하고, 스킬이 끝나면 바로 사라짐 (체력 120의 소환수).', ctx => {
       const { b, u } = ctx, ids = new Set(b.u.map(o => o.def.id)); for (const o of b.u) if (o.def.partner) ids.add(o.def.partner.id);
       const pool = CHARACTERS.filter(c => !ids.has(c.id) && !c.duelist && !c.partner && (c.skills || []).some(s => !s.hidden && SKILLS[s.id]));
       const def = pool[Math.floor(Math.random() * pool.length)]; if (!def) return;
       const e = mainFoe(b, u), p = { x: u.x + u.facing * 30, y: u.y };
-      const s = summon(b, u, 'borrow', p.x, p.y, { def, dur: 3.5, hp: 120 }); if (!s) return;
+      const s = summon(b, u, 'borrow', p.x, p.y, { def, dur: 3, hp: 120 }); if (!s) return;
       s.gBorrowed = true; s.skillT = s.skills.map(() => 1e9);
       say(b, u, `성전의 수견사: ${def.name} 소환!`);
       b.later(0.5, () => {
@@ -285,6 +286,7 @@
         const L = s.skills.map((sl, i) => ({ sl, i })).filter(x => !x.sl.hidden && SKILLS[x.sl.id]); const x = L[Math.floor(Math.random() * L.length)]; if (!x) return;
         b.hooks.onSkill && b.hooks.onSkill(s, x.sl.name, null); b.text(s.x, s.y - 62, x.sl.name + '!', '#fff0c0', 10);
         try { SKILLS[x.sl.id].use(s, t, b, x.sl); } catch (err) { console.warn('[ghoul] borrowed skill failed', def.id, x.sl.id, err); }
+        s.gUsed = b.time; // 스킬 동작이 끝나는 즉시 퇴장 (최대 1.5초)
       });
     }, { tags: [], score: () => 16 }),
     mon(11, '엑소시스터 마르파', 4, 1400, 'light', '묘지의 레벨 4 몬스터 수만큼 드로우 (최대 4, 덱 2장은 남김).', ctx => {
@@ -418,7 +420,7 @@
     mon(37, '멜리스 화이트 레빗', 3, 1200, 'light', '상대를 0.6초 시간 정지 → 0.4초 해제를 4회 반복.', ctx => {
       const { b, u } = ctx, e = mainFoe(b, u); if (!e) return;
       for (let i = 0; i < 4; i++) b.later(i * 1.0, () => { if (!e.dead && !b.over) { b.applyStatus(e, 'gStop', 0.6, u, { noResistScale: true }); b.ring(e.x, e.y - 18, 4, 26, 0.3, '#ffffff'); b.text(e.x, e.y - 64, '정지!', '#ffffff', 9); } });
-      actor(b, SPR(37), u.x + u.facing * 14, u.y, 3.6, { face: u.facing });
+      b.gTS = { owner: u, foe: e, until: b.time + 3.7, A: actor(b, SPR(37), u.x + u.facing * 14, u.y, 3.6, { face: u.facing }) };
     }, { tags: ['control'], score: S => 10 + (S.oppCasting ? 8 : 0) }),
     mon(38, '메멘토 엔위치', 3, 1200, 'dark', '이번 대전에서 파괴된 소환수(천동·RAI-MEI·에클레시아 등)·스테이지 오브젝트(건물·얼음벽·창문·인형뽑기 인형)를 되살림.', ctx => {
       const { b, u } = ctx; let n = 0;
@@ -507,13 +509,21 @@
       }
       return amt !== amount ? amt : undefined;
     },
+    drawTop(ctx, b) { // 화이트 레빗 시간 정지: 정지 중엔 화면 전체 회색조, 레빗과 그 듀얼리스트만 컬러로 다시 그림
+      const T = b.gTS; if (!T || !T.foe || !T.foe.status('gStop')) return;
+      const cv = ctx.canvas; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'grayscale(1)'; ctx.drawImage(cv, 0, 0); ctx.restore();
+      if (!T.owner.dead && b.u.includes(T.owner)) { Render.drawUnit(ctx, T.owner, b); ctx.globalAlpha = 1; }
+      if (T.A && T.A.t < T.A.dur) drawActor(ctx, b, T.A);
+    },
     step(b, dt) {
       window.__gb = b;
       stepSummons(b, dt);
+      for (const s of [...b.u]) if (s.summon && s.gUsed !== undefined && (!s.action || b.time - s.gUsed > 1.5) && b.time - s.gUsed > 0.15) { b.smoke(s.x, s.y - 14, '#ffd0ec', 8); removeSummon(b, s); }
+      if (b.gTS && (b.time > b.gTS.until || b.gTS.owner.dead)) b.gTS = null;
       for (const A of acts(b)) { A.t += dt; if (A.upd) A.upd(A, dt); }
       b.gAct = acts(b).filter(A => A.t < A.dur);
       for (const u of b.u) {
-        if (u.gCastle) { const C = u.gCastle; C.t -= dt; if (C.t <= 0 || !u.status('gCastle') || u.dead) { u.gCastle = null; u.statuses = u.statuses.filter(s => s.id !== 'gCastle'); } }
+        if (u.gCastle) { const C = u.gCastle; C.t -= dt; if (C.t <= 0 || !u.status('gCastle') || u.dead) { u.gCastle = null; u.statuses = u.statuses.filter(s => s.id !== 'gCastle'); } else { if (C.cx === undefined) { C.cx = u.x; C.cy = u.y; } u.x = clamp(u.x, C.cx - 14, C.cx + 14); u.y = clamp(u.y, C.cy - 6, C.cy + 6); } }
         if (u.gLaugh) { const L = u.gLaugh; L.t -= dt; L.n -= dt; if (L.n <= 0) { L.n = 1.4; b.text(u.x + rand(-10, 10), u.y - 74, ['오~호호호!', '호호호호!', '오-호호호호!'][Math.floor(Math.random() * 3)], '#f0f4ff', 9); } if (L.t <= 0 || u.dead) u.gLaugh = null; }
         if (u.gIce) {
           const I = u.gIce; I.t -= dt; if (I.t <= 0 || u.dead) { u.gIce = null; continue; }
@@ -539,11 +549,18 @@
     },
     drawOver(ctx, b) {
       for (const A of b.gAct || []) drawActor(ctx, b, A);
+      for (const s of b.u) if (s.summon && !s.dead && s.maxHp > 0 && !s.hidden) { // 소환수 머리 위 작은 체력바
+        const k = clamp(s.hp / s.maxHp, 0, 1), x = Math.round(s.x) - 12, y = Math.round(s.y - 50 * (s.size || 1) - b.airZ(s));
+        ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(20,18,30,0.85)'; ctx.fillRect(x - 1, y - 1, 26, 5); ctx.fillStyle = '#3a3448'; ctx.fillRect(x, y, 24, 3);
+        ctx.fillStyle = s.team === 0 ? '#6ad0ff' : '#ff7a8a'; ctx.fillRect(x, y, Math.max(1, Math.round(24 * k)), 3); ctx.restore(); }
       for (const u of b.u) {
-        if (u.gCastle && !u.dead) { const C = u.gCastle, k = Math.max(0.2, C.hp / C.max), x = Math.round(u.x), y = Math.round(u.y); ctx.save(); ctx.globalAlpha = 0.5 + 0.4 * k; ctx.fillStyle = '#e8ecf8'; ctx.strokeStyle = '#8a90a8'; ctx.lineWidth = 1;
-          for (const [dx, w, h] of [[-22, 10, 48], [12, 10, 48], [-14, 28, 36]]) { ctx.fillRect(x + dx, y - h, w, h); ctx.strokeRect(x + dx + 0.5, y - h + 0.5, w - 1, h - 1); }
-          ctx.fillStyle = '#5a6080'; for (const dx of [-20, 14]) for (let i = 0; i < 3; i++) ctx.fillRect(x + dx + i * 3, y - 52, 2, 4);
-          ctx.fillStyle = '#3a2a40'; ctx.fillRect(x - 4, y - 14, 8, 14); ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 16, y - 60, 32 * k, 2); ctx.restore(); }
+        if (u.gCastle && !u.dead) { const C = u.gCastle, k = Math.max(0.2, C.hp / C.max), x = Math.round(C.cx ?? u.x), y = Math.round(C.cy ?? u.y); ctx.save(); // 작은 성: 뒷벽은 반투명, 앞쪽 기둥/성벽
+          ctx.globalAlpha = 0.45 + 0.35 * k; ctx.fillStyle = '#e8ecf8'; ctx.strokeStyle = '#8a90a8'; ctx.lineWidth = 1;
+          ctx.fillRect(x - 26, y - 44, 52, 4); for (const dx of [-30, 24]) { ctx.fillRect(x + dx, y - 50, 6, 58); ctx.strokeRect(x + dx + 0.5, y - 49.5, 5, 57); }
+          ctx.fillStyle = '#5a6080'; for (const dx of [-30, 24]) for (let i = 0; i < 2; i++) ctx.fillRect(x + dx + i * 4, y - 54, 2, 4);
+          ctx.globalAlpha = 0.35 + 0.35 * k; ctx.fillStyle = '#e8ecf8'; ctx.fillRect(x - 24, y + 2, 48, 6); ctx.strokeRect(x - 23.5, y + 2.5, 47, 5);
+          ctx.fillStyle = '#8a90a8'; for (let i = -20; i <= 18; i += 6) ctx.fillRect(x + i, y + 4, 2, 2);
+          ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 16, y - 60, 32 * k, 2); ctx.restore(); }
         if (u.gIce && !u.dead) { ctx.save(); ctx.globalAlpha = 0.3 + 0.1 * Math.sin(b.time * 6); ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 16, 36, 30, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 0.12; ctx.fillStyle = '#bfefff'; ctx.fill(); ctx.restore(); }
       }
       for (const L of projLists(b)) for (const p of L) if (p.gFrz > 0) { const q = projPos(p); ctx.save(); ctx.globalAlpha = 0.8; ctx.fillStyle = '#bfefff'; ctx.fillRect(Math.round(q.x) - 6, Math.round(q.y) - 6, 12, 12); ctx.restore(); }
@@ -563,7 +580,7 @@
 
   // ---------- 캐릭터 ----------
   CHARACTERS.push({
-    id: 'ghoul', name: '구울즈 듀얼리스트', gender: 'male', color: '#6a3a8a',
+    id: 'ghoul', name: '구울즈', gender: 'male', color: '#6a3a8a',
     stats: { hp: 4000, atk: 20, spd: 240, range: 110, atkRate: 0.75, def: 0 },
     attack: { element: 'dark', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: GHOUL_DECK, noExodia: true, atkMul: 1.3, cfg: { PLAY_GAP: 0.5, MIN_WAIT: 0.7, WAIT_TIMEOUT: 2.6, MAX_PLAYS: 2 },
@@ -572,16 +589,16 @@
     sprite: { src: 'assets/Ghouls/character/front.png', back: 'assets/Ghouls/character/back.png', scale: 0.5, foot: 2, faces: { front: 'right', back: 'left' } },
     portrait: 'assets/Ghouls/character/portrait.png',
     extraDefs: SUMMON_DEFS,
-    lines: { // [임시 대사] 유저 대사 확정 전 자리 채움용
+    lines: { // 유저 대사 확정 전 자리 채움용
       skill: {},
       event: {
-        battleStart: ['[임시 대사] 듀얼이다… 우리 미소녀들이 상대해 주지.', '[임시 대사] 구울즈의 이름으로!'],
-        draw: ['[임시 대사] 드로우!', '[임시 대사] 와라, 나의 천사!'],
-        deckLow: ['[임시 대사] 덱이 얼마 안 남았군…'],
-        summonBig: ['[임시 대사] 나와라, 최고의 미소녀!', '[임시 대사] 이 아름다움을 보아라!'],
-        summonGod: ['[임시 대사] 파멸의 미여, 강림하라!'],
-        lowHp: ['[임시 대사] 아직이다…!'],
-        win: ['[임시 대사] 미소녀는 승리한다.'], lose: ['[임시 대사] 내 카드들이…'],
+        battleStart: ['듀얼이다… 우리 미소녀들이 상대해 주지.', '구울즈의 이름으로!'],
+        draw: ['드로우!', '와라, 나의 천사!'],
+        deckLow: ['덱이 얼마 안 남았군…'],
+        summonBig: ['나와라, 최고의 미소녀!', '이 아름다움을 보아라!'],
+        summonGod: ['파멸의 미여, 강림하라!'],
+        lowHp: ['아직이다…!'],
+        win: ['미소녀는 승리한다.'], lose: ['내 카드들이…'],
       },
       cd: { draw: 7, deckLow: 15, summonBig: 5, summonGod: 4 },
     },

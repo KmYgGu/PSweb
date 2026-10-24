@@ -2477,7 +2477,8 @@ const Render = (() => {
     if (b.zoom) { const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); c2.translate(z.x, z.y); c2.scale(k, k); c2.translate(-z.x, -z.y); }
     if (b._shk) c2.translate(b._shk[0], b._shk[1]);
     b._topPass = true;
-    try { for (const u of L.sort((a, c) => a.y - c.y)) { drawUnit(c2, u, b); c2.globalAlpha = 1; } for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
+    const TS = b.gTS && b.gTS.foe && b.gTS.foe.status('gStop') ? b.gTS : null; // 시간 정지 회색조
+    try { for (const u of L.sort((a, c) => a.y - c.y)) { c2.filter = TS && u !== TS.owner ? 'grayscale(1)' : 'none'; drawUnit(c2, u, b); c2.globalAlpha = 1; } c2.filter = TS ? 'grayscale(1)' : 'none'; for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
-  return { draw, thumb, glowAt, drawTopUnits };
+  return { draw, thumb, glowAt, drawTopUnits, drawUnit };
 })();

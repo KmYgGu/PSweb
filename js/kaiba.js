@@ -639,7 +639,7 @@
     skills: [{ id: 'duelCard', name: '듀얼리스트의 카드', cd: 1e9, hidden: true, canUse: () => false }],
     sprite: { src: 'assets/kaiba/front.png', back: 'assets/kaiba/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'right' } },
     portrait: 'assets/kaiba/portrait.png',
-    lines: { // [임시 대사] 유저 대사 확정 전 자리 채움용
+    lines: { // 유저 대사 확정 전 자리 채움용
       skill: {},
       event: {
         battleStart: ['듀얼 개시!', '내 덱의 힘을 보여주지.'],
