@@ -1,7 +1,8 @@
 /* =========================================================
  * 루델리안 블러드 체폐슜 (사용자 소설) — 흡혈귀 마검사/마법사
  *  1. 헬 인페르노   : 시전 순간 상대 위치(고정 지점)로 세 방향 지옥불이 회전하며 수렴. 멀수록 크고 강함
- *  2. 헬 파이어     : 논타겟 다크 볼(어둠+화염) 3연발, 매우 빠르게 출발해 점점 느려짐
+ *  2. 다크 패럴     : 논타겟 다크 볼(어둠+화염) 3연발, 매우 빠르게 출발해 점점 느려짐. 볼 주위 섬광 원이 근처 적을 약하게 끌어당김
+ *  5. 헬 파이어     : 몸이 분해되며 순간이동 → 붉은 오라 속에서 재구성 → 상대를 향해 화염구 직렬(한 줄) 일제 발사
  *  3. 블러드 엣지   : (패시브) 근접 공격이 방어력 무시, 무시한 만큼(추가로 얻은 피해) 자기 체력 차감
  *  4. 딥 블러드 아이 섀도우 : 눈에서 직선 혈사포 광선으로 시계/반시계(무작위) 방향 360° 회전 소사
  *  난수는 전부 Math.random (전투 중에는 리플레이용 시드 난수로 교체됨)
@@ -54,9 +55,9 @@
     ctx.restore();
   }
 
-  // ---------- 2. 헬 파이어 ----------
-  SKILLS.hellFire = {
-    desc: '처음엔 매우 빠르다가 점점 느려지는 다크 볼(어둠+화염 이중 속성)을 논타겟으로 3연속 발사합니다(발사 순간의 상대 위치를 향함, 유도 없음).',
+  // ---------- 2. 다크 패럴 ----------
+  SKILLS.darkParallel = {
+    desc: '볼 주위의 큰 섬광 원이 근처 적을 약하게 끌어당깁니다. 처음엔 매우 빠르다가 점점 느려지는 다크 볼(어둠+화염 이중 속성)을 논타겟으로 3연속 발사합니다(발사 순간의 상대 위치를 향함, 유도 없음).',
     canUse: (u, e, d) => d > 50 && d < 300,
     use(u, e, b, slot) {
       b.glow(u.x + u.facing * 10, u.y - 22, 26, '#8a3aff', 0.3);
@@ -65,7 +66,7 @@
           if (u.dead || b.over) return; const t = b.enemy(u); if (!t || t.dead) return;
           const a = Math.atan2(t.y - 18 - (u.y - 22), t.x - u.x);
           b.shoot(u, { angle: a, spd: slot.v0, dmg: u.st.atk * slot.mult, kind: 'rdFire', hit: { element: 'dark', element2: 'fire', delivery: 'ranged', color: '#c08aff' } });
-          const p = b.proj[b.proj.length - 1]; Object.assign(p, { y: u.y - 22, rdDecel: slot.decel, rdMin: slot.vMin, life: slot.life, r: 10, noAirLock: false, draw: drawFireball });
+          const p = b.proj[b.proj.length - 1]; Object.assign(p, { y: u.y - 22, rdDecel: slot.decel, rdMin: slot.vMin, rdPullR: slot.pullR, rdPull: slot.pull, life: slot.life, r: 10, noAirLock: false, draw: drawFireball });
           b.ring(u.x + Math.cos(a) * 12, u.y - 22 + Math.sin(a) * 12, 3, 14, 0.2, '#b06aff');
         });
       });
@@ -81,6 +82,67 @@
     ctx.fillStyle = '#3a1060'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.fill();
     ctx.fillStyle = '#0e0418'; ctx.beginPath(); ctx.arc(0.5, 0, 3.8, 0, TAU); ctx.fill();
     ctx.fillStyle = '#c08aff'; ctx.fillRect(-3, -4, 2, 2);
+  }
+
+  // ---------- 5. 헬 파이어 (순간이동 + 화염구 직렬) ----------
+  function pickSpot(b, u, e, S) { // 상대에게서 중거리, 벽/장애물 밖, 현재 상대-루델리안 직선에서 벗어난 곳 (시드 난수)
+    const line = Math.atan2(u.y - e.y, u.x - e.x); let best = null;
+    for (let i = 0; i < 14; i++) {
+      const a = Math.random() * TAU, d = S.dMin + Math.random() * (S.dMax - S.dMin);
+      const x = e.x + Math.cos(a) * d, y = e.y + Math.sin(a) * d;
+      if (x < AR.x + 22 || x > AR.x + AR.w - 22 || y < AR.y + 40 || y > AR.y + AR.h - 14) continue;
+      if (b.blockAt(x, y - 4, 16)) continue;
+      const off = Math.abs(Math.atan2(Math.sin(a - line), Math.cos(a - line)));
+      if (!best || (off > 0.7 && best.off <= 0.7)) best = { x, y, off };
+      if (off > 0.7) break;
+    }
+    return best;
+  }
+  function dissolve(b, u, col, n, inward) {
+    for (let i = 0; i < n; i++) { const ox = rand(-8, 8), oy = rand(-44, 0);
+      b.parts.push(inward ? { x: u.x + ox * 3, y: u.y + oy - 10 + rand(-10, 10), vx: -ox * 6, vy: -10 * 3, life: 0.3, max: 0.3, color: col[i % col.length], size: 2 }
+        : { x: u.x + ox, y: u.y + oy, vx: rand(-40, 40), vy: rand(-90, -20), life: 0.55, max: 0.55, color: col[i % col.length], size: 2 }); }
+  }
+  SKILLS.hellFire = {
+    desc: '몸이 분해되며 사라져(무적) 상대와 중거리의 다른 곳으로 순간이동합니다. 붉은 오라 속에서 몸이 다시 나타나고, 상대를 향해 화염구를 한 줄(직렬)로 일제히 발사합니다(유도 없음).',
+    canUse: (u, e, d) => d < 340,
+    use(u, e, b, slot) {
+      const S = slot, dest = pickSpot(b, u, e, S) || { x: u.x, y: u.y };
+      dissolve(b, u, ['#9a1a32', '#1e1a24', '#ff5a6a', '#f4e4e0'], 26, false); b.glow(u.x, u.y - 22, 24, '#ff2a3a', 0.4);
+      u.action = { type: 'wind', t: S.out + S.gap + S.aura + 0.25, next: null };
+      u.rdPhase = true;
+      b.later(S.out * 0.5, () => { if (!u.dead) u.hidden = true; });
+      b.later(S.out + S.gap, () => { if (u.dead || b.over) return; u.x = dest.x; u.y = dest.y; u.vx = u.vy = 0; u.rdAura = { t: 0, dur: S.aura }; });
+      b.later(S.out + S.gap + S.aura, () => {
+        u.rdAura = null; if (u.dead || b.over) { u.hidden = false; u.rdPhase = false; return; }
+        u.hidden = false; u.rdPhase = false; dissolve(b, u, ['#ff3a4a', '#ffb0b8', '#9a1a32'], 18, true); b.shock(u.x, u.y - 20, 6, 34, '#ff3a4a', 0.35, 3);
+        b.later(0.15, () => {
+          if (u.dead || b.over) return; const t = b.enemy(u); if (!t || t.dead) return;
+          const a = Math.atan2(t.y - 18 - (u.y - 24), t.x - u.x); u.facing = Math.cos(a) >= 0 ? 1 : -1;
+          for (let i = 0; i < S.n; i++) {
+            b.shoot(u, { angle: a, spd: S.spd, dmg: u.st.atk * S.mult, kind: 'rdHF', hit: { element: 'fire', delivery: 'ranged', color: '#ffae6b' } });
+            Object.assign(b.proj[b.proj.length - 1], { x: u.x + Math.cos(a) * (12 - i * S.space), y: u.y - 24 + Math.sin(a) * (12 - i * S.space), life: S.life + i * S.space / S.spd, r: 8, draw: drawHF });
+          }
+          b.ring(u.x + Math.cos(a) * 12, u.y - 24 + Math.sin(a) * 12, 4, 18, 0.25, '#ffb05a');
+        });
+      });
+    },
+  };
+  function drawHF(ctx, p, glowAt) {
+    const a = Math.atan2(p.vy, p.vx); ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(a);
+    glowAt(ctx, 0, 0, 13, '#ff6a2a', 0.45);
+    ctx.fillStyle = 'rgba(220,40,10,0.55)'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(0, -5); ctx.lineTo(0, 5); ctx.fill();
+    ctx.fillStyle = '#ff7a2a'; ctx.beginPath(); ctx.arc(0, 0, 5.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#ffe08a'; ctx.beginPath(); ctx.arc(1, 0, 3, 0, TAU); ctx.fill();
+  }
+  function drawAura(ctx, b, u) {
+    const A = u.rdAura, q = Math.min(1, A.t / A.dur), x = Math.round(u.x), y = Math.round(u.y);
+    ctx.save(); ctx.globalAlpha = 0.25 + 0.45 * q; ctx.fillStyle = '#c0101e';
+    ctx.beginPath(); ctx.ellipse(x, y, 10 + 10 * q, 4 + 4 * q, 0, 0, TAU); ctx.fill();
+    const g = ctx.createLinearGradient(0, y - 56, 0, y); g.addColorStop(0, 'rgba(255,40,60,0)'); g.addColorStop(1, 'rgba(255,40,60,0.75)');
+    ctx.fillStyle = g; ctx.fillRect(x - 8 - 6 * q, y - 56 * q, 16 + 12 * q, 56 * q);
+    ctx.fillStyle = '#ff8a9a'; for (let i = 0; i < 6; i++) { const ph = (b.time * 2.2 + i / 6) % 1; ctx.fillRect(x + Math.round(Math.sin(i * 2.1) * 10), Math.round(y - ph * 50), 2, 3); }
+    ctx.restore();
   }
 
   // ---------- 4. 딥 블러드 아이 섀도우 ----------
@@ -137,6 +199,7 @@
   // ---------- 3. 블러드 엣지 (패시브) ----------
   const oDamage = Battle.prototype.damage;
   Battle.prototype.damage = function (src, tgt, amount, o = {}) {
+    if (tgt && tgt.rdPhase) return 0; // 헬 파이어 분해·이동 중 무적
     if (!src || src.def.id !== ID || o.delivery !== 'melee' || o.dot || o.fixed || o.reflected || src === tgt || !tgt.st || !(tgt.st.def > 0)) return oDamage.call(this, src, tgt, amount, o);
     const r = oDamage.call(this, src, tgt, amount, { ...o, pierce: 1, color: '#ff7a8a' });
     if (r > 0 && !src.dead) {
@@ -153,10 +216,22 @@
     step(b, dt) {
       if (b.rdFlames && b.rdFlames.length) b.rdFlames = b.rdFlames.filter(F => !b.over && flameStep(b, F, dt));
       for (const p of b.proj) if (p.rdDecel) { const sp = Math.hypot(p.vx, p.vy); if (sp > p.rdMin) { const k = Math.max(p.rdMin / sp, Math.exp(-p.rdDecel * dt)); p.vx *= k; p.vy *= k; } }
-      for (const u of b.u) if (u.rdEye) eyeStep(b, u, dt);
+      for (const u of b.u) { if (u.rdEye) eyeStep(b, u, dt); if (u.rdAura) u.rdAura.t += dt; }
+      for (const p of b.proj) if (p.rdPullR) for (const o of b.u) { // 다크 패럴 섬광 원: 약한 끌어당김 (적 본체·소환수)
+        if (o.dead || o.hidden || o.team === p.src.team || o.def.noDraw || b.airZ(o) > 20) continue;
+        const dx = p.x - o.x, dy = (p.y + 22) - o.y, d = Math.hypot(dx, dy);
+        if (d > p.rdPullR || d < 6) continue;
+        const f = p.rdPull * (1 - d / p.rdPullR * 0.5) * dt, q = b.clampPos(o.x + dx / d * f, o.y + dy / d * f, 0, o);
+        o.x = q.x; o.y = q.y; b.resolveBuildings(o);
+      }
     },
     drawOver(ctx, b) {
       for (const F of b.rdFlames || []) drawFlame(ctx, b, F);
+      for (const u of b.u) if (u.rdAura) drawAura(ctx, b, u);
+      for (const p of b.proj) if (p.rdPullR) { const ph = (b.time * 3 + (p.r * 7 % 1)) % 1, fl = 0.5 + 0.5 * Math.sin(b.time * 22); ctx.save(); // 섬광 원
+        ctx.globalAlpha = 0.18 + 0.3 * fl; ctx.strokeStyle = '#b06aff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, p.rdPullR * 0.95, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 0.08 + 0.12 * fl; ctx.fillStyle = '#7a2aff'; ctx.fill();
+        ctx.globalAlpha = 0.5 * (1 - ph); ctx.strokeStyle = '#ffd0ff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, p.rdPullR * (1 - ph * 0.8), 0, TAU); ctx.stroke(); ctx.restore(); }
       for (const u of b.u) if (u.rdEye && !u.dead) { drawBeam(ctx, b, u); ctx.save(); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 40); ctx.fillStyle = '#ff2a3a'; ctx.fillRect(Math.round(u.x) - 5, Math.round(u.y) - 42, 3, 2); ctx.fillRect(Math.round(u.x) + 2, Math.round(u.y) - 42, 3, 2); ctx.restore(); }
     },
   });
@@ -169,7 +244,8 @@
     resist: { fire: 0.8, dark: 0.8, light: 1.25 },
     skills: [
       { id: 'hellInferno', name: '헬 인페르노', cd: 11, wind: 0.35, R0: 150, dur: 1.0, spin: 4.5, s0: 34, s1: 7, m0: 3.0, m1: 0.6, element: 'fire', delivery: 'ranged' },
-      { id: 'hellFire', name: '헬 파이어', cd: 6, n: 3, gap: 0.2, v0: 760, vMin: 110, decel: 2.4, life: 1.8, mult: 1.0, element: 'dark', element2: 'fire', delivery: 'ranged' },
+      { id: 'darkParallel', name: '다크 패럴', cd: 6, n: 3, gap: 0.2, v0: 760, vMin: 110, decel: 2.4, life: 1.8, mult: 1.0, pullR: 60, pull: 55, element: 'dark', element2: 'fire', delivery: 'ranged' },
+      { id: 'hellFire', name: '헬 파이어', cd: 10, out: 0.35, gap: 0.2, aura: 0.4, dMin: 140, dMax: 200, n: 5, space: 20, spd: 430, life: 1.4, mult: 0.75, element: 'fire', delivery: 'ranged' },
       { id: 'deepBloodEye', name: '딥 블러드 아이 섀도우', cd: 13, wind: 0.3, dur: 0.8, turns: 1.5, len: 320, width: 10, tick: 0.1, mult: 0.9, element: 'dark', delivery: 'ranged' },
     ],
     // 패시브 블러드 엣지: js/rudelian.js (근접 공격 방어 무시 + 무시한 만큼 자기 체력 차감)
@@ -179,7 +255,8 @@
     lines: {
       skill: {
         '헬 인페르노': ['지옥의 불길이여, 그곳으로 모여라.', '도망칠수록 더 뜨거울 거예요.', '그 자리, 기억해 두었답니다.'],
-        '헬 파이어': ['불꽃 세 송이를 드리죠.', '받아 주시겠어요?', '천천히, 그러나 확실하게.'],
+        '다크 패럴': ['어둠 세 송이를 드리죠.', '이리 오세요. 조금만 더.', '천천히, 그러나 확실하게.'],
+        '헬 파이어': ['여기예요.', '흩어졌다가… 다시.', '한 줄로 받아 주시겠어요?'],
         '딥 블러드 아이 섀도우': ['제 눈을 보지 마세요.', '피의 시선에서 벗어날 수 있을까요.', '사방이 저의 사정거리랍니다.'],
       },
       event: {
