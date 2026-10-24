@@ -448,7 +448,7 @@
     }, { tags: [], score: S => { const L = S.u.duel.hand.filter(c => c.id !== 'G40'); if (!L.length) return -10; const n = Math.round(L.reduce((s, c) => s + effLv(c), 0) / L.length); return (n - L.length) * 9 + (S.deck < 10 ? -20 : 0); } }),
   ];
   const effHp = o => o.def.duelist ? o.hp / LPK : o.hp;
-  function charmGender(o) { const id = o.def.id; if (id === 'duck') return 'neutral'; if (id === 'galford') return 'female'; return o.gender || o.def.gender || 'male'; } // 유저 지정: 갈포드=여성, 오리=중립
+  function charmGender(o) { const id = o.def.id; if (id === 'duck') return 'neutral'; return o.gender || o.def.gender || 'male'; } // 오리는 성별 없음, 나머지는 캐릭터 데이터 성별
   function sitriStep(s, dt) {
     const b = window.__gb; if (!b) return;
     for (const f of b.foes(s)) { if (f.summon || f.dead) continue; const g = charmGender(f); if (g === 'neutral') continue;
