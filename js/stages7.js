@@ -12,10 +12,10 @@
 
   // ---------------- 스테이지 정의 ----------------
   STAGE_DEFS.basket = {
-    name: '농구장', desc: '골대는 하나! 공을 잡으면 드리블, 일반 공격(충돌)으로 뺏기. 슛 포인트에 가면 점프 슛 — 골대에 가까울수록·오래 드리블할수록 잘 들어감. 먼 거리는 고득점. 10점 선취 승리 (체력 0도 패배).', theme: 'basket',
+    name: '농구장', desc: '골대는 하나! 공을 잡으면 드리블, 일반 공격(충돌)으로 뺏기. 슛 포인트에 가면 점프 슛 — 골대에 가까울수록·오래 드리블할수록 잘 들어감. 먼 거리는 고득점. 6점 선취 승리 (체력 0도 패배).', theme: 'basket',
     // hoop: 골대 링 위치(바닥 기준), point: 슛 포인트 { r, first, gap(슛 후 다음), life(미사용 시 이동) }
     // bands: 거리별 점수 [최대거리, 점수], prob: 성공 확률 = clamp(base − dist×perPx, min, max) + min(dribbleMax, 드리블 초×perSec), 최종 상한 cap
-    basket: { hoop: { x: 180, y: 160 }, win: 10, point: { r: 20, first: 1.5, gap: 1.5, life: 9 }, bands: [[120, 1], [210, 2], [1e9, 3]],
+    basket: { hoop: { x: 180, y: 160 }, win: 6, point: { r: 20, first: 1.5, gap: 1.5, life: 9 }, bands: [[120, 1], [210, 2], [1e9, 3]],
       prob: { base: 0.85, perPx: 0.0025, min: 0.15, max: 0.8, perSec: 0.06, dribbleMax: 0.3, cap: 0.95 },
       jump: { dur: 0.6, h: 22 }, fly: 0.7, stealGrace: 0.5, respawn: 1.2, ai: { point: 0.9, ball: 0.75, turn: 6, dur: [1.6, 3.2] } },
     spawns: [{ x: 110, y: 400 }, { x: 250, y: 400 }],
@@ -23,7 +23,7 @@
   STAGE_DEFS.snake = {
     name: '뱀꼬리 맵', desc: '외곽 벽이 없어 반대편으로 이어짐! (돌진 중에만 외곽이 벽) 중앙 구역엔 움직이는 벽. 뱀먹이를 먹으면 나를 따라오는 분신(기본 공격만 따라 함)이 생기지만, 내 꼬리(분신)에 부딪히면 즉사!', theme: 'snake',
     // zone: 움직이는 벽의 이동 범위, wall: 벽 크기/속도, food: 먹이 { first, gap, max(동시), r }, tail: 분신 { gap(경로 간격 px), max(최대 수), grace(생성 후 무해 시간), mult(복사 기본 공격 배율), safe(머리 바로 뒤 무해 분신 수) }
-    snake: { zone: { x: 110, y: 270, w: 140, h: 110 }, wall: { w: 44, h: 16, spd: 55 }, food: { first: 2.5, gap: 3.5, max: 2, r: 7 },
+    snake: { zone: { x: 110, y: 270, w: 140, h: 110 }, wall: { w: 44, h: 16, spd: 55 }, food: { first: 2.5, gap: 3.5, max: 2, r: 7, ai: 0.6 },
       tail: { gap: 26, max: 5, grace: 1.2, mult: 0.35, safe: 1, hitR: 9 } },
     spawns: [{ x: 90, y: 210 }, { x: 270, y: 450 }],
   };
@@ -188,9 +188,10 @@
   };
 
   // ===================== 뱀꼬리 맵 =====================
-  const wrapX = x => x < AR.x ? x + AR.w : x >= AR.x + AR.w ? x - AR.w : x;
+  const mod = (v, m) => ((v % m) + m) % m;
+  const wrapX = x => AR.x + mod(x - AR.x, AR.w); // 여러 바퀴 돈 경로 좌표도 올바르게 (모듈로)
   const Y0 = AR.y + 16, YH = AR.h - 16; // 유닛 발 기준 세로 순환 범위
-  const wrapY = y => y < Y0 ? y + YH : y >= Y0 + YH ? y - YH : y;
+  const wrapY = y => Y0 + mod(y - Y0, YH);
   const tdist = (ax, ay, bx, by) => { let dx = Math.abs(ax - bx), dy = Math.abs(ay - by); dx = Math.min(dx, AR.w - dx); dy = Math.min(dy, YH - dy); return Math.hypot(dx, dy); };
   const SN = {
     match: st => !!st.snake,
@@ -250,6 +251,12 @@
           const a = Math.atan2(c.y - u.y, c.x - u.x), df = Math.atan2(Math.sin(a - u.dir), Math.cos(a - u.dir)); if (Math.abs(df) < 1.2) { steer(u, a + (df > 0 ? -1.9 : 1.9), 7, dt); break; } }
       }
       for (const u of mains(b)) if (u.dead && u.snT && u.snT.tail.length) u.snT.tail = [];
+      // ---- AI: 뱀먹이 노리기 (가끔, 가까운 먹이) ----
+      for (const u of mains(b)) { if (u.dead) continue; const A = u.snAI || (u.snAI = { mode: 'free', t: rand(0.5, 1.5) }); A.t -= dt;
+        if (A.t <= 0) { A.mode = Math.random() < S.food.ai ? 'food' : 'free'; A.t = rand(1.5, 3.0); }
+        if (A.mode !== 'food' || !D.food.length || !canSteer(u) || (u.snT && u.snT.tail.length >= S.tail.max)) continue;
+        let f = D.food[0]; for (const g of D.food) if (Math.hypot(g.x - u.x, g.y - u.y) < Math.hypot(f.x - u.x, f.y - u.y)) f = g;
+        if (Math.hypot(f.x - u.x, f.y - u.y) < 220) steer(u, Math.atan2(f.y - u.y, f.x - u.x), 5, dt); }
       // ---- 뱀먹이 ----
       D.nextT -= dt;
       if (D.nextT <= 0 && D.food.length < S.food.max) { D.nextT = S.food.gap; let x, y, n = 0;
@@ -294,7 +301,7 @@
       const out = [];
       for (const u of mains(b)) { const T = u.snT; if (!T || u.dead) continue;
         T.tail.forEach((c, i) => out.push({ y: c.y, draw: ctx => { const s = Sprites.get(u.fdef), warm = c.age < D.S.tail.grace;
-          ctx.save(); ctx.globalAlpha = warm ? 0.3 + 0.2 * Math.sin(b.time * 20) : 0.62;
+          ctx.save(); ctx.globalAlpha = warm ? 0.45 + 0.2 * Math.sin(b.time * 20) : 0.78;
           ctx.fillStyle = TEAM_COL[u.team]; ctx.beginPath(); ctx.ellipse(c.x, c.y + 1, 10, 3.5, 0, 0, TAU); ctx.fill();
           ctx.translate(Math.round(c.x), Math.round(c.y)); ctx.scale(spriteSX(u.fdef, false, c.face), 1); Sprites.draw(ctx, s, 0); ctx.restore(); } })); }
       return out;
