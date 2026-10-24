@@ -61,7 +61,13 @@
       <button id="rpSvHl">★ 하이라이트 구간</button>
       <button id="rpSvSeg">A~B 구간</button>
       <button id="rpSvFull">전체 경기</button>
+      <div class="rsh">🎬 동영상 저장 (.webm, 실시간 녹화)</div>
+      <div class="vrow"><button id="vidHl">★ 하이라이트</button><button id="vidSeg">A~B</button><button id="vidFull">전체</button></div>
+      <button id="vidPick" class="vpick">📁 assets 폴더에서 읽기</button>
     </div>
+    <div id="vidRec" class="hidden"><div id="vidTxt">🎬 녹화 중</div><div class="vtrk"><div id="vidBar"></div></div><button id="vidCancel">취소</button></div>
+    <div id="vidDlg" class="hidden"><div class="vbox"><div id="vidDlgTxt"></div><button id="vidDlgDir">📁 assets 폴더 선택</button><button id="vidDlgGo">그대로 녹화</button><button id="vidDlgNo">취소</button></div></div>
+    <input id="vidDir" type="file" webkitdirectory directory multiple hidden>
     <div id="rpBanner" class="hidden"><div class="rpbt" id="rpBTitle">최고의 플레이</div><img id="rpBImg" alt=""><div class="rpbn" id="rpBName"></div><div class="rpbw" id="rpBWhy"></div></div>
     <div id="rpToast" class="hidden"></div>
 

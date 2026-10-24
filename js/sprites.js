@@ -123,5 +123,12 @@ const Sprites = (() => {
     const f = s.frames > 1 ? frame % s.frames : 0;
     ctx.drawImage(tinted(s, color), f * s.fw, 0, s.fw, s.fh, -s.dw / 2, -s.dh + s.foot, s.dw, s.dh);
   }
-  return { get, draw, drawTint, preload, shade };
+  // 동영상 녹화용: 불러온 그림을 오염되지 않은 주소(data:/blob:)로 다시 읽어 교체 → 되돌리기 함수 반환. mapFn(url) → 새 주소 | null(없음 → 절차적 스프라이트)
+  function sources() { return Object.entries(loaded).map(([k, img]) => ({ key: k, url: img.src, w: img.naturalWidth, h: img.naturalHeight })); }
+  function swapSources(mapFn) {
+    const orig = { ...loaded }, oc = { ...cache };
+    return Promise.all(Object.entries(loaded).map(([k, img]) => { const u = mapFn(img.src); if (!u) { delete loaded[k]; return null; } return loadImg(u).then(i => { loaded[k] = i; }).catch(() => { delete loaded[k]; }); }))
+      .then(() => { for (const k in cache) delete cache[k]; return () => { for (const k in loaded) delete loaded[k]; Object.assign(loaded, orig); for (const k in cache) delete cache[k]; Object.assign(cache, oc); }; });
+  }
+  return { get, draw, drawTint, preload, shade, sources, swapSources };
 })();

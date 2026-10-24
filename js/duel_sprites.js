@@ -365,5 +365,12 @@ const DuelSprites = (() => {
     S.rows.forEach((r, j) => { for (let i = 0; i < r.length; i++) { const k = r[i]; if (k === '.' || k === ' ' || !S.pal[k]) continue; x.fillStyle = S.pal[k]; x.fillRect(i, j, 1, 1); } });
     return (cache[id] = { c, w, h, s: S.s || 2 });
   }
-  return { get };
+  function sources() { return Object.entries(DUEL_SPRITES).filter(([, S]) => S.src).map(([id, S]) => ({ key: id, url: new URL(S.src, location.href).href, w: S._img && S._img.naturalWidth || 0, h: S._img && S._img.naturalHeight || 0 })); }
+  function swapSources(mapFn) { // 동영상 녹화용 (Sprites.swapSources 와 같은 방식)
+    const orig = {}, oc = { ...cache }, jobs = [];
+    for (const [id, S] of Object.entries(DUEL_SPRITES)) { if (!S.src) continue; orig[id] = S._img; const u = mapFn(new URL(S.src, location.href).href);
+      const im = new Image(); if (u) { jobs.push(new Promise(r => { im.onload = im.onerror = r; })); im.src = u; } S._img = im; delete cache[id]; }
+    return Promise.all(jobs).then(() => () => { for (const [id, im] of Object.entries(orig)) { DUEL_SPRITES[id]._img = im; delete cache[id]; } for (const k in oc) cache[k] = oc[k]; });
+  }
+  return { get, sources, swapSources };
 })();

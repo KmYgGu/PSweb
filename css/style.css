@@ -214,3 +214,18 @@ img { image-rendering: pixelated; }
 #rpBanner .rpbw { font-size: 11px; color: #ffcf8a; margin-top: 4px; }
 @keyframes rpban { 0% { opacity: 0; transform: scale(1.25); } 12% { opacity: 1; transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
 #rpToast { position: absolute; left: 50%; top: 470px; transform: translateX(-50%); padding: 5px 10px; border-radius: 5px; background: rgba(20,18,30,.9); color: #fff; font-size: 12px; white-space: nowrap; z-index: 9; pointer-events: none; }
+
+#rpSave .vrow { display: flex; gap: 4px; }
+#rpSave .vrow button { flex: 1; font-size: 12px; padding: 0; }
+#rpSave .vpick { height: 24px; font-size: 11px; font-weight: normal; background: #2e3346; color: #aab0c8; }
+#rpSave { bottom: 34px; }
+#vidRec { position: absolute; left: 10px; right: 10px; top: 600px; height: 36px; padding: 4px 8px; border-radius: 6px; background: rgba(20,18,30,.92); border: 1px solid #ff6a7a; display: flex; align-items: center; gap: 8px; z-index: 9; }
+#vidTxt { font-size: 11px; color: #ffd0d6; white-space: nowrap; min-width: 150px; font-variant-numeric: tabular-nums; }
+#vidRec .vtrk { flex: 1; height: 6px; background: #3a3f56; border-radius: 3px; overflow: hidden; }
+#vidBar { height: 100%; width: 0; background: #ff6a7a; }
+#vidCancel { height: 24px; padding: 0 10px; border-radius: 4px; font-size: 12px; background: #34394f; color: #eef0f6; }
+#vidDlg { position: absolute; inset: 0; background: rgba(14,15,24,.7); display: flex; align-items: center; justify-content: center; z-index: 10; }
+#vidDlg .vbox { width: 300px; padding: 14px; border-radius: 10px; background: #262a3c; border: 2px solid #ffd75e; display: flex; flex-direction: column; gap: 8px; font-size: 12px; color: #dfe3f0; line-height: 1.5; }
+#vidDlg .vl { margin-top: 6px; font-size: 10px; color: #ffcf8a; word-break: break-all; }
+#vidDlg button { height: 32px; border-radius: 5px; font-size: 13px; font-weight: bold; background: #3a4058; color: #eef0f6; }
+#vidDlg #vidDlgDir { background: #ffd75e; color: #3a2e10; }
