@@ -111,7 +111,7 @@
     if (!quiet) b.puff(u.x, u.y - 16, '#efe0b0');
   }
   SKILLS.schTransform = {
-    desc: '무작위 동물로 변신합니다. 토끼(회피↑·잦은 점프·착지 충격파), 뱀(시전 방향으로 돌진·독), 문어(상대를 붙잡을 때까지 돌아다님·잡으면 사람으로 돌아와 서로 붙은 채 행동, 일반 공격 피해 없음), 곰(공중의 상대를 붙잡아 내리꽂아 기절).',
+    desc: '무작위 동물로 변신합니다. 토끼(회피↑·잦은 점프·착지 충격파), 뱀(시전 방향으로 돌진·독), 문어(상대를 붙잡을 때까지 돌아다님, 문어 상태의 일반 공격은 피해 없음·잡으면 사람으로 돌아와 서로 붙은 채 싸움), 곰(공중의 상대를 붙잡아 내리꽂아 기절).',
     canUse: (u, e, d) => !u.schForm && d < 320,
     use(u, e, b, slot) {
       const kinds = ['rabbit', 'snake', 'octopus', 'bear'], k = kinds[Math.floor(Math.random() * 4)];
@@ -181,9 +181,10 @@
     const p1 = b.clampPos(mx - G.ox / 2, my - G.oy / 2, u.pad, u), p2 = b.clampPos(mx + G.ox / 2, my + G.oy / 2, e.pad, e);
     u.x = p1.x; u.y = p1.y; e.x = p2.x; e.y = p2.y;
   }
-  const glued = (a, c) => (a.schGlue && a.schGlue.e === c) || (c.schGlue && c.schGlue.e === a);
-  const oBump = Battle.prototype.bumpAttack; Battle.prototype.bumpAttack = function (u, e) { if (glued(u, e)) return; return oBump.call(this, u, e); };
-  const oBasic = Battle.prototype.basicAttack; Battle.prototype.basicAttack = function (u, e) { if (glued(u, e)) return; return oBasic.call(this, u, e); };
+  // 문어 형태로 돌아다니는 동안: 문어의 충돌·일반 공격은 피해 없음. 붙잡은 뒤(사람, 붙은 상태)엔 서로 정상적으로 싸움
+  const octo = u => u.schForm && u.schForm.kind === 'octopus';
+  const oBump = Battle.prototype.bumpAttack; Battle.prototype.bumpAttack = function (u, e) { if (octo(u)) return; return oBump.call(this, u, e); };
+  const oBasic = Battle.prototype.basicAttack; Battle.prototype.basicAttack = function (u, e) { if (octo(u)) return; return oBasic.call(this, u, e); };
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o = {}) { // 곰: 받는 피해 25% 감소
     if (tgt && tgt.schForm && tgt.schForm.kind === 'bear' && !o.dot) amt *= tgt.def.sch.bear.dr; return oDmg.call(this, src, tgt, amt, o); };
   const oEva = Battle.prototype.evasion; Battle.prototype.evasion = function (tgt, o) { const v = oEva.call(this, tgt, o); return tgt.schForm && tgt.schForm.kind === 'rabbit' ? v + tgt.def.sch.rabbit.eva : v; };
@@ -284,7 +285,7 @@
       snake: { every: 1.2, len: 220, spd: 560, dur: 0.4, mult: 1.0, poisonDur: 4, poisonK: 0.25 },
       octo: { spd: 230, glue: 3 },
       bear: { reach: 150, mult: 1.8, stun: 1.5, dr: 0.75 },
-      fin: { hpAt: 0.3, spin: 0.7, spinSpd: 300, spinMult: 1.4, lift: 1.0, turn: 1.5, len: 190, half: 0.22, tick: 0.15, mult: 0.55, drain: 45 },
+      fin: { hpAt: 0.3, spin: 0.7, spinSpd: 300, spinMult: 1.4, lift: 1.0, turn: 5, len: 190, half: 0.22, tick: 0.15, mult: 0.55, drain: 45 },
     },
     extraDefs: Object.values(FORMS),
     sprite: { src: IMG + 'front.png', back: IMG + 'back.png', scale: 3, foot: 1 },
