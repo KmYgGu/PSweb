@@ -243,7 +243,7 @@
     attack: { element: 'dark', delivery: 'melee' },
     resist: { fire: 0.8, dark: 0.8, light: 1.25 },
     skills: [
-      { id: 'hellInferno', name: '헬 인페르노', cd: 11, wind: 0.35, R0: 150, dur: 1.0, spin: 4.5, s0: 34, s1: 7, m0: 3.0, m1: 0.6, element: 'fire', delivery: 'ranged' },
+      { id: 'hellInferno', name: '헬 인페르노', cd: 11, wind: 0.35, R0: 150, dur: 1.3, spin: 3.6, s0: 48, s1: 10, m0: 3.0, m1: 0.6, element: 'fire', delivery: 'ranged' },
       { id: 'darkParallel', name: '다크 패럴', cd: 6, n: 3, gap: 0.2, v0: 760, vMin: 110, decel: 2.4, life: 1.8, mult: 1.0, pullR: 60, pull: 55, element: 'dark', element2: 'fire', delivery: 'ranged' },
       { id: 'hellFire', name: '헬 파이어', cd: 10, out: 0.35, gap: 0.2, aura: 0.4, dMin: 140, dMax: 200, n: 5, space: 20, spd: 430, life: 1.4, mult: 0.75, element: 'fire', delivery: 'ranged' },
       { id: 'deepBloodEye', name: '딥 블러드 아이 섀도우', cd: 13, wind: 0.3, dur: 0.8, turns: 1.5, len: 320, width: 10, tick: 0.1, mult: 0.9, element: 'dark', delivery: 'ranged' },
