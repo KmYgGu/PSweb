@@ -2,6 +2,7 @@
  * 구울즈 (세 번째 듀얼리스트) — 미소녀 카드 덱 40장 (전부 몬스터)
  *  - 프레임워크: js/duel.js 재사용 (패/드로우/LP/릴리스/묘지/AI 점수/HUD/상단 UI 위 몬스터 훅)
  *  - 카드 id G01~G40 = 유저 목록 번호. 스프라이트: assets/Ghouls/monsters/Gxx.png (덮어쓰기로 교체)
+ *    (사용자 그림: 앞/뒤 시트 원본은 assets/Ghouls/monsters_src/ — 정면만 잘라 Gxx.png, 소환수 카드는 Gxx_back.png 도 사용)
  *  - 엔진 확장 (이 파일):
  *     · 소환수 유닛(천동·RAI-MEI·에클레시아·시트리스·에지르·아드라·수견사가 부른 캐릭터): b.u 에 들어가지만
  *       승패/결과/팀 판정에서 제외 (u.summon). 쓰러지면 조용히 사라지고 '파괴된 소환수' 로 기록(메멘토 엔위치)
@@ -114,10 +115,11 @@
 
   // ---------- 소환수 ----------
   const SUMDEF = {};
+  const SUM_BACK = new Set([7, 14, 16, 24, 28, 29]); /* 소환수로 걸어 다니는 카드만 뒷모습 사용 (Gxx_back.png) */
   function sumDef(key, name, card, st, o = {}) {
     SUMDEF[key] = { id: 'gsum_' + key, name, gender: 'female', color: o.color || '#ff9ad8', summonDef: true,
       stats: { hp: 100, atk: 10, spd: 0, range: 999, atkRate: 0.8, def: 0, ...st }, attack: { element: o.element || 'blunt', delivery: 'melee' },
-      skills: [], sprite: { src: MON_DIR + SPR(card) + '.png', height: o.h || 46, foot: 1 }, lines: { skill: {}, event: {} } };
+      skills: [], sprite: { src: MON_DIR + SPR(card) + '.png', ...(SUM_BACK.has(card) ? { back: MON_DIR + SPR(card) + '_back.png' } : {}), height: o.h || 46, foot: 1 }, lines: { skill: {}, event: {} } };
   }
   sumDef('chundong', '천동', 14, { hp: 200, atk: 14, spd: 150, range: 30, atkRate: 0.9 }, { element: 'fire', h: 50, color: '#e83a3a' });
   sumDef('raimei', 'RAI-MEI', 24, { hp: 170 }, { color: '#c8306a' });
