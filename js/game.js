@@ -902,7 +902,7 @@ class Battle {
     if (a.pin && !e.dead) {
       this.releasePin(e);
       this.stats.pinImpacts = (this.stats.pinImpacts || 0) + 1; this.later(0.25, () => this.say(u, 'wallSlam'));
-      this.damage(u, e, u.st.atk * ((a.slot && a.slot.mult) || 3.6), { big: true, ...hit(a.slot), color: '#ffd08a' });
+      this.damage(u, e, u.st.atk * ((a.slot && a.slot.mult) || 3.6), { big: true, ...hit(a.slot), color: '#ffd08a', noCrit: true }); /* 돌진 벽 충돌: 치명타 없음 (라인하르트 돌진·브로리 암반) */
       e.kx -= Math.cos(a.ang) * 6; e.ky -= Math.sin(a.ang) * 6;
       this.shock(w.x, w.y - 10, 8, 70, '#ffe0b0', 0.55, 7);
       this.shock(w.x, w.y - 10, 4, 40, '#ffffff', 0.35, 4);
@@ -1168,7 +1168,7 @@ class Battle {
     let dmg = amount, crit = !!o.crit;
     if (o.fixed) return this.fixedDamage(src, tgt, amount, o); // 고정 피해: 방어·속성·배율·LP 환산 무시
     if (!crit && !o.noCrit && Math.random() < src.st.crit) crit = true;
-    if (crit) dmg *= 1.75;
+    if (crit) dmg *= src.st.critMult || 1.75; /* 캐릭터별 치명타 배율 (기본 1.75) */
     // 방어력 (관통: 방어력의 일부 무시). 지속 피해는 방어 무시
     const effDef = o.dot ? 0 : Math.max(0, tgt.st.def * (1 - clamp(o.pierce || 0, 0, 1)));
     dmg *= 100 / (100 + effDef);

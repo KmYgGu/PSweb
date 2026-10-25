@@ -304,7 +304,7 @@
   CHARACTERS.push({
     id: 'galford', name: '갈포드', gender: 'female', color: '#3a6ad8',
     // 기존 캐릭터 평균 근처 (HP ~870 / ATK ~35 / SPD ~275 / DEF ~18)
-    stats: { hp: 860, atk: 34, spd: 290, range: 50, atkRate: 1.05, def: 16, crit: 0.08 },
+    stats: { hp: 860, atk: 34, spd: 290, range: 50, atkRate: 1.05, def: 16, crit: 0.08, critMult: 1.8 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { fire: 1.15 },
     statusResist: { paralysis: 0.2 },

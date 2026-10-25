@@ -23,7 +23,8 @@ const STAT_DEFAULTS = {
   range: 22,     // 사거리 (몸통 사이 간격, px). 80 이상이면 원거리(투사체) 공격
   atkRate: 1.0,  // 초당 공격 횟수
   def: 0,        // 방어력: 받는 피해 x 100/(100+def)
-  crit: 0,       // 치명타 확률 (0~1), 치명타 배율 x1.75
+  crit: 0,       // 치명타 확률 (0~1)
+  critMult: 1.75, // 치명타 배율 (캐릭터별 stats.critMult)
 };
 
 // 픽셀 그리기 헬퍼: 선분 픽셀 목록
@@ -60,7 +61,7 @@ function pxLine(x0, y0, x1, y1, k) {
 const CHARACTERS = [
   {
     id: 'swordsman', name: '검사', gender: 'male', color: '#7fa6e0',
-    stats: { hp: 795, atk: 40, spd: 280, range: 50, atkRate: 0.95, def: 25 },
+    stats: { hp: 795, atk: 40, spd: 280, range: 50, atkRate: 0.95, def: 25, crit: 0.11, critMult: 2.0 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { slash: 0.8, elec: 1.3, dark: 1.2 },
     statusResist: { all: 0.1 },
@@ -92,7 +93,7 @@ const CHARACTERS = [
   },
   {
     id: 'archer', name: '궁수', gender: 'female', color: '#7cc47a',
-    stats: { hp: 965, atk: 37, spd: 260, range: 130, atkRate: 1.1, def: 10 },
+    stats: { hp: 965, atk: 37, spd: 260, range: 130, atkRate: 1.1, def: 10, crit: 0 },
     attack: { element: 'slash', delivery: 'ranged', pierce: 0.3 },
     rangedBasic: { interval: 1.1, mult: 0.6, spd: 520 }, // v3: 궁수만 원거리 기본 공격 (논타겟 직선 화살, 유도 없음)
     resist: { fire: 1.3, blunt: 1.2, ranged: 0.85 },
@@ -128,7 +129,7 @@ const CHARACTERS = [
   },
   {
     id: 'mage', name: '마법사', gender: 'male', color: '#b08ce8',
-    stats: { hp: 1050, atk: 47, spd: 225, range: 120, atkRate: 0.8, def: 5 },
+    stats: { hp: 1050, atk: 47, spd: 225, range: 120, atkRate: 0.8, def: 5, crit: 0.04, critMult: 1.7 },
     attack: { element: 'fire', delivery: 'ranged' },
     spellCharge: { rate: 0.1, cap: 1.0 }, // v3: 맞지 않는 동안 초당 +10%, 최대 +100% (10초). 화염구 사용 시 소모, 피격 시 초기화
     resist: { fire: 0.5, ice: 1.4, slash: 1.15 },
@@ -164,7 +165,7 @@ const CHARACTERS = [
   },
   {
     id: 'tank', name: '탱커', gender: 'male', color: '#a9b4c2',
-    stats: { hp: 840, atk: 28, spd: 200, range: 46, atkRate: 0.8, def: 40 },
+    stats: { hp: 840, atk: 28, spd: 200, range: 46, atkRate: 0.8, def: 40, crit: 0.08, critMult: 2.2 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { slash: 0.75, blunt: 0.8, elec: 1.4 },
     statusResist: { all: 0.2, stun: 0.3 },
@@ -201,7 +202,7 @@ const CHARACTERS = [
   },
   {
     id: 'assassin', name: '암살자', gender: 'female', color: '#d27a9a',
-    stats: { hp: 630, atk: 27, spd: 360, range: 44, atkRate: 1.5, crit: 0.2, def: 10 },
+    stats: { hp: 630, atk: 27, spd: 360, range: 44, atkRate: 1.5, def: 10, crit: 0.1, critMult: 2.2 },
     attack: { element: 'dark', delivery: 'melee', pierce: 0.4 },
     resist: { dark: 0.5, light: 1.5 },
     statusResist: { poison: 0.8, confusion: 0.5 },
@@ -235,7 +236,7 @@ const CHARACTERS = [
   },
   {
     id: 'lancer', name: '창병', gender: 'male', color: '#e0a060',
-    stats: { hp: 780, atk: 37, spd: 250, range: 72, atkRate: 0.9, def: 35 },
+    stats: { hp: 780, atk: 37, spd: 250, range: 72, atkRate: 0.9, def: 35, crit: 0.06, critMult: 1.8 },
     attack: { element: 'slash', delivery: 'melee', pierce: 0.35 },
     resist: { slash: 0.85, fire: 1.25, ranged: 0.85 },
     statusResist: { stun: 0.4 },
@@ -268,7 +269,7 @@ const CHARACTERS = [
   },
   {
     id: 'priest', name: '성직자', gender: 'female', color: '#f0d77a',
-    stats: { hp: 890, atk: 27, spd: 230, range: 115, atkRate: 0.95, def: 15 },
+    stats: { hp: 890, atk: 27, spd: 230, range: 115, atkRate: 0.95, def: 15, crit: 0.04, critMult: 1.5 },
     attack: { element: 'light', delivery: 'ranged' },
     resist: { light: 0.5, dark: 1.5 },
     statusResist: { all: 0.25 },
@@ -303,7 +304,7 @@ const CHARACTERS = [
   },
   {
     id: 'berserker', name: '광전사', gender: 'male', color: '#e07a5a',
-    stats: { hp: 1150, atk: 42, spd: 270, range: 50, atkRate: 1.0, def: 20 },
+    stats: { hp: 1150, atk: 42, spd: 270, range: 50, atkRate: 1.0, def: 20, crit: 0.1, critMult: 2.0 },
     attack: { element: 'slash', delivery: 'melee' },
     takenMul: { melee: 1.2, ranged: 2.2 }, // v2 밸런스: 받는 피해 증가 (근접 ×1.2, 원거리·스킬·기타 ×2.2) - 멀리서 깎이면 약함
     resist: { fire: 0.8, blunt: 0.85, ice: 1.35 },
@@ -339,7 +340,7 @@ const CHARACTERS = [
   // ===== 첫 정식 캐릭터 =====
   {
     id: 'reinhardt', name: '라인하르트', gender: 'male', color: '#b8b8c0',
-    stats: { hp: 1000, atk: 28, spd: 215, range: 54, atkRate: 0.75, def: 30 },
+    stats: { hp: 1000, atk: 28, spd: 215, range: 54, atkRate: 0.75, def: 30, crit: 0.08, critMult: 2.0 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { elec: 1.3, slash: 0.9, blunt: 0.85, fire: 0.9 },
     statusResist: { stun: 0.25, pin: 0.9 },
@@ -372,7 +373,7 @@ const CHARACTERS = [
   },
   {
     id: 'evelyn', name: '이블린', gender: 'female', color: '#e0b860',
-    stats: { hp: 660, atk: 25, spd: 330, range: 60, atkRate: 0.92, def: 12, crit: 0.12 },
+    stats: { hp: 660, atk: 25, spd: 330, range: 60, atkRate: 0.92, def: 12, crit: 0.08, critMult: 1.6 },
     attack: { element: 'fire', delivery: 'melee' },
     resist: { fire: 0.75, ice: 1.3, blunt: 1.1 },
     statusResist: { bind: 0.5 },
@@ -419,7 +420,7 @@ const CHARACTERS = [
   },
   {
     id: 'kidomusha', name: '태도 귀무사', gender: 'female', color: '#c8303a',
-    stats: { hp: 840, atk: 35, spd: 305, range: 58, atkRate: 1.05, def: 18, crit: 0.1 },
+    stats: { hp: 840, atk: 35, spd: 305, range: 58, atkRate: 1.05, def: 18, crit: 0.08, critMult: 1.8 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { slash: 0.9, light: 1.25 },
     // 오니화 게이지: 적중(dealt)·피격(damaged) 시 충전. 가득 차면 오니화 (README '태도 귀무사')
@@ -462,7 +463,7 @@ const CHARACTERS = [
   },
   {
     id: 'duck', name: '오리', gender: 'male', color: '#ffd84a',
-    stats: { hp: 750, atk: 32, spd: 345, range: 48, atkRate: 1.2, def: 12, crit: 0.1 },
+    stats: { hp: 750, atk: 32, spd: 345, range: 48, atkRate: 1.2, def: 12, crit: 0.09, critMult: 2.0 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { elec: 1.15 },
     traits: ['waterproof'], // 패시브 '오리': 물 관련 불이익(감속·산소·속성 약화) 면역
@@ -501,7 +502,7 @@ const CHARACTERS = [
   },
   {
     id: 'mystic', name: '신비술사', gender: 'female', color: '#c070e0',
-    stats: { hp: 940, atk: 45, spd: 250, range: 115, atkRate: 0.95, def: 8, crit: 0.08 },
+    stats: { hp: 940, atk: 45, spd: 250, range: 115, atkRate: 0.95, def: 8, crit: 0.04, critMult: 1.5 },
     attack: { element: 'dark', delivery: 'ranged' },
     projectile: 'magic',
     resist: { dark: 0.7, light: 1.25 },

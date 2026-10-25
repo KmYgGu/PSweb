@@ -256,7 +256,7 @@
   CHARACTERS.push({
     id: 'blade', name: '블레이드', gender: 'female', color: '#5ac8f0',
     // 원거리·저체력 (평균 근처): HP 760 / ATK 33 / 사거리 130
-    stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0.08 },
+    stats: { hp: 760, atk: 33, spd: 270, range: 130, atkRate: 0.95, def: 8, crit: 0 },
     attack: { element: 'ice', delivery: 'ranged' },
     resist: { ice: 0.7, fire: 1.2, blunt: 1.1 },
     // 탑승 중인 큰 칼날은 몸 뒤(아래)에 그림 — 캐릭터가 칼날 위에 올라탄 모습

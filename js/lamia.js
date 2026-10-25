@@ -239,7 +239,7 @@
   // ---------- 캐릭터 ----------
   CHARACTERS.push({
     id: ID, name: '라미아', fullName: '브리우스 니어 라미아', gender: 'female', color: '#bfe8ff',
-    stats: { hp: 760, atk: 30, spd: 250, range: 130, atkRate: 1.0, def: 10 },
+    stats: { hp: 760, atk: 30, spd: 250, range: 130, atkRate: 1.0, def: 10, crit: 0 },
     attack: { element: 'ice', delivery: 'ranged' },
     resist: { ice: 0.7, light: 0.9, fire: 1.2 },
     skills: [

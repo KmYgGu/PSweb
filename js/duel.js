@@ -991,7 +991,7 @@
   const FACES_Y = { front: 'right', back: 'left' };
   CHARACTERS.push({
     id: 'yugi', name: '유희', gender: 'male', color: '#8a5ad8',
-    stats: { hp: 4000, atk: 20, spd: 245, range: 110, atkRate: 0.75, def: 0 },
+    stats: { hp: 4000, atk: 20, spd: 245, range: 110, atkRate: 0.75, def: 0, crit: 0 },
     attack: { element: 'dark', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: YUGI_DECK },
     skills: [{ id: 'duelCard', name: '듀얼리스트의 카드', cd: 1e9, hidden: true, canUse: () => false }],

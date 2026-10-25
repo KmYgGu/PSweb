@@ -20,7 +20,7 @@
   // ===================== 캐릭터 정의 =====================
   const PARAGUS = {
     id: 'paragus', name: '파라가스', gender: 'male', color: '#8a6ac8',
-    stats: { hp: 370, atk: 17, spd: 235, range: 46, atkRate: 0.85, def: 7.5 },
+    stats: { hp: 370, atk: 17, spd: 235, range: 46, atkRate: 0.85, def: 7.5, crit: 0.08, critMult: 1.8 },
     attack: { element: 'blunt', delivery: 'melee' }, // 지팡이
     resist: { dark: 0.9, light: 1.15, slash: 1.1 },
     statusResist: { confusion: 0.3 },
@@ -59,7 +59,7 @@
   };
   const BROLY = {
     id: 'broly', name: '브로리', gender: 'male', color: '#5ad07a',
-    stats: { hp: 610, atk: 21.5, spd: 220, range: 52, atkRate: 0.8, def: 14 },
+    stats: { hp: 610, atk: 21.5, spd: 220, range: 52, atkRate: 0.8, def: 14, crit: 0.09, critMult: 2.2 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { blunt: 0.85, light: 0.9, elec: 1.2 },
     statusResist: { stun: 0.2 },
@@ -72,8 +72,8 @@
     ],
     // 전설의 슈퍼사이어인: 파라가스가 먼저 쓰러지면 변신 (onAllyDown)
     lss: {
-      desc: '파라가스가 먼저 쓰러지면 → 전설의 슈퍼사이어인 (체력 608 · 공격력 24.2 · 방어력 12.9 고정, 속도×1.12, 공속×1.2, 상태저항 +25%, 체력 비율 유지)',
-      form: LSS_FORM, boost: { spd: 1.12, atkRate: 1.2, statusResist: 0.25 }, // 속도·공속은 소폭 배율
+      desc: '파라가스가 먼저 쓰러지면 → 전설의 슈퍼사이어인 (체력 608 · 공격력 24.2 · 방어력 12.9 고정, 속도×1.12, 공속×1.2, 상태저항 +25%, 치명타 확률 ×2, 체력 비율 유지)',
+      form: LSS_FORM, boost: { spd: 1.12, atkRate: 1.2, statusResist: 0.25, crit: 2 }, // 속도·공속은 소폭 배율
       stats: { hp: 608, atk: 24.2, def: 12.9 }, // 절대값: 다른 캐릭터 평균(HP 868.5 / ATK 34.6 / DEF 18.5)의 0.7배
       skills: [
         { id: 'bedrock', name: '암반', cd: 9, mult: 3.2, spd: 620, element: 'blunt', delivery: 'melee', pierce: 0.2 },
@@ -106,7 +106,7 @@
     const L = BROLY.lss, B = L.boost;
     u.form = L.form;
     const S = L.stats, ratio = u.hp / u.maxHp; // 현재 체력 비율 유지 (회복 없음)
-    u.st.hp = S.hp; u.maxHp = S.hp; u.hp = Math.max(1, ratio * S.hp); u.st.atk = S.atk; u.st.def = S.def; u.st.spd *= B.spd; u.st.atkRate *= B.atkRate;
+    u.st.hp = S.hp; u.maxHp = S.hp; u.hp = Math.max(1, ratio * S.hp); u.st.atk = S.atk; u.st.def = S.def; u.st.spd *= B.spd; u.st.atkRate *= B.atkRate; u.st.crit = (u.st.crit || 0) * (B.crit || 1); /* 치명타 확률 ×2 (배율은 그대로) */
     u.skills = L.skills; u.skillT = u.skills.map(s => s.cd * rand(0.12, 0.3));
     u.statuses = u.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive); // 해로운 상태 정화
     u.buffs.push({ type: 'lssAura', name: '전설의 슈퍼사이어인', t: 1e9, nodispel: true, statusResist: B.statusResist });
@@ -117,7 +117,7 @@
     b.glow(u.x, u.y - 34, 90, '#c8ff6a', 0.9); b.embers(u.x, u.y, '#d8ff7a', 30); b.sparks(u.x, u.y - 30, '#f4ffc0', 30, 300);
     b.debris(u.x, u.y, 26);
     b.stats.lss = (b.stats.lss || 0) + 1;
-    sys(b, '브로리: 전설의 슈퍼사이어인으로 각성!!');
+    sys(b, '브로리: 전설의 슈퍼사이어인으로 각성!! (치명타 확률 ×2)');
     u.voice && (u.voice.any = -9); u.lowSaid = u.hp < u.maxHp * 0.3 ? u.lowSaid : false; // LSS 저체력 대사가 다시 나올 수 있게
     b.later(1.4, () => { if (!u.dead && !b.over) { u.voice.any = -9; b.say(u, 'buffed'); } }); // 기 모으기 후 '기가 높아...'
     const t = b.line(u, 'event', 'transform') || LSS_FORM.lines.event.transform[0];

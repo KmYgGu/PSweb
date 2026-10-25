@@ -22,7 +22,7 @@
     ctx.globalAlpha = 0.5; ctx.fillStyle = '#ffd86a'; ctx.fillRect(-14, -1, 12, 2); ctx.globalAlpha = 1; ctx.fillStyle = '#fff4c0'; ctx.fillRect(-2, -1, 4, 2); }
   function fire(b, u, ang, spd, mult) { // 총알 1발 (비유도 직선)
     const Mc = M(u); if (Mc.ammo <= 0) return false; Mc.ammo--;
-    b.shoot(u, { angle: ang, spd, dmg: u.st.atk * mult, kind: 'mcBullet', hit: { ...bulletHit, element: 'blunt' } });
+    b.shoot(u, { angle: ang, spd, dmg: u.st.atk * mult, kind: 'mcBullet', hit: { ...bulletHit, element: 'blunt', noCrit: true } }); /* 난사 총알: 치명타 없음 */
     Object.assign(b.proj[b.proj.length - 1], { life: 0.6, r: 4, draw: drawBullet, noAirLock: true });
     b.parts.push({ x: u.x + Math.cos(ang) * 14, y: u.y - 20 + Math.sin(ang) * 14, vx: 0, vy: 0, life: 0.06, max: 0.06, color: '#fff0a0', size: 4, glow: true });
     return true;
@@ -53,7 +53,7 @@
       const x0 = u.x + Math.cos(a) * 14, y0 = u.y - 20 + Math.sin(a) * 14;
       b.streak(x0, y0, e.x, e.y - 18 - b.airZ(e), '#ffe9a0', 3, 0.15);
       b.parts.push({ x: x0, y: y0, vx: 0, vy: 0, life: 0.06, max: 0.06, color: '#fff0a0', size: 4, glow: true });
-      b.damage(u, e, u.st.atk * slot.mult, { element: 'blunt', delivery: 'ranged', color: '#ffe9a0', piercesBarrier: true, sureHit: true }); },
+      b.damage(u, e, u.st.atk * slot.mult, { element: 'blunt', delivery: 'ranged', color: '#ffe9a0', piercesBarrier: true, sureHit: true, noCrit: true }); /* 속사: 치명타 없음 */ },
   };
   // ---------- 4. 난사 ----------
   SKILLS.mcDump = {
@@ -176,7 +176,7 @@
 
   CHARACTERS.push({
     id: ID, name: '미츄헨', fullName: '미츄헨 데슈타프', gender: 'neutral', color: '#5a7aa0',
-    stats: { hp: 820, atk: 30, spd: 265, range: 54, atkRate: 0.95, def: 12 },
+    stats: { hp: 820, atk: 30, spd: 265, range: 54, atkRate: 0.95, def: 12, crit: 0.04, critMult: 1.6 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { elec: 0.7 },
     weapon: 'axe',

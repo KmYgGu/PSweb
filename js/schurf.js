@@ -283,7 +283,7 @@
   // ---------- 캐릭터 ----------
   CHARACTERS.push({
     id: ID, name: '슈르프', fullName: '카마이타치 슈르프', gender: 'female', color: '#c8a870',
-    stats: { hp: 820, atk: 30, spd: 270, range: 50, atkRate: 0.9, def: 15 },
+    stats: { hp: 820, atk: 30, spd: 270, range: 50, atkRate: 0.9, def: 15, crit: 0.06, critMult: 1.8 },
     attack: { element: 'slash', delivery: 'melee' },
     resist: { slash: 0.85, fire: 1.15 },
     skills: [

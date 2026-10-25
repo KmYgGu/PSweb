@@ -631,7 +631,7 @@
   // ---------- 카이바 ----------
   CHARACTERS.push({
     id: 'kaiba', name: '카이바', gender: 'male', color: '#3a6ad8',
-    stats: { hp: 4000, atk: 22, spd: 240, range: 110, atkRate: 0.75, def: 0 },
+    stats: { hp: 4000, atk: 22, spd: 240, range: 110, atkRate: 0.75, def: 0, crit: 0 },
     attack: { element: 'light', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: KAIBA_DECK, extra: EXTRA_CARDS.map(c => c.id), noExodia: true,
       atkMul: 1.45, cfg: { PLAY_GAP: 0.45, MIN_WAIT: 0.55, WAIT_TIMEOUT: 2.3, MAX_PLAYS: 3 }, // v2: 몬스터 피해 ×1.45, 카드 사용 템포 상향

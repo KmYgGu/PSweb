@@ -594,7 +594,7 @@
   // ---------- 캐릭터 ----------
   CHARACTERS.push({
     id: 'ghoul', name: '구울즈', gender: 'male', color: '#6a3a8a',
-    stats: { hp: 4000, atk: 20, spd: 240, range: 110, atkRate: 0.75, def: 0 },
+    stats: { hp: 4000, atk: 20, spd: 240, range: 110, atkRate: 0.75, def: 0, crit: 0 },
     attack: { element: 'dark', delivery: 'ranged' }, projectile: 'magic',
     duelist: { deck: GHOUL_DECK, noExodia: true, atkMul: 1.3, cfg: { PLAY_GAP: 0.5, MIN_WAIT: 0.7, WAIT_TIMEOUT: 2.6, MAX_PLAYS: 2 },
       blurb: '<b style="color:#ff9ad8">미소녀 카드 40장(전부 몬스터) · 묘지/레벨 조작/다음 드로우 지정/소환수/스테이지 교체</b>' },

@@ -161,7 +161,7 @@
 
   CHARACTERS.push({
     id: ID, name: '샌즈', fullName: '샌즈', gender: 'male', color: '#4a7ad0',
-    stats: { hp: 1, atk: 14, spd: 235, range: 54, atkRate: 0.8, def: 0 },
+    stats: { hp: 1, atk: 14, spd: 235, range: 54, atkRate: 0.8, def: 0, crit: 0 },
     attack: { element: 'blunt', delivery: 'melee' },
     skills: [
       { id: 'snTele', name: '순간이동', cd: 4 },

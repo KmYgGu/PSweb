@@ -150,7 +150,7 @@
       u.action = { type: 'bzThorns', step(dt) { const e = foeOf(b, u); t -= dt; if (t > 0) return; t = S.gap;
         if (!e || n >= S.n) { u.action = null; return; } n++;
         const a = angTo(u, e) + rand(-S.spread, S.spread); u.facing = Math.cos(a) >= 0 ? 1 : -1;
-        b.shoot(u, { angle: a, spd: S.spd, dmg: u.st.atk * S.mult, kind: 'bzThorn', hit: { element: 'slash', delivery: 'ranged', color: '#ff7a9a' } });
+        b.shoot(u, { angle: a, spd: S.spd, dmg: u.st.atk * S.mult, kind: 'bzThorn', hit: { element: 'slash', delivery: 'ranged', color: '#ff7a9a', noCrit: true } }); /* 가시: 치명타 없음 */
         Object.assign(b.proj[b.proj.length - 1], { x: u.x - u.facing * 4, y: u.y - 16, life: 0.8, r: 5, draw: drawThorn, noAirLock: true, bzThorn: true }); } }; },
   };
   function thornCut(b, x, y, r, team) { // (x,y) 반경 r 안의 가시 상쇄 (team = 가시를 지우는 쪽)
@@ -243,7 +243,7 @@
 
   CHARACTERS.push({
     id: ID, name: '베르제브트', fullName: '베르제브트', gender: 'female', color: '#b0305a',
-    stats: { hp: 860, atk: 31, spd: 255, range: 56, atkRate: 0.9, def: 14 },
+    stats: { hp: 860, atk: 31, spd: 255, range: 56, atkRate: 0.9, def: 14, crit: 0.06, critMult: 1.8 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { dark: 0.85 },
     weapon: 'spear',

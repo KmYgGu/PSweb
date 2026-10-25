@@ -240,7 +240,7 @@
   // ---------- 캐릭터 ----------
   CHARACTERS.push({
     id: ID, name: '루델리안', fullName: '루델리안 블러드 체폐슈', gender: 'female', color: '#9a1a32',
-    stats: { hp: 680, atk: 26, spd: 300, range: 60, atkRate: 0.85, def: 10, crit: 0.08 },
+    stats: { hp: 680, atk: 26, spd: 300, range: 60, atkRate: 0.85, def: 10, crit: 0.03, critMult: 1.5 },
     attack: { element: 'dark', delivery: 'melee' },
     resist: { fire: 0.8, dark: 0.8, light: 1.25 },
     skills: [
