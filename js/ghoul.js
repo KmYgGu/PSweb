@@ -16,8 +16,10 @@
   const SPR = id => 'G' + String(id).padStart(2, '0');
   // ---------- 스프라이트 (PNG, 교체 가능) ----------
   const MON_DIR = 'assets/Ghouls/monsters/';
-  for (let i = 1; i <= 40; i++) DUEL_SPRITES[SPR(i)] = { src: MON_DIR + SPR(i) + '.png', h: 40 };
-  for (let i = 1; i <= 40; i++) try { DuelSprites.get(SPR(i)); } catch (e) { } // 미리 로드 시작
+  const MON_SCALE = 0.5; /* 플레이어(구울즈 캐릭터) sprite.scale 과 같은 배율: 원본 도트 1px = 화면 0.5px */
+  for (let i = 1; i <= 40; i++) DUEL_SPRITES[SPR(i)] = { src: MON_DIR + SPR(i) + '.png', scale: MON_SCALE };
+  DUEL_SPRITES.G02B = { src: MON_DIR + 'G02B.png', scale: MON_SCALE }; /* 셀레브로즈 인플루언서즈 두 번째 인물 (2.B) */
+  for (const k of [...Array.from({ length: 40 }, (_, i) => SPR(i + 1)), 'G02B']) try { DuelSprites.get(k); } catch (e) { } // 미리 로드 시작
 
   // ---------- 공용 ----------
   const angTo = (u, t) => Math.atan2(t.y - u.y, t.x - u.x);
@@ -37,6 +39,16 @@
   }
   const acts = b => b.gAct || (b.gAct = []);
   function actor(b, spr, x, y, dur, o = {}) { const A = { spr, x, y, z: 0, t: 0, dur, face: o.face || 1, a: 1, k: o.k || 1, upd: o.upd || null, ghost: o.ghost }; acts(b).push(A); b.glow(x, y - 20, 26, '#ffd0ec', 0.3); return A; }
+  // 셀레브로즈 인플루언서즈: 2.A(G02)·2.B(G02B) 를 구울즈 옆에 나란히 (상대 반대쪽 우선, 경기장 안, 서로·구울즈와 안 겹치게)
+  function duoActors(b, u, e, dur, face) {
+    const wOf = k => { const sp = DuelSprites.get(k); return sp ? sp.w * sp.s : 30; }, wA = wOf('G02'), wB = wOf('G02B'), pw = 44, gap = 4;
+    const lo = AR.x + 2, hi = AR.x + AR.w - 2, side0 = e && e.x > u.x ? -1 : 1;
+    const fit = side => { const c1 = u.x + side * (pw / 2 + gap + wA / 2), c2 = c1 + side * (wA / 2 + gap + wB / 2), m = side > 0 ? c2 + wB / 2 : c2 - wB / 2; return m >= lo && m <= hi ? [c1, c2] : null; };
+    let P = fit(side0) || fit(-side0);
+    if (!P) P = [u.x - (pw / 2 + gap + wA / 2), u.x + (pw / 2 + gap + wB / 2)]; /* 양쪽에 하나씩 */
+    P = P.map((x, i) => clamp(x, lo + (i ? wB : wA) / 2, hi - (i ? wB : wA) / 2));
+    actor(b, 'G02', P[0], u.y, dur, { face }); actor(b, 'G02B', P[1], u.y, dur, { face });
+  }
   const hitO = (ctx, x) => ({ element: ctx.card.element || 'dark', delivery: 'ranged', ...x });
   function fanAt(ctx, O, a, R, sp, amt, o = {}) { // 부채꼴: 위치·방향 고정
     const { b, u } = ctx, dl = o.delay ?? 0.28, col = o.color || '#ffc8e8';
@@ -119,9 +131,9 @@
   function sumDef(key, name, card, st, o = {}) {
     SUMDEF[key] = { id: 'gsum_' + key, name, gender: 'female', color: o.color || '#ff9ad8', summonDef: true,
       stats: { hp: 100, atk: 10, spd: 0, range: 999, atkRate: 0.8, def: 0, ...st }, attack: { element: o.element || 'blunt', delivery: 'melee' },
-      skills: [], sprite: { src: MON_DIR + SPR(card) + '.png', ...(SUM_BACK.has(card) ? { back: MON_DIR + SPR(card) + '_back.png' } : {}), height: o.h || 46, foot: 1 }, lines: { skill: {}, event: {} } };
+      skills: [], sprite: { src: MON_DIR + SPR(card) + '.png', ...(SUM_BACK.has(card) ? { back: MON_DIR + SPR(card) + '_back.png' } : {}), scale: MON_SCALE, foot: 1 }, lines: { skill: {}, event: {} } };
   }
-  sumDef('chundong', '천동', 14, { hp: 200, atk: 14, spd: 150, range: 30, atkRate: 0.9 }, { element: 'fire', h: 50, color: '#e83a3a' });
+  sumDef('chundong', '천동', 14, { hp: 200, atk: 14, spd: 150, range: 30, atkRate: 0.9 }, { element: 'fire', color: '#e83a3a' });
   sumDef('raimei', 'RAI-MEI', 24, { hp: 170 }, { color: '#c8306a' });
   sumDef('ecclesia', '에클레시아', 7, { hp: 150, atk: 12, range: 40, atkRate: 1.0 }, { element: 'slash', color: '#f0d890' });
   sumDef('sitri', '시트리스', 16, { hp: 130 }, { color: '#ff9ab8' });
@@ -222,7 +234,7 @@
       const c = gm(ctx).sort((a, z) => effLv(z) - effLv(a))[0]; let lv = 0;
       if (c) { D.grave.splice(D.grave.indexOf(c), 1); D.deck.push(c); DUEL.shuffle(D.deck); lv = effLv(c); say(b, u, `${c.def.name} 묘지 → 덱 (공격력 +${lv * 8}%)`); }
       const a = angTo(u, e), O = { x: u.x, y: u.y };
-      actor(b, SPR(2), u.x + Math.cos(a) * 20, u.y, 0.9, { face: Math.cos(a) >= 0 ? 1 : -1 });
+      duoActors(b, u, e, 0.9, Math.cos(a) >= 0 ? 1 : -1); /* 두 인물 (2.A + 2.B) 나란히 */
       b.glow(u.x + Math.cos(a) * 40, u.y - 24, 50, '#ffffff', 0.25);
       fanAt(ctx, O, a, 150, 0.55, ctx.atk(0.9 * (1 + lv * 0.08)), { delivery: 'ranged', color: '#ffffff', applies: [{ status: 'slow', duration: 2.5 }] });
     }, { tags: ['damage'], range: 170, est: S => DUEL.CFG.ATK_SCALE * 1800 * 0.9 * 1.3 * (1 + Math.min(12, S.graveMonsters ? 6 : 0) * 0.08), score: S => S.graveMonsters ? 6 : -4 }),
@@ -589,7 +601,7 @@
     const sc = sp.s * A.k, w = sp.w * sc, h = sp.h * sc;
     ctx.save(); ctx.globalAlpha = Math.max(0, a); ctx.translate(Math.round(A.x), Math.round(A.y - A.z)); ctx.scale(A.face < 0 ? -1 : 1, 1); ctx.drawImage(sp.c, Math.round(-w / 2), Math.round(-h + 2), w, h); ctx.restore();
   }
-  window.GHOUL = { G, SUMDEF, switchStage, summon, removeSummon, charmGender, DECK: GHOUL_DECK };
+  window.GHOUL = { G, SUMDEF, switchStage, summon, removeSummon, charmGender, duoActors, DECK: GHOUL_DECK };
   DUEL.debug.ghoulIds = () => G.map(c => c.id);
   DUEL.debug.switchStage = switchStage;
 
