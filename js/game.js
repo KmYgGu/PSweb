@@ -644,7 +644,7 @@ class Battle {
         this.wallImpact(u, nx, ny);
         const a = u.action;
         if (a && (a.type === 'dash' || a.type === 'chase')) { // 돌진: 강한 충돌
-          this.hitBuilding(b, 90, true, u.x - nx * 10, u.y - 14);
+          this.hitBuilding(b, 90, true, u.x - nx * 10, u.y - 14, u, 'dash');
           if (!b.dead) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); }
         } else {
           let vx = Math.cos(u.dir), vy = Math.sin(u.dir);
@@ -652,7 +652,7 @@ class Battle {
           if (dot < 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.25, 0.25)); }
           if (this.time - u.bldT > 0.15) {
             u.bldT = this.time;
-            this.hitBuilding(b, this.rules.bumpDmg + u.speed * this.rules.bumpSpeedK, false, u.x - nx * 11, u.y - 8);
+            this.hitBuilding(b, this.rules.bumpDmg + u.speed * this.rules.bumpSpeedK, false, u.x - nx * 11, u.y - 8, u, 'bump');
             this.ring(u.x - nx * 11, u.y - 4, 2, 10, 0.2, '#e0d8c8');
           }
         }
@@ -661,7 +661,7 @@ class Battle {
       if (!any) break;
     }
   }
-  hitBuilding(b, dmg, strong, x, y) {
+  hitBuilding(b, dmg, strong, x, y, src, kind) { // src/kind: 가해자·종류 ('dash'|'bump'|'melee'|'proj', 없으면 미상) — 육군보병 군장 판정용, 일반 건물은 무시
     if (!b || b.dead) return;
     if (b.stageSolid) { b.hit && b.hit(dmg, strong, x, y); return; } // 스테이지 장애물 (철망 칸 손상 등)
     if (b.solid) { b.hitT = 0.15; for (let i = 0; i < 3; i++) this.parts.push({ x: x ?? b.x + b.w / 2, y: y ?? b.y, vx: rand(-60, 60), vy: rand(-90, -30), g: 360, life: 0.4, max: 0.4, color: ['#8a7a68', '#b0a088'][i % 2], size: rand(1.5, 2.5) }); return; } // 파괴 불가 임시 지형
@@ -907,7 +907,7 @@ class Battle {
       if (seg && seg.dead) { if (a.pin) this.releasePin(e); this.fall(fu, side); return; }
       if (seg) { seg.hp -= a.pin ? 2 : 1; seg.hitT = this.time; this.sparks(w.x, w.y, '#e0f6ff', 12, 160); if (seg.hp <= 0) { seg.dead = true; this.debrisIce(w.x, w.y); this.hooks.onSystem && this.hooks.onSystem('얼음벽이 깨졌습니다! 크레바스 주의!'); } }
     }
-    if (w.bl) this.hitBuilding(w.bl, a.pin ? 200 : 90, true, w.x, w.y);
+    if (w.bl) this.hitBuilding(w.bl, a.pin ? 200 : 90, true, w.x, w.y, u, 'dash');
     if (a.pin && !e.dead) {
       this.releasePin(e);
       this.stats.pinImpacts = (this.stats.pinImpacts || 0) + 1; this.later(0.25, () => this.say(u, 'wallSlam'));
@@ -1109,7 +1109,7 @@ class Battle {
           this.slashFx(e.x - u.facing * 4, e.y - 18, u.facing, '#ffffff', 1);
         } else { this.slashFx(u.x + u.facing * 18, u.y - 18, u.facing, '#ffffff', 0.8); playSfx('whiff'); }
         const bl = this.blockAt(u.x + u.facing * 20, u.y - 4, 8); // 근처 건물도 타격
-        if (bl) this.hitBuilding(bl, u.st.atk * this.rules.meleeK, false, u.x + u.facing * 16, u.y - 14);
+        if (bl) this.hitBuilding(bl, u.st.atk * this.rules.meleeK, false, u.x + u.facing * 16, u.y - 14, u, 'melee');
       });
     }
   }
@@ -1140,10 +1140,10 @@ class Battle {
       if (this.balls.length) for (const ball of this.balls) { const dx = ball.x - p.x, dy = ball.y - (p.y + 14); if (dx * dx + dy * dy < 64) { const sp = Math.hypot(p.vx, p.vy) || 1; ball.vx += p.vx / sp * 160; ball.vy += p.vy / sp * 160; ball.z = 5; } }
       const bar = !p.piercesBarrier && this.u.find(o => o.team !== p.src.team && this.barrierBlocks(o, p));
       if (bar) { p.life = 0; this.barrierHit(bar, p.dmg, p.x, p.y); continue; } // 방벽
-      const bl = this.blockAt(p.x, p.y + 14);
-      if (bl && p.pierce) { if (!(p.hitB || (p.hitB = new Set())).has(bl)) { p.hitB.add(bl); this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y); } }
+      let bl = this.blockAt(p.x, p.y + 14); if (bl && p.passB && p.passB(bl)) bl = null; // passB: 통과할 장애물 (육군보병 조준 사격 → 자기 군장)
+      if (bl && p.pierce) { if (!(p.hitB || (p.hitB = new Set())).has(bl)) { p.hitB.add(bl); this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y, p.src, 'proj'); } }
       else if (bl) { // 건물이 투사체를 막음
-        p.life = 0; this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y);
+        p.life = 0; this.hitBuilding(bl, p.dmg * this.rules.projK, false, p.x, p.y, p.src, 'proj');
         this.burst(p.x, p.y, projectileColor(p), 4); p.fizzle && p.fizzle(p); continue;
       }
       if (p.cancel) for (const q of this.proj) { // 데덴탄: 상대 투사체 상쇄
@@ -2042,6 +2042,7 @@ const Render = (() => {
     wireHook: { w: 30, h: 9, style: 'swing', trail: '#ffb060', draw(g) { for (let i = 0; i < 22; i += 2) R(g, i, 4 + (i % 4 ? 0 : 1), 2, 1, '#ffcf8a'); R(g, 22, 2, 6, 3, '#c0c4cc'); R(g, 27, 3, 2, 5, '#c0c4cc'); R(g, 25, 6, 2, 2, '#e8ecf4'); R(g, 22, 2, 6, 1, '#ffffff'); R(g, 20, 3, 2, 3, '#ff7a30'); } },
     tachi: { w: 44, h: 9, style: 'swing', trail: '#ff6070', draw(g) { R(g, 0, 4, 9, 3, '#1e1418'); for (let i = 1; i < 9; i += 3) R(g, i, 4, 1, 3, '#a02030'); R(g, 9, 2, 2, 6, '#c8a050'); for (let i = 0; i < 31; i++) { const y = 3 - Math.round(Math.sin(i / 31 * 1.4) * 2.5); R(g, 11 + i, y + 1, 1, 2, '#d8dce8'); R(g, 11 + i, y + 1, 1, 1, '#ffffff'); R(g, 11 + i, y + 3, 1, 1, '#6a3040'); } } },
     toyHammer: { w: 26, h: 16, style: 'swing', trail: '#ffe060', draw(g) { R(g, 0, 7, 16, 2, '#e8c050'); R(g, 0, 7, 16, 1, '#fff0a0'); R(g, 14, 1, 11, 14, '#e83a3a'); R(g, 14, 1, 11, 3, '#ff8080'); R(g, 14, 1, 2, 14, '#f0f0f0'); R(g, 23, 1, 2, 14, '#f0f0f0'); R(g, 24, 12, 1, 3, '#a02020'); } },
+    rifleButt: { w: 38, h: 9, style: 'swing', trail: '#ffb0a0', heavy: true, draw(g) { R(g, 0, 3, 12, 2, '#3a3438'); R(g, 0, 3, 12, 1, '#6a6068'); R(g, 10, 5, 3, 3, '#2a2428'); R(g, 12, 2, 14, 4, '#b8242a'); R(g, 12, 2, 14, 1, '#e8545a'); R(g, 17, 6, 3, 3, '#7a1a1e'); R(g, 26, 2, 9, 6, '#a01e24'); R(g, 26, 2, 9, 1, '#d84a50'); R(g, 35, 1, 3, 8, '#5a1216'); R(g, 36, 2, 1, 6, '#c8b8b0'); } }, // 육군보병 개머리판 (끝 = 개머리)
     ninjato: { w: 36, h: 7, style: 'swing', trail: '#a8e0ff', draw(g) { R(g, 0, 2, 9, 3, '#20283a'); for (let i = 1; i < 9; i += 2) R(g, i, 2, 1, 3, '#4a6aa0'); R(g, 9, 0, 3, 7, '#30303a'); R(g, 12, 2, 22, 3, '#cfd8e4'); R(g, 12, 2, 22, 1, '#ffffff'); R(g, 34, 3, 2, 1, '#ffffff'); R(g, 13, 4, 20, 1, '#6aa8ff'); } },
     // 오리 박치기: 무기 없음 → 오리 몸 전체가 공격 방향으로 머리부터 들이받음(lungeOff) + 머리 앞 픽셀 충격 버스트
     duckHead: { w: 1, h: 1, style: 'lunge', lunge: 13, tilt: 0.32, burst: '#ffe060', beak: '#ff8a1a', draw() {} },
