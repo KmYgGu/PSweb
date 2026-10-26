@@ -22,6 +22,8 @@
     bullet: { spd: 720, gap: 0.12 },
     aim: { moveSpd: 300, maxMove: 0.7, aimT: 0.22, spd0: 420, spdK: 2.2, spdMax: 1250 },
     cas: { pick: 12, max: 40 },
+    collect: { dur: 4, pickK: 2.75, reaim: 0.25 },
+    spray: { gap: 0.055, mult: 0.3, spd: 800, spread: 0.09, min: 6 },
   };
   const A_ = u => u.ar || (u.ar = { ammo: D.ammoMax, gears: [] }); // 슈르프가 흡수해 써도 동작하도록 사용자별로 생성
   const isArmy = u => u && u.def && u.def.id === ID;
@@ -40,10 +42,10 @@
     ctx.fillStyle = p.reflected ? '#ffe27a' : '#ffe8a0'; ctx.fillRect(-5, -1, 7, 2); ctx.fillStyle = '#ffffff'; ctx.fillRect(1, -1, 2, 2);
     if (p.aimed) { ctx.globalAlpha = 0.5; ctx.fillStyle = RED; ctx.fillRect(-14, -1, 9, 2); }
   }
-  function bullet(b, u, ang, spd, mult, aimed) {
+  function bullet(b, u, ang, spd, mult, aimed, extra) {
     const sx = u.x + Math.cos(ang) * 12, sy = u.y - 20 - b.airZ(u) + Math.sin(ang) * 4;
     const p = { x: sx, y: sy, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, spd, src: u, dmg: u.st.atk * mult, kind: 'arBullet', homing: false, noAirLock: true,
-      life: 1.4, trail: 0, draw: drawBullet, aimed: !!aimed, hit: { element: 'blunt', delivery: 'ranged', pierce: aimed ? 0.4 : 0.15, color: '#ffe8a0' } };
+      life: 1.4, trail: 0, draw: drawBullet, aimed: !!aimed, hit: { element: 'blunt', delivery: 'ranged', pierce: aimed ? 0.4 : 0.15, color: '#ffe8a0', ...(extra || {}) } };
     if (aimed) p.passB = bl => bl.arGear && bl.owner && p.src && bl.owner.team === p.src.team; // 조준 사격은 아군 군장 위로 넘어 쏨 (반사되면 src 가 바뀌므로 다시 막힘)
     b.proj.push(p);
     u.swing = 0.1; u.facing = Math.cos(ang) >= 0 ? 1 : -1;
@@ -210,16 +212,33 @@
         if (!useAmmo(u)) { if (i === 0 || A_(u).ammo === 0) b.text(u.x, u.y - 60, '탄약 없음', '#c8c8c8', 9); return; }
         bullet(b, u, Math.atan2(t.y - 18 - (u.y - 20), t.x - u.x) + rand(-0.04, 0.04), s.spd || D.bullet.spd, s.mult || 0.45, false); }); } };
 
+  const myCas = (b, u) => (b.arCas || []).filter(c => !c.got && c.owner === u);
+  SKILLS.arCollect = { desc: '4초 동안 탄피 줍기 범위가 약 2.75배로 늘고, 0.25초마다 가장 가까운 자기 탄피 쪽으로 진행 방향을 다시 잡습니다(일정 속도 직진·튕김은 그대로). 탄피를 다 줍거나 총알이 가득 차면 일찍 끝납니다.',
+    canUse: (u, e, d, b) => { const S = A_(u); return S.ammo < D.ammoMax && S.ammo <= 8 && !(S.collectT > 0) && myCas(b, u).length >= 3; },
+    use(u, e0, b, s) { const S = A_(u); S.collectT = s.dur || D.collect.dur; S.reaimT = 0; b.text(u.x, u.y - 62, '탄피 수집', '#ffe8a0', 9); b.ring(u.x, u.y - 4, 4, D.cas.pick * D.collect.pickK + u.pad, 0.3, '#ffe8a0'); b.stats.arCollect = (b.stats.arCollect || 0) + 1; } };
+  SKILLS.arSpray = { desc: '남은 총알을 전부 소모해 상대를 향해 0.055초 간격으로 난사합니다(발당 ATK×0.3, 치명타 없음, 약간의 탄퍼짐, 이동 유지). 6발 이상일 때만 사용. 쏠 때마다 탄피가 떨어집니다.',
+    canUse: (u, e, d) => A_(u).ammo >= D.spray.min && e && !e.dead && d > 50 && d < 300,
+    use(u, e0, b, s) { const S = A_(u), n = S.ammo; S.ammo = 0; b.text(u.x, u.y - 62, '난사!', RED, 10); // 시전 순간 전탄 소모 (도중에 끊기면 남은 탄은 잃음)
+      for (let i = 0; i < n; i++) b.later(i * (s.gap || D.spray.gap), () => { if (u.dead || b.over || u.blocked('blocksAct')) return; const t = foeOf(b, u); if (!t || t.dead) return;
+        const sp = s.spread || D.spray.spread; bullet(b, u, Math.atan2(t.y - 18 - (u.y - 20), t.x - u.x) + rand(-sp, sp), s.spd || D.spray.spd, s.mult || D.spray.mult, false, { noCrit: true }); });
+      b.stats.arSpray = (b.stats.arSpray || 0) + n; } };
+
   STAGE_HOOKS.push({
     match: () => false,
     init(b) { b.arGren = []; b.arCas = []; },
     step(b, dt) {
       grenStep(b, dt);
+      for (const u of b.u) { const S = u.ar; if (!S || !(S.collectT > 0)) continue; // 탄피 수집: 행동(action)이 아닌 이동 조향
+        S.collectT -= dt; const L = myCas(b, u);
+        if (u.dead || !L.length || S.ammo >= D.ammoMax) { S.collectT = 0; continue; }
+        if ((S.reaimT -= dt) > 0 || u.action || u.blocked('blocksMove') || u.airborne || u.push || u.pull) continue;
+        S.reaimT = D.collect.reaim; let m = L[0], md = 1e9; for (const c of L) { const dd = Math.hypot(c.x - u.x, c.y - u.y); if (dd < md) { md = dd; m = c; } }
+        u.dir = fixAngle(Math.atan2(m.y - u.y, m.x - u.x)); if (u.v) u.v = [Math.cos(u.dir) * (u.speed || 0), Math.sin(u.dir) * (u.speed || 0)]; }
       if (b.buildings.some(g => g.arGone)) b.buildings = b.buildings.filter(g => !g.arGone);
       const C = b.arCas; if (C && C.length) {
         for (const c of C) c.t += dt;
         for (const u of b.u) { if (u.dead || !u.ar || u.airborne) continue;
-          for (const c of C) { if (c.got || c.owner !== u || c.t < 0.35 || Math.hypot(c.x - u.x, c.y - u.y) > D.cas.pick + u.pad) continue;
+          for (const c of C) { if (c.got || c.owner !== u || c.t < 0.35 || Math.hypot(c.x - u.x, c.y - u.y) > D.cas.pick * (u.ar.collectT > 0 ? D.collect.pickK : 1) + u.pad) continue;
             if (u.ar.ammo >= D.ammoMax) continue; c.got = true; u.ar.ammo++; b.text(u.x + 8, u.y - 44, '+1', '#ffe8a0', 8); b.stats.arPick = (b.stats.arPick || 0) + 1; } }
         if (C.some(c => c.got)) b.arCas = C.filter(c => !c.got);
       }
@@ -249,13 +268,15 @@
       { id: 'arAim', name: '조준 사격', cd: 6, mult: 1.6 },
       { id: 'arGear', name: '군장', cd: 7 },
       { id: 'arWhistle', name: '재식', cd: 11, r: 120, halt: 0.6 },
+      { id: 'arSpray', name: '난사', cd: 12, mult: 0.3, gap: 0.055, spd: 800, spread: 0.09 },
+      { id: 'arCollect', name: '탄피 수집', cd: 9, dur: 4 },
       { id: 'arGrenade', name: '슈류탄', cd: 8, mult: 0.9, n: 3, gap: 0.3, r: 34, dur: 0.55 },
       { id: 'arFire', name: '사격', cd: 3, mult: 0.45, n: 3, gap: 0.12, spd: 720 },
     ],
     sprite: { src: 'assets/army/front.png', back: 'assets/army/back.png', scale: 0.36, foot: 2, faces: { front: 'left', back: 'left' } },
     portrait: 'assets/army/portrait.png',
     lines: { // 플레이스홀더 (사용자 대사 없음)
-      skill: { '구르기': ['구르기!'], '조준 사격': ['조준 사격!'], '군장': ['군장 설치!'], '재식': ['삐익!'], '슈류탄': ['슈류탄!'], '사격': ['사격!'] },
+      skill: { '구르기': ['구르기!'], '조준 사격': ['조준 사격!'], '군장': ['군장 설치!'], '재식': ['삐익!'], '슈류탄': ['슈류탄!'], '사격': ['사격!'], '난사': ['난사!'], '탄피 수집': ['탄피 수집!'] },
       event: { battleStart: ['전투 준비!'], lowHp: ['아직 버틸 수 있다!'], stunned: ['으윽…!'], win: ['임무 완료!'], lose: ['후퇴…'] },
     },
   });
