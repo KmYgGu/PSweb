@@ -7,6 +7,14 @@ const AR = { x: 12, y: 120, w: 336, h: 410 };
 // 근접 무기 캐릭터별 무기 스프라이트 키 (def.weapon 으로 덮어쓰기 가능)
 const WEAPON_KEY = { swordsman: 'sword', tank: 'mace', assassin: 'dagger', lancer: 'spear', berserker: 'axe', evelyn: 'heelLeg', kidomusha: 'tachi', duck: 'duckHead', galford: 'ninjato', broly: 'kiFistG', paragus: 'kiFistP' };
 const BUMP_K = 0.85, MELEE_RANGE = 80;
+// ===== B타입 전투 규칙 (A타입=기존 방식은 이 값들을 전혀 읽지 않음) =====
+// 근접 평타 쿨타임 배율 = cdBase + max(0, 사거리 - cdRefRange) * cdPerPx   (예: 사거리 56 → ×1.5, 78 → ×1.83)
+const B_MODE = {
+  cdBase: 1.5, cdRefRange: 56, cdPerPx: 0.015,
+  skillCd: false,   // true 로 바꾸면 근접 캐릭터(사거리 < MELEE_RANGE)의 스킬 쿨타임에도 같은 배율 적용
+  flipDot: 0.2,     // 피격 반전 임계: 이동 방향·공격이 온 방향 내적이 이 값보다 클 때만 반전 (≈ 78° 이내로 다가가는 중)
+};
+const bMeleeCdK = u => B_MODE.cdBase + Math.max(0, u.st.range - B_MODE.cdRefRange) * B_MODE.cdPerPx;
 // 원거리 공통(v2 밸런스): 사거리 ≥ MELEE_RANGE 캐릭터(듀얼리스트 포함)는 적과 부딪히면 혼자 더 멀리 튕겨 나감
 const RANGED_PUSH = { sep: 1.6, boost: 1.4, aim: 0.85 }; // sep: 위치 분리 배율, boost: 충돌 가속(일반 0.45), aim: 정반대 방향으로 꺾는 비율 // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
@@ -100,6 +108,7 @@ class Battle {
     this.u = [...A.map((d, i) => new Unit(d, 0, i, A.length)), ...B.map((d, i) => new Unit(d, 1, i, B.length))];
     this.multi = this.u.length > 2;
     this.stageId = STAGE_DEFS[stageId] ? stageId : 'arena';
+    this.modeB = hooks.mode === 'B'; // 전투 타입 (기본 A = 기존 방식)
     this.stage = STAGE_DEFS[this.stageId];
     this.buildings = (this.stage.buildings || []).map((b, i) => makeBuilding(b, i));
     this.rules = { bumpDmg: 8, bumpSpeedK: 0.03, projK: 0.6, meleeK: 0.5, strongMin: 60, ...(this.stage.buildingRules || {}) };
@@ -424,7 +433,7 @@ class Battle {
       if (!this.canPay(u, slot)) continue;
       let ok; try { ok = slot.canUse ? slot.canUse(u, e, d, this) : sk.canUse(u, e, d, this); } catch (err) { console.warn('skill canUse error', slot.id, err); u.skillT[i] = 9999; continue; } // 오류난 스킬은 끄고 계속 (게임 멈춤 방지)
       if (!ok) continue;
-      u.skillT[i] = slot.cd;
+      u.skillT[i] = slot.cd; if (this.modeB && B_MODE.skillCd && u.st.range < MELEE_RANGE) u.skillT[i] *= bMeleeCdK(u);
       this.pay(u, slot);
       const vl = sk.say ? sk.say(u, e, this, slot) : this.line(u, 'skill', slot.name); // sk.say: 동적 대사 (예: '기를 낮추거라 <상대>!')
       this.hooks.onSkill && this.hooks.onSkill(u, slot.name, vl);
@@ -452,7 +461,7 @@ class Battle {
     if (u.trailT <= 0) { u.trailT = 0.035; this.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.16, a: 0.16 + 0.12 * u.boost }); }
     }
     const r = u.reach;
-    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); }
+    if (!noAct && u.st.range < MELEE_RANGE && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); if (this.modeB) u.atkT *= bMeleeCdK(u); }
     else if (!noAct && u.def.rangedBasic && d <= r && u.atkT <= 0) { this.basicAttack(u, e); u.atkT = u.def.rangedBasic.interval; } // 궁수만: 논타겟 화살 기본 공격 // 근접 공격(무기) (meleeRateMul: 육망성의 저주 등): 근접 캐릭터만. 원거리 자동 발사는 없음
   }
 
@@ -1048,7 +1057,21 @@ class Battle {
     if (src !== tgt && !this.over) this.emit('damaged', src, tgt, dmg, o);
     return dmg;
   }
+  // B타입: 피격 반전. 공격이 온 쪽으로 다가가던 중일 때만 진행 방향을 반대로 (영구, 다음 튕김/피격까지)
+  bFlip(src, tgt, o) {
+    if (o.dot || o.reflected || o.selfHit || o.fixed || src === tgt || tgt.dead) return;
+    if (tgt.action || tgt.stun || tgt.blocked('blocksMove') || tgt.push || tgt.pull || tgt.airborne || tgt.climb || tgt.fallen || tgt.air) return; // 돌진/행동 중·CC·공중은 제외
+    const P = this.curProj;
+    let sx, sy;
+    if (P && P.src === src && (P.vx || P.vy)) { sx = -P.vx; sy = -P.vy; } else { sx = src.x - tgt.x; sy = src.y - tgt.y; }
+    const L = Math.hypot(sx, sy); if (!(L > 1e-6)) return;
+    if ((Math.cos(tgt.dir) * sx + Math.sin(tgt.dir) * sy) / L <= B_MODE.flipDot) return;
+    tgt.dir = fixAngle(tgt.dir + Math.PI);
+    if (tgt.v) { tgt.v[0] = -tgt.v[0]; tgt.v[1] = -tgt.v[1]; } // 빙판 관성
+    tgt.bFlips = (tgt.bFlips || 0) + 1;
+  }
   bumpAttack(u, e) {
+    if (this.modeB) return; // B타입: 몸 부딪힘 피해 없음 (튕김·소리는 collide 에서 그대로)
     if (u.dead || e.dead || this.over || this.freeze || u.stun || (u.bumpT || 0) > 0) return;
     u.bumpT = 1 / u.atkRate;
     if (this.emit('attack', u, e, { bump: true })) { this.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정
@@ -1134,11 +1157,13 @@ class Battle {
         if (p.hitSet && p.hitSet.has(o)) continue;
         if (Math.hypot(o.x - p.x, o.y - 18 - this.airZ(o) - p.y) >= (p.r || (p.pierce ? 18 : 12)) + (p.r ? o.pad * 0.6 : 0)) continue;
         if (p.pierce) (p.hitSet || (p.hitSet = new Set())).add(o); else p.life = 0;
+        this.curProj = p; // B타입 반전 판정용 (투사체가 날아온 방향)
         if (p.onHitUnit) p.onHitUnit(o, p);
         else {
           const pd = this.damage(p.src, o, p.dmg, { ...(p.hit || {}), viaProj: true });
           if (pd > 0 && p.onHit) p.onHit(o);
         }
+        this.curProj = null;
         const c = projectileColor(p);
         if (!p.draw) { this.burst(p.x, p.y, c, 5); if (p.kind !== 'arrow') this.glow(p.x, p.y, 18, c, 0.25); }
         if (!p.pierce) break;
@@ -1196,6 +1221,7 @@ class Battle {
       if (src.hp > 1) { src.hp = Math.max(1, src.hp - sd); this.text(src.x + rand(-6, 6), src.y - 44, String(sd), '#ff6a7a', 9); }
     }
     tgt.flash = 0.12;
+    if (this.modeB) this.bFlip(src, tgt, o);
     const a = Math.atan2(tgt.y - src.y, tgt.x - src.x), kb = o.big ? 7 : 3;
     tgt.kx += Math.cos(a) * kb; tgt.ky += Math.sin(a) * kb;
     const big = o.big || dmg / lpK >= 45;

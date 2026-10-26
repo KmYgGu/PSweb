@@ -29,11 +29,17 @@
     refresh();
   };
   $('#start').onclick = () => { if (pick[0] && pick[1]) openStages(); };
+  // ---------- 전투 타입 (A: 기존 / B: 몸박 피해 없음·피격 반전). 캐릭터 선택 화면에서 고르고 리플레이에 기록 ----------
+  let battleMode = 'A'; try { if (localStorage.getItem('psBattleMode') === 'B') battleMode = 'B'; } catch (e) {}
+  const MODE_DESC = { A: '기존 방식: 몸 부딪힘도 피해를 줍니다.', B: '몸 부딪힘 피해 없음 · 근접 평타 쿨타임 증가(사거리가 길수록 더) · 공격받으면 진행 방향 반전' };
+  function refreshMode() { document.querySelectorAll('#modeSel button').forEach(b => b.classList.toggle('on', b.dataset.m === battleMode)); $('#modeDesc').textContent = MODE_DESC[battleMode]; }
+  document.querySelectorAll('#modeSel button').forEach(b => b.onclick = () => { battleMode = b.dataset.m; try { localStorage.setItem('psBattleMode', battleMode); } catch (e) {} refreshMode(); });
+  refreshMode();
   // ---------- 스테이지 선택 ----------
   let stageId = 'arena';
   function openStages() {
     $('#select').classList.add('hidden'); $('#stageSel').classList.remove('hidden');
-    $('#vsline').innerHTML = `<span style="color:#9cc4ff">${pick[0].name}</span> VS <span style="color:#ffb0b0">${pick[1].name}</span>`;
+    $('#vsline').innerHTML = `<span style="color:#9cc4ff">${pick[0].name}</span> VS <span style="color:#ffb0b0">${pick[1].name}</span> <span style="color:#ffe08a">· ${battleMode}타입</span>`;
   }
   (function buildStages() {
     const g = $('#sgrid');
@@ -183,9 +189,10 @@
     const seed = opt.seed != null ? opt.seed : (Math.random() * 4294967296) >>> 0; rng = mkRng(seed);
     const hooks = opt.replay ? { onSkill: addLog, onVoice: addVoice, onEnd: () => {}, onSystem: addSys, onStatus: addStatus }
       : { onSkill: (u, sk, l) => { REC.skill(u, sk); addLog(u, sk, l); }, onVoice: addVoice, onEnd: w => { REC.finish(); showResult(w); }, onSystem: t => { REC.sys(t); addSys(t); }, onStatus: addStatus };
+    hooks.mode = battleMode;
     seeded(() => { battle = new Battle(pick[0], pick[1], hooks, stageId); });
     if (!opt.replay) REC.begin(battle, seed);
-    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name); // short: 하단 바용 짧은 이름
+    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name) + (battleMode === 'B' ? ' · B타입' : ''); // short: 하단 바용 짧은 이름
     seeded(buildHud);
     window.__battle = battle;
   }
@@ -293,7 +300,7 @@
   const HL_NAME = { dmg: '대량 피해', kill: '처치', end: '결정타', stage: '스테이지 변경', castle: '백은성 붕괴', exodia: '엑조디아', fusion: '융합', transform: '변신·각성', ult: '필살기', card: '상급 카드', comeback: '역전', timestop: '시간 정지', big: '큰 기술' };
   const REC = {
     cur: null, last: null,
-    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, dur: 0, samples: [], ev: [], check: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
+    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, mode: battleMode, dur: 0, samples: [], ev: [], check: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
     ev(type, team, w) { if (this.cur && !this.cur.done) this.cur.ev.push([Math.round(this.b.time * 100) / 100, type, team, w]); },
     step(b) {
       const R = this.cur; if (!R || R.done || b !== this.b) return;
@@ -347,8 +354,8 @@
     open(rec, o = {}) {
       const a = CHARACTERS.find(c => c.id === rec.a), b = CHARACTERS.find(c => c.id === rec.b);
       if (!a || !b || !STAGE_DEFS[rec.stage]) { toast('이 리플레이의 캐릭터/스테이지를 찾을 수 없어요'); return false; }
-      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; Sfx.toggle(false); }
-      this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage;
+      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; Sfx.toggle(false); }
+      this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; // 모드 없는 옛 리플레이 = A
       this.range = rec.range ? rec.range.slice() : [0, rec.dur]; this.A = this.B = null; this.stopAt = null; this.warned = false; $('#rpWarn').textContent = rec.build !== BUILD ? '다른 버전에서 저장됨' : '';
       $('#select').classList.add('hidden'); $('#speed').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop'].forEach(s => $(s).classList.remove('hidden')); $('#rpSave').classList.add('hidden');
@@ -361,7 +368,7 @@
       this.pause(); this.on = false; this.banner = 0; $('#rpBanner').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop', '#rpSave'].forEach(s => $(s).classList.add('hidden')); $('#speed').classList.remove('hidden');
       const L = this.live; rng = null; Sfx.toggle(L ? L.sfx : true);
-      pick[0] = L.pick[0]; pick[1] = L.pick[1]; stageId = L.stageId; fullLog = L.fullLog;
+      pick[0] = L.pick[0]; pick[1] = L.pick[1]; stageId = L.stageId; battleMode = L.mode || 'A'; fullLog = L.fullLog;
       if (L.battle && !L.select) { battle = L.battle; window.__battle = battle; $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden'); buildHud(); updateHud(9); updateHud(9); $('#log').innerHTML = L.log; $('#stageName').textContent = L.stg; if (L.result) $('#result').classList.remove('hidden'); }
       else { battle = null; $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); $('#result').classList.add('hidden'); $('#select').classList.remove('hidden'); refresh(); }
       this.live = null;
@@ -421,7 +428,7 @@
       if (kind === 'hl') { const h = R.hl[this.potgI || 0] || R.hl[0]; range = [Math.max(this.range[0], h.s), Math.min(this.range[1], h.e)]; }
       else if (kind === 'seg') range = [Math.min(this.A, this.B), Math.max(this.A, this.B)];
       else range = this.range.slice();
-      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
+      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, mode: R.mode || 'A', names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
         hl: (R.hl || []).filter(h => h.e > range[0] && h.s < range[1]).map(h => ({ ...h, s: Math.max(h.s, range[0]), e: Math.min(h.e, range[1]) })), check: (R.check || []).filter(c => c[0] <= range[1] + 0.05), created: R.created, saved: new Date().toISOString() };
       return o;
     },

@@ -231,3 +231,9 @@ img { image-rendering: pixelated; }
 #vidDlg .vl { margin-top: 6px; font-size: 10px; color: #ffcf8a; word-break: break-all; }
 #vidDlg button { height: 32px; border-radius: 5px; font-size: 13px; font-weight: bold; background: #3a4058; color: #eef0f6; }
 #vidDlg #vidDlgDir { background: #ffd75e; color: #3a2e10; }
+
+/* 전투 타입 선택 (A/B) */
+.modesel { display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0 2px; font-size: 13px; color: #cfd6e6; }
+.modesel button { background: #252a38; color: #cfd6e6; border: 1px solid #4a5268; border-radius: 6px; padding: 3px 12px; cursor: pointer; font: inherit; }
+.modesel button.on { background: #ffd66b; color: #1b1e27; border-color: #ffd66b; font-weight: bold; }
+.modedesc { text-align: center; font-size: 11px; color: #9aa3b8; margin-bottom: 6px; }
