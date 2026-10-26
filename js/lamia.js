@@ -62,7 +62,7 @@
     use(u, e, b, slot) {
       const S = slot; u.lmLev = { t: 0, hurt: false }; u.air = { t: 0, dur: 99, h: S.h, ride: true, lm: true };
       b.ring(u.x, u.y, 6, 30, 0.4, '#bfe8ff');
-      u.action = { type: 'lmLev', step(dt) {
+      u.action = u.lmLev.act = { type: 'lmLev', step(dt) {
         const L = u.lmLev; if (!L) { u.action = null; return; } L.t += dt;
         if (Math.random() < 0.5) b.parts.push({ x: u.x + rand(-10, 10), y: u.y - 2, vx: 0, vy: 20, life: 0.4, max: 0.4, color: '#cfefff', size: 2, glow: true });
         if (!L.thrown && L.t >= S.delay) { L.thrown = true; L.bt = 0; b.text(u.x, u.y - 80, '마법서!', '#bfe8ff', 10); }
@@ -72,7 +72,7 @@
           for (const o of b.u) { if (o === u || o.dead || o.hidden || o.airborne || o.def.noDraw || (o.summon && o.summon.owner === u)) continue;
             b.applyStatus(o, 'lmFrozen', S.dur, u); b.damage(u, o, u.st.atk * S.mult, { element: 'ice', delivery: 'ranged', color: '#bfe8ff', quiet: true }); }
         }
-        if (L.done && L.bt >= S.fall + S.after) { u.lmLev = null; u.air = null; u.action = null; }
+        if (L.done && L.bt >= S.fall + S.after) { u.lmLev = null; u.air = null; u.action = null; unstack(b, u); }
       } };
     },
   };
@@ -180,8 +180,9 @@
       const C = u.lmCircle = { S, phase: 'lock', t: 0, arms: [] };
       for (let i = 0; i < n; i++) { const a = a0 + i * TAU / n; C.arms.push({ x: u.x + Math.cos(a) * S.r, y: u.y - 22 + Math.sin(a) * S.r * 0.8, a }); }
       b.ring(u.x, u.y - 20, 6, S.r + 8, 0.35, '#bfe8ff'); b.text(u.x, u.y - 70, '팔 ' + n + '개', '#bfe8ff', 9);
-      u.action = { type: 'lmCircle', step(dt) { // 시전 중 제자리
+      u.action = C.act = { type: 'lmCircle', step(dt) { // 시전 중 제자리 (팔은 라미아 위치 기준: 강제 이동돼도 함께 이동)
         const C2 = u.lmCircle; if (!C2) { u.action = null; return; } C2.t += dt;
+        if (C2.phase === 'lock') for (const A of C2.arms) { A.x = u.x + Math.cos(A.a) * S.r; A.y = u.y - 22 + Math.sin(A.a) * S.r * 0.8; }
         if (C2.phase === 'lock' && C2.t >= S.lock) { C2.phase = 'fire'; C2.t = 0; C2.w = TAU / C2.arms.length / S.sweep; // 회전: 다음 팔 방향까지 S.sweep초 (팔 적을수록 빠름)
           for (const A of C2.arms) { A.hit = new Set(); fireBeam(b, u, A, S, A.hit); } b.shake(1.8); b.glow(u.x, u.y - 22, 40, '#fff4c0', 0.3); }
         else if (C2.phase === 'fire') { const da = C2.w * Math.min(dt, Math.max(0, S.sweep - (C2.t - dt)));
@@ -191,6 +192,19 @@
     },
   };
 
+  // 착지 시 스탠드와 겹침 해소: 스탠드를 라미아에게서 충돌 거리만큼 비킴 (완전히 겹치면 엔진 충돌이 밀어내지 못함)
+  function unstack(b, u) {
+    const s = standOf(u); if (!s || s.airborne) return; const R = 15 * (u.size + s.size) + 1, d = dist(u, s); if (d >= R) return;
+    const a = d > 0.5 ? angTo(u, s) : (u.facing > 0 ? Math.PI : 0), q = b.clampPos(u.x + Math.cos(a) * R, u.y + Math.sin(a) * R, s.pad, s);
+    s.x = q.x; s.y = q.y; if (dist(u, s) < R - 2) { const q2 = b.clampPos(u.x - Math.cos(a) * R, u.y - Math.sin(a) * R, s.pad, s); s.x = q2.x; s.y = q2.y; }
+  }
+  // 시전 상태 정리: CC·기절·사망 등으로 행동(action)이 끊기면 부상/서클 상태도 함께 끝냄 (잔상·공중 고정 방지)
+  function cleanup(b, u) {
+    const L = u.lmLev;
+    if (L && (u.dead || u.action !== L.act)) { u.lmLev = null; if (u.air && u.air.lm) u.air = null; if (!u.dead) { b.text(u.x, u.y - 60, '추락!', '#bfe8ff', 11); b.dust(u.x, u.y); unstack(b, u); } }
+    else if (!L && u.air && u.air.lm) u.air = null;
+    const C = u.lmCircle; if (C && (u.dead || u.action !== C.act)) u.lmCircle = null;
+  }
   // ---------- 엔진 연결 ----------
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o = {}) {
     if (tgt && tgt.summon && tgt.summon.lm) { const ow = tgt.summon.owner; if (!ow || ow.dead) return 0; // 스탠드 피해 → 라미아 체력 (공유)
@@ -210,6 +224,7 @@
       if (b.winner && b.winner.summon && b.winner.summon.lm) b.winner = b.winner.summon.owner; // 스탠드가 승리 판정 대상이 되면 라미아로
       for (const u of b.u) {
         if (u.def.id !== ID) continue;
+        cleanup(b, u);
         const s = standOf(u); if (s) { s.maxHp = u.maxHp; s.hp = u.hp; } else if (u.lmStand) u.lmStand = null;
         if (opening(b, u)) { const ex = dt * (OPEN.cd - 1) * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= ex; // 쿨타임 1.6배 빠르게
           if (!u.lmOpened && b.time >= OPEN.first) { const e = mainFoe(b, u), i = u.skills.findIndex(k => k.id === 'lmSpread');
