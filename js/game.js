@@ -1059,7 +1059,7 @@ class Battle {
   }
   // B타입: 피격 반전. 공격이 온 쪽으로 다가가던 중일 때만 진행 방향을 반대로 (영구, 다음 튕김/피격까지)
   bFlip(src, tgt, o) {
-    if (o.dot || o.reflected || o.selfHit || o.fixed || src === tgt || tgt.dead) return;
+    if (o.dot || o.reflected || o.selfHit || o.fixed || o.noFlip || src === tgt || tgt.dead) return; // noFlip: 오쿠야스 더 핸드 피격(공유 체력) 등
     if (tgt.action || tgt.stun || tgt.blocked('blocksMove') || tgt.push || tgt.pull || tgt.airborne || tgt.climb || tgt.fallen || tgt.air) return; // 돌진/행동 중·CC·공중은 제외
     const P = this.curProj;
     let sx, sy;
