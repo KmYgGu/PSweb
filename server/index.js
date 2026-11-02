@@ -8,7 +8,8 @@ const VERSION = '2.0.0';
 
 // ---------- 공통 ----------
 const salt = C.IP_SALT || ('psweb:' + C.GITHUB_REPO + ':' + C.ADMIN_KEY);
-const ipOf = req => (String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?');
+// Render 는 Cloudflare 뒤에 있음: CF-Connecting-IP(클라이언트가 위조 불가) 우선, 없으면 X-Forwarded-For 첫 값(Render 가 앞에 덧붙이지 않고 뒤에 붙이므로 위조 가능), 그다음 소켓 주소
+const ipOf = req => (String(req.headers['cf-connecting-ip'] || req.headers['true-client-ip'] || '').trim() || String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?');
 const ipHash = req => crypto.createHmac('sha256', salt).update(ipOf(req)).digest('hex').slice(0, 16); // 저장소에는 이 해시만 기록
 const hits = new Map();
 function limited(key, max, ms) { const now = Date.now(), a = (hits.get(key) || []).filter(t => now - t < ms); if (a.length >= max) { hits.set(key, a); return true; } a.push(now); hits.set(key, a); return false; }

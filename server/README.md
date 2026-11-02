@@ -76,4 +76,4 @@ hidden.json      {v,maps:[index 항목 + hiddenAt, reason]}
 - raw 파일은 CDN에서 최대 약 5분 캐시됩니다(`max-age=300`이고 쿼리 문자열로 우회되지 않음을 확인). 새 맵이나 비공개 처리가 다른 사람 화면에 반영되기까지 몇 분 걸릴 수 있습니다. 올린 사람 화면에는 바로 합쳐서 보여 줍니다.
 - 무료 플랜은 15분 동안 요청이 없으면 잠들고, 깨어나는 데 1분쯤 걸립니다. CPU가 0.1이라 재검증이 수십 초 걸릴 수 있습니다.
 - 주소 기반 제한은 VPN이나 공유 IP로 우회하거나 오탐할 수 있습니다. 금칙어는 단순 부분 일치입니다.
-- `X-Forwarded-For` 첫 값은 Render 앞단이 넣어 준다고 가정했습니다(Render 문서로 확인하지 않았음).
+- 접속 주소: `CF-Connecting-IP`(Render 앞단 Cloudflare가 넣음)를 우선 쓰고, 없으면 `X-Forwarded-For` 첫 값을 씁니다. Render 글(How Render handles DDoS attacks)은 `x-forwarded-for`를 읽으라고 안내하지만, Render는 클라이언트가 보낸 값을 지우지 않고 뒤에 덧붙인다는 보고가 있어 첫 값은 위조될 수 있습니다. `CF-Connecting-IP`가 실제로 오는지는 확인하지 못했습니다(서버 로그에 찍지 않음).

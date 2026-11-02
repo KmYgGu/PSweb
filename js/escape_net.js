@@ -58,7 +58,8 @@
   }
   async function raw(path) {
     const ac = new AbortController(), t = setTimeout(() => ac.abort(), T_SMALL);
-    try { const r = await fetch(`${RAW}/${path}`, { cache: 'no-cache', signal: ac.signal }); if (!r.ok) throw new Error(r.status === 404 ? '아직 공개된 맵이 없거나 저장소를 찾을 수 없어요' : '읽기 실패 ' + r.status); return await r.json(); }
+    try { const r = await fetch(`${RAW}/${path}`, { cache: 'no-cache', signal: ac.signal }); if (r.status === 404 && path === 'index.json') return { maps: [] }; // 아직 첫 맵이 없음 → 빈 목록
+      if (!r.ok) throw new Error(r.status === 404 ? '아직 공개된 맵이 없거나 저장소를 찾을 수 없어요' : '읽기 실패 ' + r.status); return await r.json(); }
     finally { clearTimeout(t); }
   }
 
