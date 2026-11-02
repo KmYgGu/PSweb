@@ -108,7 +108,68 @@
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o) { if (this.escape && this.escape.map.rules.noDamage) return 0; return oDmg.apply(this, arguments); };
   const oFix = Battle.prototype.fixedDamage; Battle.prototype.fixedDamage = function (src, tgt, amt, o) { if (this.escape && this.escape.map.rules.noDamage) return 0; return oFix.apply(this, arguments); };
   // 도착한 캐릭터는 다른 캐릭터와 부딪히지 않음 (출구를 막지 않도록)
-  const oCol = Battle.prototype.collide; Battle.prototype.collide = function (a, c) { if (this.escape && (a.esDone || c.esDone)) return; return oCol.apply(this, arguments); };
+  const oCol = Battle.prototype.collide; Battle.prototype.collide = function (a, c) {
+    if (this.escape && (a.esDone || c.esDone)) return;
+    const R = this.escape && this.escape.rec; if (!R) return oCol.apply(this, arguments);
+    const ax = a.x, ay = a.y, out = oCol.apply(this, arguments); // 위치가 밀렸으면 실제 충돌 → 기록만 (동작 영향 없음)
+    if (a.x !== ax || a.y !== ay) recHit(this, R, a, (a.x + c.x) / 2, (a.y + c.y) / 2, 1);
+    return out;
+  };
+  // 미리보기용 충돌 기록 (runHeadless 에서만 켜짐): 벽에 붙어 미끄러지는 동안 매 프레임 쌓이지 않게 유닛별 0.25초/24px 간격
+  function recHit(b, R, u, x, y, kind) {
+    if (R.length >= 4000) return; const k = u.team + ':' + kind, L = R.last || (R.last = {}), p = L[k];
+    if (p && b.time - p.t < 0.25 && Math.hypot(x - p.x, y - p.y) < 24) return;
+    L[k] = { t: b.time, x, y }; R.push([Math.round(x), Math.round(y), kind]);
+  }
+  const oWall = Battle.prototype.wallImpact; Battle.prototype.wallImpact = function (u, nx, ny) {
+    const R = this.escape && this.escape.rec; if (R && !u.summon) recHit(this, R, u, u.x - nx * 11, u.y - 4 - ny * 11, 0);
+    return oWall.apply(this, arguments);
+  };
+  // ---------- 미리보기: 충돌이 가장 많은 320x240 구역 (타일 단위 정렬, 결정적) ----------
+  const PV_W = 320, PV_H = 240, PV_MIN_HITS = 3;
+  function preview(src, hits) {
+    const m = normalize(src), T = TILE, cols = Math.ceil(m.w / T), rows = Math.ceil(m.h / T);
+    const W = Math.min(PV_W, m.w), H = Math.min(PV_H, m.h), H2 = Array.isArray(hits) ? hits : [];
+    let best = null;
+    for (let y = 0; y + H <= m.h; y += T) for (let x = 0; x + W <= m.w; x += T) { // 위→아래, 왼→오른쪽 순서로 첫 최댓값 (동점이면 먼저 나온 곳)
+      let n = 0; for (const h of H2) if (h[0] >= x && h[0] < x + W && h[1] >= y && h[1] < y + H) n++;
+      if (!best || n > best.n) best = { x, y, n };
+    }
+    let kind = 'hits';
+    if (!best || best.n < PV_MIN_HITS) { // 충돌이 거의 없음 → 출구 주변
+      kind = 'exit'; const ex = m.exit.x + m.exit.w / 2, ey = m.exit.y + m.exit.h / 2; best = null;
+      for (let y = 0; y + H <= m.h; y += T) for (let x = 0; x + W <= m.w; x += T) { // 출구 중심을 품은 구역 중 벽이 가장 많은 곳 (빈 화면 방지)
+        if (ex < x || ex >= x + W || ey < y || ey >= y + H) continue;
+        let wN = 0; for (let r = y / T; r < (y + H) / T; r++) for (let c = x / T; c < (x + W) / T; c++) if (m.grid[r] && m.grid[r][c] === '#') wN++;
+        const dd = Math.abs(x + W / 2 - ex) + Math.abs(y + H / 2 - ey); // 동점이면 출구가 가운데에 가까운 쪽
+        if (!best || wN > best.wN || (wN === best.wN && dd < best.dd)) best = { x, y, wN, dd };
+      }
+      if (!best) best = { x: 0, y: 0 }; else { delete best.wN; delete best.dd; }
+      best.n = H2.filter(h => h[0] >= best.x && h[0] < best.x + W && h[1] >= best.y && h[1] < best.y + H).length;
+    }
+    const c0 = best.x / T, r0 = best.y / T, cw = Math.ceil(W / T), rh = Math.ceil(H / T);
+    const grid = m.grid.slice(r0, r0 + rh).map(row => row.slice(c0, c0 + cw));
+    const inR = (x, y) => x >= best.x && x < best.x + W && y >= best.y && y < best.y + H;
+    const pts = H2.filter(h => inR(h[0], h[1])).slice(0, 60).map(h => [h[0] - best.x, h[1] - best.y, h[2]]);
+    const ex = m.exit, ix = Math.max(ex.x, best.x), iy = Math.max(ex.y, best.y), ix2 = Math.min(ex.x + ex.w, best.x + W), iy2 = Math.min(ex.y + ex.h, best.y + H);
+    return { v: 1, kind, x: best.x, y: best.y, w: W, h: H, hits: best.n, total: H2.length, grid,
+      starts: m.starts.map((p, i) => inR(p.x, p.y) ? [p.x - best.x, p.y - best.y, i] : null).filter(Boolean),
+      exit: ix2 > ix && iy2 > iy ? [ix - best.x, iy - best.y, ix2 - ix, iy2 - iy] : null, pts, mw: m.w, mh: m.h };
+  }
+  function drawPreview(cv, pv) { // pv → 캔버스 (벽 / S / E / 충돌 점 + 구석에 전체 맵 속 위치)
+    const ctx = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, k = Math.min(Wc / pv.w, Hc / pv.h);
+    ctx.fillStyle = '#2a2f40'; ctx.fillRect(0, 0, Wc, Hc);
+    ctx.save(); ctx.translate((Wc - pv.w * k) / 2, (Hc - pv.h * k) / 2); ctx.scale(k, k);
+    ctx.fillStyle = '#3a4058'; ctx.fillRect(0, 0, pv.w, pv.h);
+    if (pv.exit) { ctx.fillStyle = 'rgba(90,220,140,.45)'; ctx.fillRect(pv.exit[0], pv.exit[1], pv.exit[2], pv.exit[3]); }
+    ctx.fillStyle = '#9aa3bd'; (pv.grid || []).forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === '#') ctx.fillRect(c * TILE, r * TILE, TILE, TILE); });
+    for (const p of pv.pts || []) { ctx.fillStyle = p[2] ? 'rgba(255,207,74,.85)' : 'rgba(255,90,90,.85)'; ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (pv.exit) { ctx.fillStyle = '#c8ffd9'; ctx.fillText('E', pv.exit[0] + pv.exit[2] / 2, pv.exit[1] + pv.exit[3] / 2); }
+    for (const s of pv.starts || []) { ctx.fillStyle = s[2] ? '#7fb2ff' : '#ff8a8a'; ctx.beginPath(); ctx.arc(s[0], s[1], 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#111'; ctx.fillText('S', s[0], s[1] + 1); }
+    ctx.restore();
+    if (pv.mw && pv.mh) { const mk = 34 / pv.mh, mw = pv.mw * mk, x0 = Wc - mw - 3, y0 = 3; ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x0, y0, mw, 34); ctx.fillStyle = '#556080'; ctx.fillRect(x0 + 1, y0 + 1, mw - 2, 32); ctx.strokeStyle = '#ffe27a'; ctx.lineWidth = 1; ctx.strokeRect(x0 + pv.x * mk, y0 + pv.y * mk, Math.max(2, pv.w * mk), Math.max(2, pv.h * mk)); }
+  }
 
   // ---------- 렌더 (시각 전용, 난수 미사용) ----------
   let tile = null;
@@ -164,12 +225,12 @@
     Math.random = mkRng(m.seed);
     let b, steps = 0;
     try {
-      b = new Battle(a, d, { mode: m.rules.type }, 'arena'); apply(b, m);
+      b = new Battle(a, d, { mode: m.rules.type }, 'arena'); apply(b, m); if (o.track !== false) b.escape.rec = [];
       const maxT = m.timeLimit + 1;
       while (!b.escape.done && !b.over && b.time < maxT && steps < maxT * 360) { /* 정지 연출 중엔 b.time 이 멈추므로 스텝 상한은 넉넉히 */ b.update(STEP); steps++; }
     } finally { Math.random = orig; if (S) S.play = sp; }
     const E = b.escape;
-    return { clear: !!E.clear, seed: m.seed, result: E.result || (b.over ? 'KO로 종료' : '미종료'), steps, time: +b.time.toFixed(4), arrived: E.arrived, pos: b.u.filter(u => !u.summon).map(u => [+u.x.toFixed(2), +u.y.toFixed(2)]) };
+    return { clear: !!E.clear, seed: m.seed, result: E.result || (b.over ? 'KO로 종료' : '미종료'), steps, time: +b.time.toFixed(4), arrived: E.arrived, pos: b.u.filter(u => !u.summon).map(u => [+u.x.toFixed(2), +u.y.toFixed(2)]), preview: E.rec ? preview(m, E.rec) : null };
   }
   // 시드 탐색: from 부터 n 개 시드를 차례로 시험해 처음 클리어되는 시드를 반환 (없으면 null). onProg(i, n, r) 로 진행 표시
   function findSeed(src, from, n, onProg) { for (let i = 0; i < n; i++) { const r = runHeadless(src, { seed: (from + i) >>> 0 }); if (onProg) onProg(i, n, r); if (r.clear) return r; } return null; }
@@ -182,5 +243,5 @@
     return normalize({ name: '샘플 탈출맵', w: 720, h: 1280, grid: g.map(a => a.join('')), starts: [{ x: 140, y: 1180 }, { x: 580, y: 1180 }], exit: { x: 280, y: 40, w: 160, h: 120 }, chars: [], seed: 1, timeLimit: DEF_TIME, rules: {} });
   }
 
-  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng };
+  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng, preview, drawPreview };
 })(typeof window !== 'undefined' ? window : globalThis);

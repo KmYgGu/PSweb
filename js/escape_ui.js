@@ -40,7 +40,7 @@
 <div class="row">카메라 <select id="escCamSel"><option value="fit">두 캐릭터 맞춤</option><option value="p0">P1 따라가기</option><option value="p1">P2 따라가기</option></select></div>
 <div class="row"><button id="escCheck" type="button">✔ 클리어 검사</button><button id="escSeedFind" type="button">🎲 시드 탐색(20개)</button><button id="escRun" class="go" type="button">▶ 탈출 실행</button></div>
 <div class="row"><button id="escSave" type="button">💾 저장</button><select id="escList"></select><button id="escLoad" type="button">불러오기</button><button id="escDel" type="button">삭제</button><button id="escExp" type="button">⬇ 내보내기</button><button id="escImp" type="button">⬆ 가져오기</button><input id="escFile" type="file" accept=".json,.psescape,application/json" hidden></div>
-<div id="escMsg"></div>`;
+<div id="escMsg"></div><div id="escPv" class="hidden" style="display:none;gap:6px;align-items:center"><canvas id="escPvCv" width="256" height="192" style="width:128px;height:96px;border-radius:4px;border:1px solid #4a5170"></canvas><div id="escPvCap" style="font-size:10px;color:#a9afc6;line-height:1.35"></div></div>`;
   $('#stage').appendChild(P);
   const N = document.createElement('div'); N.id = 'escNotice'; N.className = 'hidden'; $('#stage').appendChild(N);
   // 안내는 클릭을 가로채지 않음 (pointer-events:none), 3.2초 뒤 자동으로 사라짐
@@ -129,10 +129,11 @@
     return '';
   }
   const guard = () => { const m = fromUI(), w = why(m); if (w) { msg('⚠ ' + w); if (w === NEED) notice(NEED); return null; } return m; };
+  const showPv = r => { const P = $('#escPv'); if (!r || !r.preview) { P.classList.add('hidden'); P.style.display = 'none'; return; } ESCAPE.drawPreview($('#escPvCv'), r.preview); $('#escPvCap').textContent = (r.preview.kind === 'hits' ? `미리보기: 충돌 많은 곳 (${r.preview.hits}/${r.preview.total}회)` : '미리보기: 충돌이 적어 출구 주변') + '\n공개 목록에 이렇게 보여요'; P.classList.remove('hidden'); P.style.display = 'flex'; };
   const resTxt = r => `${r.clear ? '✔ 클리어' : '✕ 도착 못 함'} — 시드 ${r.seed}: ${r.result}\n도착: ${r.arrived.map(a => `P${a.team + 1} ${a.t.toFixed(2)}초 (스텝 ${Math.round(a.t * 120)})`).join(', ') || '없음'} · 시뮬 ${r.steps}스텝`;
   $('#escCheck').onclick = () => {
     const m = guard(); if (!m) return; msg('검사 중… (실제 시뮬을 화면 없이 끝까지 실행)');
-    setTimeout(() => { try { const t0 = performance.now(), r = ESCAPE.runHeadless(m); msg(resTxt(r) + ` · ${Math.round(performance.now() - t0)}ms` + (r.clear ? '' : '\n시드를 바꾸거나 🎲 시드 탐색을 눌러 보세요')); } catch (err) { console.error(err); msg('⚠ 검사 오류: ' + err.message); } }, 20);
+    setTimeout(() => { try { const t0 = performance.now(), r = ESCAPE.runHeadless(m); showPv(r.clear ? r : null); msg(resTxt(r) + ` · ${Math.round(performance.now() - t0)}ms` + (r.clear ? '' : '\n시드를 바꾸거나 🎲 시드 탐색을 눌러 보세요')); } catch (err) { console.error(err); msg('⚠ 검사 오류: ' + err.message); } }, 20);
   };
   // 시드 탐색: 현재 시드부터 20개를 하나씩 (UI 멈춤 방지로 한 개씩 나눠) 시험, 처음 클리어되는 시드를 입력칸에 넣음
   function stopSearch() { if (search) { clearTimeout(search.t); search = null; $('#escSeedFind').textContent = '🎲 시드 탐색(20개)'; } }
@@ -143,7 +144,7 @@
       if (!search) return; const i = search.i++;
       try {
         const r = ESCAPE.runHeadless(m, { seed: (from + i) >>> 0 });
-        if (r.clear) { stopSearch(); $('#escSeed').value = r.seed; fromUI(); return msg(`🎲 ${i + 1}번째 시드에서 찾음\n` + resTxt(r)); }
+        if (r.clear) { stopSearch(); $('#escSeed').value = r.seed; fromUI(); showPv(r); return msg(`🎲 ${i + 1}번째 시드에서 찾음\n` + resTxt(r)); }
         msg(`🎲 시드 탐색 ${i + 1}/${N0} … (시드 ${r.seed}: 도착 못 함)`);
       } catch (err) { stopSearch(); console.error(err); return msg('⚠ 탐색 오류: ' + err.message); }
       if (search.i >= N0) { stopSearch(); return msg(`🎲 시드 ${from}~${from + N0 - 1} 중 클리어되는 시드가 없어요.\n출구를 키우거나 벽을 줄이거나 제한 시간을 늘려 보세요 (다시 누르면 다음 20개).`) || ($('#escSeed').value = from + N0, fromUI()); }

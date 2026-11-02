@@ -54,7 +54,7 @@ node server/test/run.js     # 모의 GitHub로 전체 흐름 테스트 (실제 G
 ## 맵 저장소 파일 구조
 ```
 maps/<id>.json   {id,title,author,desc,created,hash,verify,map}
-index.json       {v,updated,maps:[{id,title,author,created,w,h,chars,mode,goal,timeLimit,seed,walls,clearTime,hash,stats:{}}]}  최신순 (stats: 나중에 이용수/평가용)
+index.json       {v,updated,maps:[{id,title,author,created,w,h,chars,mode,goal,timeLimit,seed,walls,clearTime,hash,preview,stats:{}}]}  최신순 (stats: 나중에 이용수/평가용)
 reports.json     {v,maps:{id:{count,by:[주소해시],first,last}}}
 review.json      {v,maps:[{id,title,author,created,count,at}]}
 hidden.json      {v,maps:[index 항목 + hiddenAt, reason]}
@@ -62,6 +62,12 @@ hidden.json      {v,maps:[index 항목 + hiddenAt, reason]}
 - 모든 상태가 이 파일들에 있습니다. Render 무료 서버가 재시작되거나 디스크가 지워져도 그대로 이어집니다(테스트로 확인).
 - 쓰기는 하나씩 줄 세워 처리합니다. sha가 충돌하면 다시 읽어서 최대 4번 재시도합니다.
 - 게임은 목록과 맵을 **서버 없이** `raw.githubusercontent.com`에서 직접 읽습니다. 그래서 서버가 잠들어 있어도 목록은 보입니다.
+
+## 미리보기 (`preview`)
+- 서버가 재검증 시뮬레이션에서 충돌(벽·상대) 위치를 기록해 계산합니다. 클라이언트가 보낸 값은 쓰지 않습니다. 코드는 `ESCAPE.preview`(js/escape.js)이고, 같은 맵과 시드면 결과도 같습니다.
+- 형식: `{v:1, kind:'hits'|'exit', x, y, w:320, h:240, hits, total, grid(잘라낸 8×6칸), starts, exit, pts(최대 60), mw, mh}`. 항목당 약 1~2KB입니다.
+- 고르는 방법: 40px 간격으로 320×240 창을 움직여 충돌이 가장 많은 곳을 고릅니다(동점이면 위·왼쪽 우선). 충돌이 3회보다 적으면 출구를 품은 창 중 벽이 가장 많은 곳을 고릅니다.
+- `preview`가 없는 예전 맵은 목록의 🔍 버튼을 누르면 맵 파일을 받아 이 기기에서 같은 계산을 합니다.
 
 ## 보안
 - 토큰은 Render 환경 변수에만 둡니다. 응답과 로그에 토큰을 출력하지 않습니다.

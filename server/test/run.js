@@ -69,6 +69,15 @@ const results = []; const ok = (name, cond, info) => { if (process.env.V) consol
   // 맵 파일 내용
   const mf = JSON.parse(Buffer.from(M.files[`maps/${id1}.json`].b64, 'base64').toString());
   ok('maps/<id>.json 내용 (map·verify)', mf.map && mf.map.v === 2 && mf.verify.clear && mf.title === '첫 번째 맵', mf);
+  // 미리보기: 서버가 재검증 결과로 계산 (로컬 계산과 같음), 클라이언트가 보낸 값은 무시
+  const idxP = JSON.parse(Buffer.from(M.files['index.json'].b64, 'base64').toString()), e1 = idxP.maps.find(m => m.id === id1) || (JSON.parse(Buffer.from(M.files['hidden.json'].b64, 'base64').toString()).maps.find(m => m.id === id1));
+  const loc = game.ESCAPE.runHeadless(good).preview;
+  ok('미리보기: index 항목 = 로컬 계산 (결정적)', e1 && JSON.stringify(e1.preview) === JSON.stringify(loc) && JSON.stringify(mf.verify.preview) === JSON.stringify(loc), { e: e1 && e1.preview, loc });
+  ok('미리보기 형식 (타일 정렬·구역 크기·격자 자름)', loc && loc.x % 40 === 0 && loc.y % 40 === 0 && loc.w === 320 && loc.h === 240 && loc.grid.length === 6 && loc.grid.every(r => r.length === 8) && JSON.stringify(loc).length < 3000, loc);
+  const forged = { ...mapWith({ seed: 9 }), preview: { x: 999, kind: 'fake' } };
+  r = await call('POST', '/maps', { map: forged, title: '가짜 미리보기', preview: { x: 1 } }, { ip: '10.9.9.9' });
+  if (r.s === 201) { const pf = r.j.entry.preview, lf = game.ESCAPE.runHeadless(mapWith({ seed: 9 })).preview; ok('보낸 미리보기 무시 → 서버 계산값', JSON.stringify(pf) === JSON.stringify(lf) && pf.kind !== 'fake', { pf, lf }); }
+  else ok('보낸 미리보기 무시 → 서버 계산값 (시드 9 클리어 불가라 확인 불가)', false, r.j);
   // sha 충돌 → 다시 읽어 재시도
   await fetch(`http://127.0.0.1:${MP}/_conflictNext?path=index.json`); const c0 = M.stats().conflicts;
   r = await call('POST', '/maps', { map: mapWith({ seed: 8 }), title: '충돌 재시도' }, { ip: '10.0.0.1' });

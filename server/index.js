@@ -53,10 +53,10 @@ async function upload(req, res) {
   if (!v.ok) throw err(v.timeout ? 422 : 500, v.timeout ? '재검증이 너무 오래 걸려요 (제한 시간을 줄여 주세요)' : '재검증 오류: ' + v.error, v.timeout ? 'verify_timeout' : 'verify_error');
   if (!v.r.clear) throw err(422, `서버 재검증에서 출구에 도착하지 못했어요 (${v.r.result})`, 'not_clear');
   const id = newId(), created = now();
-  const entry = { id, title: T.title, author: T.author, created, w: n.w, h: n.h, chars: n.chars, mode: n.rules.type, goal: n.rules.goal, timeLimit: n.timeLimit, seed: n.seed, walls, clearTime: v.r.arrived[0] ? v.r.arrived[0].t : v.r.time, hash, stats: {} }; // stats: 나중에 이용수/평가용
+  const entry = { id, title: T.title, author: T.author, created, w: n.w, h: n.h, chars: n.chars, mode: n.rules.type, goal: n.rules.goal, timeLimit: n.timeLimit, seed: n.seed, walls, clearTime: v.r.arrived[0] ? v.r.arrived[0].t : v.r.time, hash, preview: v.r.preview || null, stats: {} }; // preview: 서버 재검증에서 다시 계산한 값만 씀 (클라이언트 값 무시) // stats: 나중에 이용수/평가용
   await GH.queue(async () => {
     if (await dup()) throw err(409, '이미 올라온 맵과 똑같아요', 'duplicate'); // 큐 안에서 다시 확인 (동시 올리기)
-    await GH.mutate(`maps/${id}.json`, () => ({ id, title: T.title, author: T.author, desc: T.desc, created, hash, verify: { clear: true, time: v.r.time, steps: v.r.steps, arrived: v.r.arrived }, map: n }), `map: ${id} ${T.title}`, null);
+    await GH.mutate(`maps/${id}.json`, () => ({ id, title: T.title, author: T.author, desc: T.desc, created, hash, verify: { clear: true, time: v.r.time, steps: v.r.steps, arrived: v.r.arrived, preview: v.r.preview || null }, map: n }), `map: ${id} ${T.title}`, null);
     await GH.mutate('index.json', idx => { idx.maps = sortNew([entry, ...idx.maps.filter(m => m.id !== id)]); idx.updated = created; return idx; }, `index: add ${id}`, DEF.index);
   });
   send(res, 201, { ok: true, id, entry });

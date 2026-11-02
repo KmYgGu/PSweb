@@ -22,6 +22,11 @@
 #escNetMsg:empty{display:none}
 #escNetMsg.err{color:#ffb4b4;background:rgba(255,80,80,.1)}
 .escItem{background:#23273a;border:1px solid #343a52;border-radius:6px;padding:6px 7px;display:flex;flex-direction:column;gap:3px}
+.escTop{display:flex;gap:7px;align-items:flex-start}.escTop .info{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.escPvBox{flex:0 0 128px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.escPvBox canvas{width:128px;height:96px;border-radius:4px;border:1px solid #4a5170;display:block}
+.escPvBox .cap{font-size:9px;color:#8f95ad;text-align:center;line-height:1.2}
+.escPvBox button{width:128px;height:96px}
 .escItem .t{color:#f0f2fa;font-size:12px;font-weight:bold}.escItem .s{color:#8f95ad;font-size:10px}.escItem .b{display:flex;gap:4px;flex-wrap:wrap}`;
   document.head.appendChild(css);
   const N = document.createElement('div'); N.id = 'escNet'; N.className = 'hidden';
@@ -83,6 +88,7 @@
       say('로컬 클리어 검사 중…'); await new Promise(r => setTimeout(r, 30));
       const loc = ESCAPE.runHeadless(m);
       if (!loc.clear) return say(`⚠ 로컬 클리어 검사 실패 (시드 ${loc.seed}: ${loc.result})\n편집기에서 🎲 시드 탐색으로 클리어되는 시드를 찾은 뒤 올려 주세요`, true);
+      { const old = $('#escUpPv'); if (old) old.remove(); if (loc.preview) { const bx = el('div', { className: 'escPvBox', id: 'escUpPv' }, [pvCanvas(loc.preview), el('div', { className: 'cap', textContent: pvCap(loc.preview) })]); go.parentNode.insertBefore(bx, go); } }
       say(`로컬 검사 통과 (${loc.arrived[0] ? loc.arrived[0].t.toFixed(1) : loc.time}초). 서버 확인 중…`);
       const h = await wake(); if (!h.ok) return say('⚠ ' + h.error, true);
       say('올리는 중… 서버가 다시 시뮬레이션해서 확인하고 있어요 (최대 2분)');
@@ -107,12 +113,27 @@
     for (const m of all) {
       const it = el('div', { className: 'escItem' });
       it.dataset.id = m.id;
-      it.appendChild(el('div', { className: 't', textContent: m.title }));
-      it.appendChild(el('div', { className: 's', textContent: `${m.author || '익명'} · ${fmt(m.created)} · ${m.w}×${m.h} · 벽 ${m.walls}칸 · ${m.goal === 'coop' ? '협동' : '먼저 도착'} · 제한 ${m.timeLimit}초` }));
-      it.appendChild(el('div', { className: 's', textContent: `검증: ${charName(m.chars && m.chars[0])} vs ${charName(m.chars && m.chars[1])} · ${m.mode}타입 · 시드 ${m.seed} · ${Number(m.clearTime).toFixed(1)}초에 도착` }));
+      const info = el('div', { className: 'info' }); it.appendChild(el('div', { className: 'escTop' }, [pvBox(m), info]));
+      info.appendChild(el('div', { className: 't', textContent: m.title }));
+      info.appendChild(el('div', { className: 's', textContent: `${m.author || '익명'} · ${fmt(m.created)} · ${m.w}×${m.h} · 벽 ${m.walls}칸 · ${m.goal === 'coop' ? '협동' : '먼저 도착'} · 제한 ${m.timeLimit}초` }));
+      info.appendChild(el('div', { className: 's', textContent: `검증: ${charName(m.chars && m.chars[0])} vs ${charName(m.chars && m.chars[1])} · ${m.mode}타입 · 시드 ${m.seed} · ${Number(m.clearTime).toFixed(1)}초에 도착` }));
       it.appendChild(el('div', { className: 'b' }, [btn('▶ 플레이', () => loadMap(m, 'play')), btn('✎ 편집기로', () => loadMap(m, 'edit')), btn('🚩 신고', () => doReport(m), 'warn')]));
       body.appendChild(it);
     }
+  }
+  // ---------- 미리보기 (검증 시뮬에서 충돌이 가장 많았던 구역) ----------
+  const pvCache = {};
+  const pvCap = (pv, local) => (pv.kind === 'hits' ? `충돌 많은 곳 · ${pv.hits}회` : '충돌 적음 · 출구 주변') + (local ? ' (이 기기에서 계산)' : '');
+  function pvCanvas(pv) { const cv = el('canvas', { width: 256, height: 192, className: 'escPv' }); ESCAPE.drawPreview(cv, pv); return cv; }
+  function pvBox(m) {
+    const box = el('div', { className: 'escPvBox' }), pv = m.preview || pvCache[m.id];
+    if (pv) { box.appendChild(pvCanvas(pv)); box.appendChild(el('div', { className: 'cap', textContent: pvCap(pv, !m.preview) })); return box; }
+    const b = btn('🔍 미리보기', async () => { // 예전 맵(preview 없음): 맵 파일을 받아 같은 시드로 이 기기에서 시뮬 후 계산 (서버 계산과 같은 코드·결과)
+      b.disabled = true; b.textContent = '계산 중…';
+      try { const f = await raw(`maps/${m.id}.json`); await new Promise(r => setTimeout(r, 20)); const r = ESCAPE.runHeadless(f.map); pvCache[m.id] = r.preview; box.innerHTML = ''; box.appendChild(pvCanvas(r.preview)); box.appendChild(el('div', { className: 'cap', textContent: pvCap(r.preview, true) })); }
+      catch (er) { b.disabled = false; b.textContent = '🔍 다시 시도'; say('⚠ 미리보기 실패: ' + er.message, true); }
+    });
+    box.appendChild(b); return box;
   }
   async function loadMap(e, how) {
     say('맵을 불러오는 중…');
@@ -174,5 +195,5 @@
   const runRow = $('#escRun').parentNode; runRow.parentNode.insertBefore(row, runRow.nextSibling);
   let taps = []; $('#escape h1').addEventListener('click', e => { if (e.target.tagName === 'BUTTON') return; const t = Date.now(); taps = taps.filter(x => t - x < 2000); taps.push(t); if (taps.length >= 5) { taps = []; openAdmin(); } });
   $('#escNetTabList').onclick = openList; $('#escNetTabUp').onclick = openUpload;
-  window.ESC_NET = { openList, openUpload, openAdmin };
+  window.ESC_NET = { openList, openUpload, openAdmin, pvCanvas };
 })();
