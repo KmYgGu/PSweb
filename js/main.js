@@ -28,13 +28,7 @@
     pick[0] = r(); do { pick[1] = r(); } while (pick[1] === pick[0]);
     refresh();
   };
-  // 탈출맵 편집기 → 기존 선택 화면으로 P1/P2 고르기. 끝나면 원래 선택/버튼 상태를 되돌려 일반 전투 흐름은 그대로
-  let escPick = null;
-  const escPickUI = on => { ['#modeSel', '#modeDesc', '#rpLoad', '#escEnter'].forEach(s => { const e = $(s); if (e) e.classList.toggle('hidden', on); }); $('#escPickBack').classList.toggle('hidden', !on); $('#start').textContent = on ? '✔ 이 캐릭터로 (편집기로)' : '전투 시작'; };
-  { const bk = document.createElement('button'); bk.id = 'escPickBack'; bk.className = 'sub hidden'; bk.type = 'button'; bk.textContent = '취소'; $('#rnd').after(bk); bk.onclick = () => endEscPick(null); }
-  function endEscPick(ids) { const P = escPick; if (!P) return; escPick = null; pick[0] = P.saved[0]; pick[1] = P.saved[1]; active = P.active; escPickUI(false); refresh(); $('#select').classList.add('hidden'); P.cb(ids); }
-  window.pickForEscape = (ids, cb) => { escPick = { cb, saved: pick.slice(), active }; ids.forEach((id, i) => { pick[i] = CHARACTERS.find(c => c.id === id) || pick[i]; }); active = 0; escPickUI(true); refresh(); $('#select').classList.remove('hidden'); };
-  $('#start').onclick = () => { if (!(pick[0] && pick[1])) return; if (escPick) return endEscPick([pick[0].id, pick[1].id]); openStages(); };
+  $('#start').onclick = () => { if (pick[0] && pick[1]) openStages(); };
   // ---------- 전투 타입 (A: 기존 / B: 몸박 피해 없음·피격 반전). 캐릭터 선택 화면에서 고르고 리플레이에 기록 ----------
   let battleMode = 'A'; try { if (localStorage.getItem('psBattleMode') === 'B') battleMode = 'B'; } catch (e) {}
   const MODE_DESC = { A: '기존 방식: 몸 부딪힘도 피해를 줍니다.', B: '몸 부딪힘 피해 없음 · 근접 평타 쿨타임 증가(사거리가 길수록 더) · 공격받으면 진행 방향 반전' };
@@ -65,7 +59,7 @@
 
   function choose(c) {
     pick[active] = c;
-    if (active === 0 && (!pick[1] || escPick)) active = 1; // 탈출맵 선택 중: P1 고르면 바로 P2 차례
+    if (active === 0 && !pick[1]) active = 1;
     refresh();
   }
   // 속성/전달/관통 태그
@@ -123,7 +117,7 @@
       if (s1) el.insertAdjacentHTML('beforeend', '<span class="b b1">P2</span>');
     });
     $('#start').disabled = !(pick[0] && pick[1]);
-    $('#hint').textContent = pick[0] && pick[1] ? (escPick ? '준비 완료! 편집기로 돌아가세요 (같은 캐릭터끼리도 가능)' : '준비 완료! 전투를 시작하세요 (같은 캐릭터끼리도 가능)') : `P${active + 1} 캐릭터를 고르세요`;
+    $('#hint').textContent = pick[0] && pick[1] ? '준비 완료! 전투를 시작하세요 (같은 캐릭터끼리도 가능)' : `P${active + 1} 캐릭터를 고르세요`;
   }
   refresh();
   Sprites.preload([...CHARACTERS, ...CHARACTERS.filter(c => c.oni).map(c => c.oni.form), ...CHARACTERS.flatMap(c => Object.values(c.poses || {})), ...CHARACTERS.flatMap(c => c.extraDefs || [])]).then(() => {
@@ -189,9 +183,11 @@
   const mkRng = seed => { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
   function seeded(fn) { if (!rng) return fn(); const o = Math.random, r = rng, tr = window.__rpTrace; Math.random = tr ? () => { tr(); return r(); } : r; try { return fn(); } finally { Math.random = o; } } // __rpTrace: 디버그용 (재현 검사)
   let escMap = null;
-  window.startEscape = map => { const m = ESCAPE.normalize(map), a = CHARACTERS.find(c => c.id === m.chars[0]), b = CHARACTERS.find(c => c.id === m.chars[1]); if (!a || !b) { toast('맵의 캐릭터를 찾을 수 없어요'); return false; } if (!escSaved) escSaved = { pick: pick.slice(), mode: battleMode, stageId }; pick[0] = a; pick[1] = b; stageId = 'arena'; battleMode = m.rules.type; startBattle({ escape: m }); return true; };
-  let escSaved = null; // 탈출 실행 전 메인 선택(캐릭터·A/B·스테이지) → 메인으로 돌아갈 때 복원
-  window.leaveEscape = () => { escMap = null; if (escSaved) { pick[0] = escSaved.pick[0]; pick[1] = escSaved.pick[1]; battleMode = escSaved.mode; stageId = escSaved.stageId; escSaved = null; refreshMode(); refresh(); } };
+  // 탈출맵: 첫 화면에서 고른 P1/P2 와 전투 타입(A/B)을 그대로 사용 (선택이 불완전하면 null)
+  window.escapeSel = () => ({ chars: pick[0] && pick[1] ? [pick[0].id, pick[1].id] : null, names: [pick[0] && pick[0].name, pick[1] && pick[1].name], mode: battleMode });
+  let escPrevStage = null;
+  window.startEscape = map => { if (!(pick[0] && pick[1])) return false; const m = ESCAPE.normalize(map); m.chars = [pick[0].id, pick[1].id]; m.rules.type = battleMode; if (escPrevStage == null) escPrevStage = stageId; stageId = 'arena'; startBattle({ escape: m }); return true; };
+  window.leaveEscape = () => { escMap = null; if (escPrevStage != null) { stageId = escPrevStage; escPrevStage = null; } };
   function startBattle(opt = {}) {
     $('#select').classList.add('hidden'); $('#result').classList.add('hidden');
     $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden');
