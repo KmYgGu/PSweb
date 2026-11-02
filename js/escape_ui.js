@@ -168,5 +168,5 @@
   $('#escImp').onclick = () => $('#escFile').click();
   $('#escFile').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { map = ESCAPE.normalize(t); toUI(); fromUI(); msg('가져옴: ' + map.name + (JSON.parse(t).grid ? '' : ' (구버전 사각형 벽 → 타일로 변환)')); }).catch(err => msg('가져오기 실패: ' + err.message)); e.target.value = ''; };
   function open() { N.classList.add('hidden'); $('#select').classList.add('hidden'); P.classList.remove('hidden'); setCam(window.ESC_CAM || 'fit'); toUI(); }
-  window.ESC_UI = { open, get map() { return map; }, set map(m) { map = ESCAPE.normalize(m); toUI(); } };
+  window.ESC_UI = { open, notice, why: m => why(m), current: () => fromUI(), msg, get map() { return map; }, set map(m) { map = ESCAPE.normalize(m); toUI(); fromUI(); } };
 })();

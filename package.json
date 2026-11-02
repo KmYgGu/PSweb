@@ -1,0 +1,8 @@
+{
+  "name": "psweb-escape-server",
+  "version": "2.0.0",
+  "private": true,
+  "description": "PSweb 탈출맵 중계 서버 (Render 무료 웹 서비스). 외부 의존성 없음.",
+  "scripts": { "start": "node server/index.js", "test": "node server/test/run.js" },
+  "engines": { "node": ">=22 <25" }
+}
