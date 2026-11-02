@@ -2399,7 +2399,8 @@ const Render = (() => {
       ctx.translate(z.x, z.y); ctx.scale(k, k); ctx.translate(-z.x, -z.y);
     }
     b._shk = [0, 0]; if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA; b._shk = [Math.round(rand(-k, k)), Math.round(rand(-k, k))]; ctx.translate(b._shk[0], b._shk[1]); }
-    ctx.drawImage(floors[sid], 0, 0);
+    if (b.cam) { ctx.scale(b.cam.k, b.cam.k); ctx.translate(-b.cam.x, -b.cam.y); } // 탈출맵 카메라 (js/escape.js, 일반 전투엔 없음)
+    if (!b.cam) ctx.drawImage(floors[sid], 0, 0);
     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
     for (const f of b.fx) drawFx(ctx, f, 0);
     for (const f of b.visualFx) drawFx(ctx, f, 0);
@@ -2501,7 +2502,7 @@ const Render = (() => {
   // 상단 UI(DOM) 위 오버레이: 상단 UI 영역에 걸친 캐릭터 스프라이트만 한 번 더 그림 (UI 영역으로 클립 → 같은 자리 픽셀만 덮어 이중으로 보이지 않음, 그림자 제외)
   function drawTopUnits(c2, b, res, hudH) {
     c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, c2.canvas.width, c2.canvas.height);
-    if (!b || !hudH) return;
+    if (!b || !hudH || b.cam) return;
     const L = b.u.filter(u => !u.hidden && (u.y + u.ky - b.airZ(u)) - 90 * (u.size || 1) * (1 + b.airZ(u) / 110) < hudH + 6);
     const HK = STAGE_HOOKS.filter(h => h.drawAboveUI); // 듀얼 몬스터 등 (몸체 스프라이트만)
     if (!L.length && !HK.length) return;
