@@ -114,7 +114,9 @@
       const it = el('div', { className: 'escItem' });
       it.dataset.id = m.id;
       const info = el('div', { className: 'info' }); it.appendChild(el('div', { className: 'escTop' }, [pvBox(m), info]));
+      const FE = { water: '💧물', oneway: '⇧일방통행', break: '🧱파괴벽', mover: '↔움직이는 벽' };
       info.appendChild(el('div', { className: 't', textContent: m.title }));
+      if (Array.isArray(m.feat) && m.feat.length) info.appendChild(el('div', { className: 's', textContent: m.feat.map(f => FE[f]).filter(Boolean).join(' · ') }));
       info.appendChild(el('div', { className: 's', textContent: `${m.author || '익명'} · ${fmt(m.created)} · ${m.w}×${m.h} · 벽 ${m.walls}칸 · ${m.goal === 'coop' ? '협동' : '먼저 도착'} · 제한 ${m.timeLimit}초` }));
       info.appendChild(el('div', { className: 's', textContent: `검증: ${charName(m.chars && m.chars[0])} vs ${charName(m.chars && m.chars[1])} · ${m.mode}타입 · 시드 ${m.seed} · ${Number(m.clearTime).toFixed(1)}초에 도착` }));
       it.appendChild(el('div', { className: 'b' }, [btn('▶ 플레이', () => loadMap(m, 'play')), btn('✎ 편집기로', () => loadMap(m, 'edit')), btn('🚩 신고', () => doReport(m), 'warn')]));

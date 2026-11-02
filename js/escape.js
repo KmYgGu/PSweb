@@ -13,7 +13,48 @@
   // ---------- 타일 격자 ↔ 벽 사각형 ----------
   // grid: 문자열 행 배열, '#' = 벽, '.' = 빈칸. 행 수 = ceil(h/TILE), 열 수 = ceil(w/TILE)
   function emptyGrid(cols, rows) { return Array.from({ length: rows }, () => '.'.repeat(cols)); }
-  function fitGrid(g, cols, rows) { const out = []; for (let r = 0; r < rows; r++) { const s = String((g && g[r]) || ''); let row = ''; for (let c = 0; c < cols; c++) row += s[c] === '#' ? '#' : '.'; out.push(row); } return out; }
+  // 칸 문자: '#' 벽, '.' 빈칸, '~' 물, '^' 'v' '<' '>' 일방통행(위·아래·왼·오른쪽). 그 밖의 문자는 빈칸
+  const GRID_CH = '#~^v<>';
+  function fitGrid(g, cols, rows) { const out = []; for (let r = 0; r < rows; r++) { const s = String((g && g[r]) || ''); let row = ''; for (let c = 0; c < cols; c++) row += GRID_CH.includes(s[c]) && s[c] ? s[c] : '.'; out.push(row); } return out; }
+  // ---------- 특수 요소 (선택 필드, 없으면 기존 v2 맵과 완전히 같음) ----------
+  const ONEWAY = { '^': [0, -1], 'v': [0, 1], '<': [-1, 0], '>': [1, 0] };
+  const ONEWAY_ALIGN = Math.SQRT1_2; // 진행 방향이 타일 방향과 45° 이내면 '같은 방향'
+  const ONEWAY_SPD = 2;              // 같은 방향 이동 속도 배율
+  const WATER = { spd: 0.6, o2: 3, drain: 1, regen: 1.5, tick: 0.5, dmgFrac: 0.08 }; // 물: 속도 ×0.6, 산소 3초(초당 1 감소, 밖에서 초당 1.5 회복), 바닥나면 0.5초마다 최대 HP 8% 피해 (피해 0 옵션과 무관)
+  const LIM = { brk: 1500, brkHits: 99, brkHp: 9999, movers: 16, path: 200, mvTiles: 6, spdMin: 20, spdMax: 400, spdDef: 80 };
+  const intIn = (v, a, b, d) => { v = Math.round(num(+v, d)); return Math.min(b, Math.max(a, v)); };
+  function normBreak(list, cols, rows) { // [{c,r,n,m}] m: 'hits' = 부딪힌 횟수, 'hp' = 충돌 피해 합계
+    const out = [], seen = new Set();
+    for (const o of (Array.isArray(list) ? list : []).slice(0, LIM.brk * 2)) {
+      if (!o || out.length >= LIM.brk) continue; const c = Math.round(num(+o.c, -1)), r = Math.round(num(+o.r, -1));
+      if (c < 0 || r < 0 || c >= cols || r >= rows || seen.has(c + ',' + r)) continue; seen.add(c + ',' + r);
+      const m = o.m === 'hp' ? 'hp' : 'hits'; out.push({ c, r, n: m === 'hp' ? intIn(o.n, 1, LIM.brkHp, 30) : intIn(o.n, 1, LIM.brkHits, 1), m });
+    }
+    return out;
+  }
+  function normMovers(list, cols, rows) { // [{path:[[c,r]..], w, h, at, speed, mode}] 경로 칸은 상하좌우로 이어져야 함 (끊기면 거기까지)
+    const out = [];
+    for (const o of (Array.isArray(list) ? list : []).slice(0, LIM.movers)) {
+      if (!o || !Array.isArray(o.path)) continue; const w = intIn(o.w, 1, LIM.mvTiles, 1), h = intIn(o.h, 1, LIM.mvTiles, 1), path = [];
+      for (const p of o.path.slice(0, LIM.path)) {
+        if (!Array.isArray(p)) break; const c = Math.round(num(+p[0], -1)), r = Math.round(num(+p[1], -1));
+        if (c < 0 || r < 0 || c + w > cols || r + h > rows) break;
+        const q = path[path.length - 1]; if (q && Math.abs(q[0] - c) + Math.abs(q[1] - r) !== 1) break; path.push([c, r]);
+      }
+      if (path.length < 2) continue;
+      const a = path[0], z = path[path.length - 1], closed = path.length >= 4 && Math.abs(a[0] - z[0]) + Math.abs(a[1] - z[1]) === 1;
+      out.push({ path, w, h, at: intIn(o.at, 0, path.length - 1, 0), speed: intIn(o.speed, LIM.spdMin, LIM.spdMax, LIM.spdDef), mode: o.mode === 'loop' && closed ? 'loop' : 'pingpong' });
+    }
+    return out;
+  }
+  // 움직이는 벽 위치 = 시뮬 시간 t 만의 함수 (결정적). pingpong: 끝에서 되돌아옴, loop: 닫힌 경로를 한 방향으로 순환
+  function moverPos(mv, t) {
+    const P = mv.path, n = P.length, L = (mv.mode === 'loop' ? n : n - 1) * TILE; let d = mv.at * TILE + mv.speed * t;
+    if (mv.mode === 'loop') d = d % L; else { d = d % (2 * L); if (d > L) d = 2 * L - d; }
+    let i = Math.floor(d / TILE); if (i >= (mv.mode === 'loop' ? n : n - 1)) i = (mv.mode === 'loop' ? n : n - 1) - 1;
+    const f = Math.min(1, Math.max(0, (d - i * TILE) / TILE)), A = P[i], B = P[(i + 1) % n];
+    return { x: (A[0] + (B[0] - A[0]) * f) * TILE, y: (A[1] + (B[1] - A[1]) * f) * TILE };
+  }
   function rectsToGrid(rects, cols, rows) { // 구버전(v1) 사각형 벽 → 타일: 타일 중심이 사각형 안이면 벽
     const g = emptyGrid(cols, rows).map(s => s.split(''));
     for (const w of rects) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const x = c * TILE + TILE / 2, y = r * TILE + TILE / 2; if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) g[r][c] = '#'; }
@@ -51,7 +92,11 @@
     const R = Object.assign({}, DEF_RULES, m.rules || {});
     const rules = { goal: R.goal === 'coop' ? 'coop' : 'race', noDamage: !!R.noDamage, noAttack: !!R.noAttack, speedMul: Math.min(4, Math.max(0.25, num(+R.speedMul, 1))), type: R.type === 'B' ? 'B' : 'A' };
     const chars = (Array.isArray(m.chars) ? m.chars : []).slice(0, 2).map(String);
-    return { format: FORMAT, v: VERSION, name: String(m.name || '이름 없는 탈출맵').slice(0, 40), w, h, tile: TILE, grid, walls: mergeGrid(grid), starts, exit, chars, seed: (num(m.seed, 12345) >>> 0), timeLimit: Math.min(MAX_TIME, Math.max(10, num(m.timeLimit, DEF_TIME))), rules };
+    const breakables = normBreak(m.breakables, cols, rows), movers = normMovers(m.movers, cols, rows);
+    for (const k of breakables) if (grid[k.r][k.c] !== '.') grid[k.r] = grid[k.r].slice(0, k.c) + '.' + grid[k.r].slice(k.c + 1); // 파괴벽 칸은 바닥 '.'
+    const out = { format: FORMAT, v: VERSION, name: String(m.name || '이름 없는 탈출맵').slice(0, 40), w, h, tile: TILE, grid, walls: mergeGrid(grid), starts, exit, chars, seed: (num(m.seed, 12345) >>> 0), timeLimit: Math.min(MAX_TIME, Math.max(10, num(m.timeLimit, DEF_TIME))), rules };
+    if (breakables.length) out.breakables = breakables; if (movers.length) out.movers = movers; // 선택 필드: 비어 있으면 넣지 않음 (기존 맵 JSON·해시 그대로)
+    return out;
   }
   // 저장/내보내기용: walls 는 grid 에서 다시 만들 수 있지만 사람이 읽기 쉽게/구버전 호환 위해 같이 기록
   const toJSON = m => JSON.stringify(normalize(m), null, 1);
@@ -65,6 +110,21 @@
     ctx.fillStyle = '#272a3a'; for (let x = w.x + TILE / 2; x < w.x + w.w; x += TILE) ctx.fillRect(x, w.y + w.h - 10, 1, 10);
     if (w.hitT > 0) { ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(w.x, w.y - 10, w.w, w.h); }
   }
+  function drawBreak(ctx, w) { // 파괴벽: 갈색 벽돌 + 남은 내구도에 따라 균열 0~3단계
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(w.x + 4, w.y + 4, w.w, w.h);
+    ctx.fillStyle = '#7a5a3e'; ctx.fillRect(w.x, w.y - 10, w.w, w.h); ctx.fillStyle = '#5c432e'; ctx.fillRect(w.x, w.y + w.h - 10, w.w, 10);
+    ctx.fillStyle = '#5c432e'; for (let k = 0; k < 3; k++) { const yy = w.y - 10 + 8 + k * 9; ctx.fillRect(w.x, yy, w.w, 1); ctx.fillRect(w.x + (k % 2 ? 10 : 24), yy - 8, 1, 8); }
+    const st = Math.min(3, Math.floor((1 - w.hp / w.maxHp) * 4)); ctx.strokeStyle = '#2a1c10'; ctx.lineWidth = 1.5; ctx.beginPath();
+    if (st >= 1) { ctx.moveTo(w.x + 8, w.y - 8); ctx.lineTo(w.x + 16, w.y + 4); ctx.lineTo(w.x + 13, w.y + 14); }
+    if (st >= 2) { ctx.moveTo(w.x + 32, w.y - 6); ctx.lineTo(w.x + 24, w.y + 6); ctx.lineTo(w.x + 30, w.y + 18); }
+    if (st >= 3) { ctx.moveTo(w.x + 4, w.y + 10); ctx.lineTo(w.x + 20, w.y + 8); ctx.lineTo(w.x + 36, w.y + 14); }
+    ctx.stroke(); if (w.hitT > 0) { ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(w.x, w.y - 10, w.w, w.h); }
+  }
+  function drawMover(ctx, w) { // 움직이는 벽: 노랑·검정 줄무늬 테두리
+    drawWall(ctx, w); ctx.save(); ctx.beginPath(); ctx.rect(w.x, w.y - 10, w.w, w.h); ctx.clip(); ctx.fillStyle = 'rgba(255,196,40,.55)';
+    for (let k = -w.h; k < w.w + w.h; k += 16) { ctx.beginPath(); ctx.moveTo(w.x + k, w.y - 10); ctx.lineTo(w.x + k + 8, w.y - 10); ctx.lineTo(w.x + k + 8 - w.h, w.y - 10 + w.h); ctx.lineTo(w.x + k - w.h, w.y - 10 + w.h); ctx.fill(); }
+    ctx.restore(); ctx.fillStyle = '#4b4f63'; ctx.fillRect(w.x + 5, w.y - 5, w.w - 10, w.h - 10);
+  }
   const mkWall = (r, i) => ({ x: r.x, y: r.y, w: r.w, h: r.h, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, solid: true, escWall: true, style: i % 3, cracks: [[], [], []], rubble: [], windows: [], draw: drawWall });
 
   // ---------- 전투에 탈출 규칙 적용 (new Battle 직후, 같은 시드 구간 안에서 호출) ----------
@@ -73,6 +133,9 @@
     const E = b.escape = { map: m, arrived: [], done: false, result: null };
     b.play = { x: 0, y: 0, w: m.w, h: m.h };
     b.buildings = m.walls.map(mkWall);
+    for (const k of m.breakables || []) b.buildings.push({ x: k.c * TILE, y: k.r * TILE, w: TILE, h: TILE, hp: k.n, maxHp: k.n, dead: false, hitT: 0, solid: false, escBreak: k.m, cracks: [[], [], []], rubble: [], windows: [], draw: drawBreak });
+    for (const mv of m.movers || []) { const p = moverPos(mv, 0); b.buildings.push(Object.assign(mkWall({ x: p.x, y: p.y, w: mv.w * TILE, h: mv.h * TILE }, 0), { escMover: mv, draw: drawMover })); }
+    E.special = []; m.grid.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] !== '.' && row[c] !== '#') E.special.push([c, r, row[c]]); }); // 물·일방통행 칸 (그리기용)
     b.u.filter(u => !u.summon).forEach((u, k) => {
       const s = m.starts[u.team] || m.starts[k % 2];
       u.x = s.x; u.y = s.y; const p = b.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; b.resolveBuildings(u, true);
@@ -104,6 +167,56 @@
     if (b.time >= m.timeLimit) return finish(b, mains.find(u => !u.dead) || mains[0], `탈출 실패 — 시간 초과 (${m.timeLimit}초)`, false);
   }
 
+  // ---------- 움직이는 벽 · 물 · 일방통행 (매 스텝, 엔진 이동·벽 처리 뒤) ----------
+  const tileCh = (m, c, r) => (m.grid[r] && m.grid[r][c]) || '#';
+  const waterproof = u => !!(u.def && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'는 물 영향 없음 (기존 물 지형과 같은 규칙)
+  function escWorld(b, dt) {
+    const E = b.escape; if (!E || E.done || b.over) return; const m = E.map;
+    if (m.movers) for (const bl of b.buildings) if (bl.escMover) { const p = moverPos(bl.escMover, b.time); bl.x = p.x; bl.y = p.y; } // 겹친 캐릭터는 다음 스텝 엔진 벽 처리(resolveBuildings)로 밀려나며 튕김
+    for (const u of b.u) {
+      if (u.dead || u.esDone) { u.terrainMul = 1; continue; }
+      let c = Math.floor(u.x / TILE), r = Math.floor(u.y / TILE), ch = tileCh(m, c, r);
+      if (!u.airborne && ONEWAY[ch] && u.esC != null && (u.esC !== c || u.esR !== r) && tileCh(m, u.esC, u.esR) !== ch) { // 일방통행 칸에 새로 들어오는 순간만 판정
+        const D = ONEWAY[ch], mx = u.x - u.esX, my = u.y - u.esY, ml = Math.hypot(mx, my);
+        const vx = ml > 1e-6 ? mx / ml : Math.cos(u.dir), vy = ml > 1e-6 ? my / ml : Math.sin(u.dir); // 실제 이동 방향 기준
+        if (vx * D[0] + vy * D[1] < ONEWAY_ALIGN) { // 다른 방향 → 벽처럼 튕김 (직전 위치로 되돌리고 들어온 면 기준 반사)
+          let nx = Math.sign(u.esC - c), ny = Math.sign(u.esR - r); const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
+          u.x = u.esX; u.y = u.esY;
+          if (b.time - (u.esOwT || -9) > 0.15) { u.esOwT = b.time; b.wallImpact(u, nx, ny); }
+          let dx = Math.cos(u.dir), dy = Math.sin(u.dir); const dot = dx * nx + dy * ny;
+          if (dot < 0) { dx -= 2 * dot * nx; dy -= 2 * dot * ny; u.dir = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.5; }
+          const a = u.action; if (a && (a.type === 'dash' || a.type === 'chase' || a.type === 'charge')) u.action = null;
+          c = u.esC; r = u.esR; ch = tileCh(m, c, r);
+        }
+      }
+      let mul = 1;
+      if (!u.airborne && ONEWAY[ch]) { const D = ONEWAY[ch]; if (Math.cos(u.dir) * D[0] + Math.sin(u.dir) * D[1] >= ONEWAY_ALIGN) mul = ONEWAY_SPD; }
+      const wet = !u.airborne && ch === '~' && !waterproof(u);
+      if (wet) {
+        mul *= WATER.spd; u.esO2 = (u.esO2 == null ? WATER.o2 : u.esO2) - WATER.drain * dt;
+        if (u.esO2 <= 0) { u.esO2 = 0; u.esDrT = (u.esDrT || 0) - dt; if (u.esDrT <= 0) { u.esDrT = WATER.tick; drown(b, u); if (b.over) return; } }
+      } else if (u.esO2 != null) { u.esO2 += WATER.regen * dt; u.esDrT = 0; if (u.esO2 >= WATER.o2) u.esO2 = null; }
+      u.terrainMul = mul;
+      u.esX = u.x; u.esY = u.y; u.esC = c; u.esR = r;
+    }
+  }
+  function drown(b, u) { // 익사 피해: '서로 피해 0' 과 무관하게 직접 HP 감소
+    const dmg = Math.max(1, Math.ceil(u.maxHp * WATER.dmgFrac)); u.hp -= dmg; u.flash = 0.12;
+    b.text(u.x, u.y - 40, String(dmg), '#9fd8ff', 15);
+    for (let i = 0; i < 3; i++) b.parts.push({ x: u.x - 5 + i * 5, y: u.y - 14 - i * 6, vx: 0, vy: -30, life: 0.6, max: 0.6, color: '#d8f4ff', size: 2, glow: true });
+    if (u.hp > 0) return;
+    const other = b.u.find(x => !x.summon && x.team !== u.team);
+    b.kill(u, other || u);
+    if (!u.summon) finish(b, other || u, `${nameOf(u)} 익사 — 탈출 실패`, false);
+  }
+  // 파괴벽: 캐릭터 몸 충돌('bump'·'dash')만 반영. hits = 1번 부딪힐 때마다 1, hp = 엔진 충돌 피해만큼 (공격·투사체는 무시)
+  const oHB = Battle.prototype.hitBuilding; Battle.prototype.hitBuilding = function (bl, dmg, strong, x, y, src, kind) {
+    if (!bl || !bl.escBreak) return oHB.apply(this, arguments);
+    if (bl.dead || (kind !== 'bump' && kind !== 'dash')) return;
+    bl.hp -= bl.escBreak === 'hits' ? 1 : Math.max(1, Math.round(dmg)); bl.hitT = 0.15;
+    for (let i = 0; i < 3; i++) this.parts.push({ x: x ?? bl.x + bl.w / 2, y: y ?? bl.y, vx: (i - 1) * 50, vy: -60 - i * 15, g: 360, life: 0.4, max: 0.4, color: ['#a8885e', '#7a5a3e'][i % 2], size: 2 });
+    if (bl.hp <= 0) { bl.hp = 0; bl.dead = true; bl.collapseT = this.time; const cx = bl.x + bl.w / 2, cy = bl.y + bl.h / 2; this.debris(cx, cy, 14); this.smoke(cx, cy - 8, '#a89c8c', 8); }
+  };
   // 피해 0 옵션: 탈출맵에서만, 모든 유닛 피해 무효
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o) { if (this.escape && this.escape.map.rules.noDamage) return 0; return oDmg.apply(this, arguments); };
   const oFix = Battle.prototype.fixedDamage; Battle.prototype.fixedDamage = function (src, tgt, amt, o) { if (this.escape && this.escape.map.rules.noDamage) return 0; return oFix.apply(this, arguments); };
@@ -154,7 +267,9 @@
     const ex = m.exit, ix = Math.max(ex.x, best.x), iy = Math.max(ex.y, best.y), ix2 = Math.min(ex.x + ex.w, best.x + W), iy2 = Math.min(ex.y + ex.h, best.y + H);
     return { v: 1, kind, x: best.x, y: best.y, w: W, h: H, hits: best.n, total: H2.length, grid,
       starts: m.starts.map((p, i) => inR(p.x, p.y) ? [p.x - best.x, p.y - best.y, i] : null).filter(Boolean),
-      exit: ix2 > ix && iy2 > iy ? [ix - best.x, iy - best.y, ix2 - ix, iy2 - iy] : null, pts, mw: m.w, mh: m.h };
+      exit: ix2 > ix && iy2 > iy ? [ix - best.x, iy - best.y, ix2 - ix, iy2 - iy] : null, pts, mw: m.w, mh: m.h,
+      ...(m.breakables ? { brk: m.breakables.filter(k => inR(k.c * T + 1, k.r * T + 1)).slice(0, 48).map(k => [k.c - c0, k.r - r0]) } : {}),
+      ...(m.movers ? { mov: m.movers.map(mv => { const p = moverPos(mv, 0); return [p.x - best.x, p.y - best.y, mv.w * T, mv.h * T]; }).filter(q => q[0] < W && q[1] < H && q[0] + q[2] > 0 && q[1] + q[3] > 0) } : {}) };
   }
   function drawPreview(cv, pv) { // pv → 캔버스 (벽 / S / E / 충돌 점 + 구석에 전체 맵 속 위치)
     const ctx = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, k = Math.min(Wc / pv.w, Hc / pv.h);
@@ -162,7 +277,9 @@
     ctx.save(); ctx.translate((Wc - pv.w * k) / 2, (Hc - pv.h * k) / 2); ctx.scale(k, k);
     ctx.fillStyle = '#3a4058'; ctx.fillRect(0, 0, pv.w, pv.h);
     if (pv.exit) { ctx.fillStyle = 'rgba(90,220,140,.45)'; ctx.fillRect(pv.exit[0], pv.exit[1], pv.exit[2], pv.exit[3]); }
-    ctx.fillStyle = '#9aa3bd'; (pv.grid || []).forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] === '#') ctx.fillRect(c * TILE, r * TILE, TILE, TILE); });
+    (pv.grid || []).forEach((row, r) => { for (let c = 0; c < row.length; c++) { const ch = row[c]; if (ch === '#') { ctx.fillStyle = '#9aa3bd'; ctx.fillRect(c * TILE, r * TILE, TILE, TILE); } else if (ch !== '.') drawSpecial(ctx, c * TILE, r * TILE, ch, 0); } });
+    ctx.fillStyle = '#a8885e'; for (const k of pv.brk || []) ctx.fillRect(k[0] * TILE + 2, k[1] * TILE + 2, TILE - 4, TILE - 4);
+    ctx.fillStyle = 'rgba(255,196,40,.8)'; for (const q of pv.mov || []) ctx.fillRect(q[0], q[1], q[2], q[3]);
     for (const p of pv.pts || []) { ctx.fillStyle = p[2] ? 'rgba(255,207,74,.85)' : 'rgba(255,90,90,.85)'; ctx.beginPath(); ctx.arc(p[0], p[1], 6, 0, Math.PI * 2); ctx.fill(); }
     ctx.font = 'bold 26px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (pv.exit) { ctx.fillStyle = '#c8ffd9'; ctx.fillText('E', pv.exit[0] + pv.exit[2] / 2, pv.exit[1] + pv.exit[3] / 2); }
@@ -188,16 +305,32 @@
   }
   if (typeof STAGE_HOOKS !== 'undefined') STAGE_HOOKS.push({
     match: () => false, // 스테이지 썸네일용 (탈출맵은 스테이지가 아님)
-    step(b, dt) { if (b.escape) escStep(b, dt); },
+    step(b, dt) { if (b.escape) { escWorld(b, dt); escStep(b, dt); } },
     drawUnder(ctx, b) {
       if (!b.escape) return; const m = b.escape.map, T = floorTile();
       if (T) { ctx.fillStyle = ctx.createPattern(T, 'repeat'); } else ctx.fillStyle = '#2b2f3f';
       ctx.fillRect(0, 0, m.w, m.h);
       ctx.strokeStyle = '#5a6080'; ctx.lineWidth = 4; ctx.strokeRect(-2, -2, m.w + 4, m.h + 4);
+      for (const [c, r, ch] of b.escape.special || []) drawSpecial(ctx, c * TILE, r * TILE, ch, b.time);
       m.starts.forEach((s, i) => { ctx.strokeStyle = i ? 'rgba(255,140,140,.6)' : 'rgba(140,180,255,.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(s.x, s.y, 14, 6, 0, 0, Math.PI * 2); ctx.stroke(); });
       drawExit(ctx, b);
+    },
+    drawOver(ctx, b) { // 물속 산소 막대 (산소가 줄었을 때만)
+      if (!b.escape) return;
+      for (const u of b.u) if (u.esO2 != null && !u.dead) { const k = u.esO2 / WATER.o2, x = u.x - 14, y = u.y - 58; ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x - 1, y - 1, 30, 5); ctx.fillStyle = k > 0 ? '#7fd4ff' : '#ff6a6a'; ctx.fillRect(x, y, 28 * Math.max(k, k > 0 ? 0.04 : 1), 3); }
     }
   });
+  function drawSpecial(ctx, x, y, ch, t) { // 물 / 일방통행 칸 (실행 화면·편집기 공용)
+    if (ch === '~') {
+      ctx.fillStyle = '#1f5f9a'; ctx.fillRect(x, y, TILE, TILE); ctx.strokeStyle = 'rgba(180,225,255,.45)'; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let k = 0; k < 2; k++) { const yy = y + 12 + k * 16, ph = (t || 0) * 2 + x * 0.05 + k; ctx.moveTo(x + 4, yy + Math.sin(ph) * 2); ctx.quadraticCurveTo(x + 20, yy - 4 + Math.sin(ph) * 2, x + 36, yy + Math.sin(ph) * 2); }
+      ctx.stroke(); return;
+    }
+    const D = ONEWAY[ch]; if (!D) return;
+    ctx.fillStyle = 'rgba(120,90,200,.35)'; ctx.fillRect(x, y, TILE, TILE); ctx.strokeStyle = 'rgba(190,160,255,.5)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+    ctx.save(); ctx.translate(x + TILE / 2, y + TILE / 2); ctx.rotate(Math.atan2(D[1], D[0])); ctx.fillStyle = 'rgba(225,210,255,.9)';
+    ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-2, -10); ctx.lineTo(-2, -4); ctx.lineTo(-12, -4); ctx.lineTo(-12, 4); ctx.lineTo(-2, 4); ctx.lineTo(-2, 10); ctx.closePath(); ctx.fill(); ctx.restore();
+  }
 
   // 카메라: 'fit' 두 캐릭터가 모두 보이게 거리 따라 줌 / 'p0' 'p1' 해당 캐릭터 추적. 결과 b.cam = {x, y, k} (월드 좌상단, 배율)
   function updateCam(b, mode, dt, view) {
@@ -243,5 +376,5 @@
     return normalize({ name: '샘플 탈출맵', w: 720, h: 1280, grid: g.map(a => a.join('')), starts: [{ x: 140, y: 1180 }, { x: 580, y: 1180 }], exit: { x: 280, y: 40, w: 160, h: 120 }, chars: [], seed: 1, timeLimit: DEF_TIME, rules: {} });
   }
 
-  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng, preview, drawPreview };
+  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng, preview, drawPreview, moverPos, drawSpecial, WATER, ONEWAY, ONEWAY_ALIGN, ONEWAY_SPD, LIM };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -78,6 +78,28 @@ const results = []; const ok = (name, cond, info) => { if (process.env.V) consol
   r = await call('POST', '/maps', { map: forged, title: '가짜 미리보기', preview: { x: 1 } }, { ip: '10.9.9.9' });
   if (r.s === 201) { const pf = r.j.entry.preview, lf = game.ESCAPE.runHeadless(mapWith({ seed: 9 })).preview; ok('보낸 미리보기 무시 → 서버 계산값', JSON.stringify(pf) === JSON.stringify(lf) && pf.kind !== 'fake', { pf, lf }); }
   else ok('보낸 미리보기 무시 → 서버 계산값 (시드 9 클리어 불가라 확인 불가)', false, r.j);
+  // 특수 요소 (물·일방통행·파괴벽·움직이는 벽)
+  const featMap = (o = {}) => { const m = game.ESCAPE.sampleMap(); m.chars = ['swordsman', 'assassin']; const g = m.grid.map(x => x.split(''));
+    for (let c = 9; c <= 14; c++) g[21][c] = '^'; for (let rr = 24; rr <= 26; rr++) for (let c = 0; c <= 4; c++) g[rr][c] = '~';
+    m.grid = g.map(x => x.join('')); m.seed = 1;
+    m.breakables = [{ c: 4, r: 10, n: 2, m: 'hits' }, { c: 5, r: 10, n: 25, m: 'hp' }];
+    m.movers = [{ path: [[0, 16], [1, 16], [2, 16], [3, 16], [4, 16], [5, 16], [6, 16]], w: 2, h: 1, at: 0, speed: 80, mode: 'pingpong' }];
+    return Object.assign(game.ESCAPE.normalize(m), o); };
+  const fm = featMap(), fl = game.ESCAPE.runHeadless(fm);
+  r = await call('POST', '/maps', { map: fm, title: '특수 요소 맵' }, { ip: '20.0.0.1' });
+  ok('특수 요소 맵 올리기 성공 + feat 표시', r.s === 201 && JSON.stringify(r.j.entry.feat) === JSON.stringify(['water', 'oneway', 'break', 'mover']), r.j);
+  if (r.s === 201) { const f = JSON.parse(Buffer.from(M.files[`maps/${r.j.id}.json`].b64, 'base64').toString());
+    ok('특수 요소: 저장된 맵에 breakables·movers 그대로, 서버 재검증 = 로컬 (스텝·도착·미리보기)', JSON.stringify(f.map.breakables) === JSON.stringify(fm.breakables) && JSON.stringify(f.map.movers) === JSON.stringify(fm.movers) && f.verify.steps === fl.steps && JSON.stringify(f.verify.arrived) === JSON.stringify(fl.arrived) && JSON.stringify(f.verify.preview) === JSON.stringify(fl.preview), { v: f.verify.steps, l: fl.steps }); }
+  const rej = async (name, m, re) => { const q = await call('POST', '/maps', { map: m, title: name }, { ip: '20.0.0.2' }); ok('특수 요소 거절: ' + name, q.s === 400 && re.test(q.j.error), q.j); };
+  await rej('파괴벽 내구도 0', featMap({ breakables: [{ c: 4, r: 10, n: 0, m: 'hits' }] }), /내구도/);
+  await rej('파괴벽 모드 이상', featMap({ breakables: [{ c: 4, r: 10, n: 2, m: 'boom' }] }), /파괴벽 형식/);
+  await rej('파괴벽이 벽 칸 위', featMap({ breakables: [{ c: 0, r: 10, n: 2, m: 'hits' }] }), /빈칸/);
+  await rej('경로가 끊김', featMap({ movers: [{ path: [[0, 16], [2, 16]], w: 1, h: 1, at: 0, speed: 80, mode: 'pingpong' }] }), /이어진/);
+  await rej('열린 경로에 순환', featMap({ movers: [{ path: [[0, 16], [1, 16], [2, 16]], w: 1, h: 1, at: 0, speed: 80, mode: 'loop' }] }), /순환/);
+  await rej('움직이는 벽 속도 범위 밖', featMap({ movers: [{ path: [[0, 16], [1, 16]], w: 1, h: 1, at: 0, speed: 5000, mode: 'pingpong' }] }), /속도/);
+  await rej('격자에 모르는 문자', featMap({ grid: fm.grid.map((x, i) => i === 5 ? 'x' + x.slice(1) : x) }), /격자/);
+  await rej('시작 지점이 파괴벽 위', featMap({ breakables: [{ c: 3, r: 29, n: 2, m: 'hits' }] }), /파괴벽 위/);
+  { const big = featMap({ breakables: Array.from({ length: 1501 }, (_, i) => ({ c: i % 18, r: i, n: 1, m: 'hits' })) }); const q = await call('POST', '/maps', { map: big, title: '파괴벽 너무 많음' }, { ip: '20.0.0.3' }); ok('특수 요소 거절: 파괴벽 개수 상한', q.s === 400 || q.s === 413, q.s); }
   // sha 충돌 → 다시 읽어 재시도
   await fetch(`http://127.0.0.1:${MP}/_conflictNext?path=index.json`); const c0 = M.stats().conflicts;
   r = await call('POST', '/maps', { map: mapWith({ seed: 8 }), title: '충돌 재시도' }, { ip: '10.0.0.1' });

@@ -34,6 +34,7 @@ function readBody(req) {
   });
 }
 const ready = () => { if (!C.GITHUB_TOKEN || !C.GITHUB_REPO) throw err(503, '서버 설정이 끝나지 않았어요 (GITHUB_TOKEN/GITHUB_REPO)', 'not_configured'); };
+const feats = n => [n.grid.some(r => r.includes('~')) && 'water', n.grid.some(r => /[\^v<>]/.test(r)) && 'oneway', n.breakables && 'break', n.movers && 'mover'].filter(Boolean); // 목록 카드 표시용
 const DEF = { index: () => ({ v: 1, updated: null, maps: [] }), reports: () => ({ v: 1, maps: {} }), review: () => ({ v: 1, maps: [] }), hidden: () => ({ v: 1, maps: [] }) };
 const ID_RE = /^[a-z0-9]{6,24}$/;
 const newId = () => Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
@@ -53,7 +54,7 @@ async function upload(req, res) {
   if (!v.ok) throw err(v.timeout ? 422 : 500, v.timeout ? '재검증이 너무 오래 걸려요 (제한 시간을 줄여 주세요)' : '재검증 오류: ' + v.error, v.timeout ? 'verify_timeout' : 'verify_error');
   if (!v.r.clear) throw err(422, `서버 재검증에서 출구에 도착하지 못했어요 (${v.r.result})`, 'not_clear');
   const id = newId(), created = now();
-  const entry = { id, title: T.title, author: T.author, created, w: n.w, h: n.h, chars: n.chars, mode: n.rules.type, goal: n.rules.goal, timeLimit: n.timeLimit, seed: n.seed, walls, clearTime: v.r.arrived[0] ? v.r.arrived[0].t : v.r.time, hash, preview: v.r.preview || null, stats: {} }; // preview: 서버 재검증에서 다시 계산한 값만 씀 (클라이언트 값 무시) // stats: 나중에 이용수/평가용
+  const entry = { id, title: T.title, author: T.author, created, w: n.w, h: n.h, chars: n.chars, mode: n.rules.type, goal: n.rules.goal, timeLimit: n.timeLimit, seed: n.seed, walls, clearTime: v.r.arrived[0] ? v.r.arrived[0].t : v.r.time, hash, preview: v.r.preview || null, ...(feats(n).length ? { feat: feats(n) } : {}), stats: {} }; // preview: 서버 재검증에서 다시 계산한 값만 씀 (클라이언트 값 무시) // stats: 나중에 이용수/평가용
   await GH.queue(async () => {
     if (await dup()) throw err(409, '이미 올라온 맵과 똑같아요', 'duplicate'); // 큐 안에서 다시 확인 (동시 올리기)
     await GH.mutate(`maps/${id}.json`, () => ({ id, title: T.title, author: T.author, desc: T.desc, created, hash, verify: { clear: true, time: v.r.time, steps: v.r.steps, arrived: v.r.arrived, preview: v.r.preview || null }, map: n }), `map: ${id} ${T.title}`, null);
