@@ -65,7 +65,7 @@
 
   function choose(c) {
     pick[active] = c;
-    if (active === 0 && !pick[1]) active = 1;
+    if (active === 0 && (!pick[1] || escPick)) active = 1; // 탈출맵 선택 중: P1 고르면 바로 P2 차례
     refresh();
   }
   // 속성/전달/관통 태그

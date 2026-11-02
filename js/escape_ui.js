@@ -48,7 +48,16 @@
   $('#rpLoad').after(ent);
   ent.onclick = () => open();
 
-  const cv = $('#escCv'), cx = cv.getContext('2d'), msg = t => { $('#escMsg').textContent = t; };
+  const cv = $('#escCv'), cx = cv.getContext('2d'), msg = t => { const e = $('#escMsg'); e.textContent = t; if (e.scrollIntoView) e.scrollIntoView({ block: 'nearest' }); };
+  // 실행 전 조건 검사: 실패 이유를 화면에 표시 (조용히 return 하지 않음)
+  function why(m) {
+    const bad = m.chars.filter(id => !CHARACTERS.some(c => c.id === id));
+    if (bad.length) return `캐릭터를 찾을 수 없어요 (${bad.join(', ')}) — 👥 캐릭터 선택으로 다시 골라 주세요`;
+    const inW = (x, y) => m.walls.some(w => x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h);
+    for (let i = 0; i < 2; i++) { const s = m.starts[i]; if (!s || s.x < 0 || s.y < 0 || s.x > m.w || s.y > m.h) return `P${i + 1} 시작 지점을 맵 안에 먼저 놓아 주세요`; if (inW(s.x, s.y)) return `P${i + 1} 시작 지점이 벽 안에 있어요 — 다른 곳에 놓아 주세요`; }
+    const X = m.exit; if (!X || X.x < 0 || X.y < 0 || X.x + X.w > m.w || X.y + X.h > m.h) return '출구를 맵 안에 먼저 놓아 주세요';
+    return '';
+  }
   function resize() { sc = Math.min(336 / map.w, 300 / map.h); cv.width = Math.round(map.w * sc); cv.height = Math.round(map.h * sc); }
   function toUI() {
     $('#escName').value = map.name; $('#escSize').value = map.w + 'x' + map.h;
@@ -93,7 +102,7 @@
   $('#escSample').onclick = () => { map = ESCAPE.sampleMap(); toUI(); fromUI(); };
   $('#escClose').onclick = () => { P.classList.add('hidden'); window.leaveEscape && leaveEscape(); $('#select').classList.remove('hidden'); };
   $('#escCheck').onclick = () => {
-    const m = fromUI(); msg('검사 중…');
+    const m = fromUI(), w = why(m); if (w) return msg('⚠ ' + w); msg('검사 중…');
     setTimeout(() => {
       try {
         const pc = ESCAPE.pathCheck(m);
@@ -104,13 +113,26 @@
       } catch (err) { msg('검사 오류: ' + err.message); }
     }, 20);
   };
-  $('#escPick').onclick = () => { fromUI(); P.classList.add('hidden'); window.pickForEscape(map.chars.slice(), ids => { if (ids) { map.chars = ids; fromUI(); } P.classList.remove('hidden'); toUI(); }); };
-  $('#escRun').onclick = () => { const m = fromUI(); P.classList.add('hidden'); if (!window.startEscape(m)) P.classList.remove('hidden'); };
+  $('#escPick').onclick = () => {
+    try {
+      if (typeof window.pickForEscape !== 'function') return msg('⚠ 게임 스크립트가 아직 준비되지 않았어요. 새로고침(Ctrl+F5) 후 다시 시도해 주세요');
+      fromUI(); P.classList.add('hidden');
+      window.pickForEscape(map.chars.slice(), ids => { if (ids) { map.chars = ids; fromUI(); } P.classList.remove('hidden'); toUI(); if (ids) msg('캐릭터 변경: ' + $('#escChars').textContent); });
+    } catch (err) { console.error(err); P.classList.remove('hidden'); msg('⚠ 캐릭터 선택 오류: ' + err.message); }
+  };
+  $('#escRun').onclick = () => {
+    try {
+      const m = fromUI(), w = why(m); if (w) return msg('⚠ ' + w);
+      if (typeof window.startEscape !== 'function') return msg('⚠ 게임 스크립트가 아직 준비되지 않았어요. 새로고침(Ctrl+F5) 후 다시 시도해 주세요');
+      P.classList.add('hidden');
+      if (!window.startEscape(m)) { P.classList.remove('hidden'); msg('⚠ 탈출을 시작하지 못했어요 (캐릭터를 다시 골라 주세요)'); }
+    } catch (err) { console.error(err); P.classList.remove('hidden'); $('#select').classList.add('hidden'); msg('⚠ 실행 오류: ' + err.message); }
+  };
   const store = () => { try { return JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) { return {}; } };
   function list() { const S = store(); $('#escList').innerHTML = Object.keys(S).map(k => `<option>${k.replace(/</g, '&lt;')}</option>`).join('') || '<option value="">(저장 없음)</option>'; }
   $('#escSave').onclick = () => { const m = fromUI(), S = store(); S[m.name] = m; try { localStorage.setItem(LS, JSON.stringify(S)); msg('저장됨: ' + m.name); } catch (e) { msg('저장 실패: ' + e.message); } list(); };
   $('#escLoad').onclick = () => { const S = store(), k = $('#escList').value; if (!S[k]) return; map = ESCAPE.normalize(S[k]); toUI(); fromUI(); msg('불러옴: ' + k); };
-  $('#escDel').onclick = () => { const S = store(), k = $('#escList').value; if (!S[k]) return; delete S[k]; localStorage.setItem(LS, JSON.stringify(S)); list(); };
+  $('#escDel').onclick = () => { const S = store(), k = $('#escList').value; if (!S[k]) return; delete S[k]; try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { msg('삭제 실패: ' + e.message); } list(); };
   $('#escExp').onclick = () => { const m = fromUI(), a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(m, null, 1)], { type: 'application/json' })); a.download = (m.name || 'escape').replace(/[\\/:*?"<>|]/g, '_') + '.psescape.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
   $('#escImp').onclick = () => $('#escFile').click();
   $('#escFile').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { map = ESCAPE.normalize(t); toUI(); fromUI(); msg('가져옴: ' + map.name); }).catch(err => msg('가져오기 실패: ' + err.message)); e.target.value = ''; };
