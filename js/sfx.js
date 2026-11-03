@@ -57,6 +57,7 @@ const Sfx = (() => {
     reinhardt: { basic: ['c_rh_hammer'], rCharge: ['c_rh_cstart'], charging: ['c_rh_cloop'], chargeImpact: ['c_rh_cbang'], fireStrike: ['c_rh_fire'] },
     evelyn: { basic: ['c_ev_kick'], garrote: ['c_ev_garrote'], wireSnatch: ['c_ev_wire'], burst: ['c_ev_boom'] },
     kidomusha: { basic: ['c_kd_blade'], ghostHit: ['c_kd_ghost1', 'c_kd_ghost2', 'c_kd_ghost3', 'c_kd_ghost4'], oni: ['c_kd_oni'], spirit: ['c_kd_spirit'] },
+    duck: { quack: ['c_dk_quack'], peckHit: ['c_dk_peck'], flap: ['c_dk_flap'] }, // 꽥꽥!·쪼기(쪼기 시작 순간)·푸드덕!
     mystic: { mysticBall: ['c_my_ball'], controlWall: ['c_my_ctlwall'], positioning: ['c_my_posset'], posReturn: ['c_my_posret'], accelerate: ['c_my_accel'], replace: ['c_my_replace'], seal: ['c_my_seal'] },
   };
   const CSTAT = { poison: ['c_st_poison1', 'c_st_poison2'], paralysis: ['c_st_para'], petrify: ['c_st_petri1', 'c_st_petri2'], heal: ['c_st_heal'] }; // 상태이상 (캐릭터 공통)

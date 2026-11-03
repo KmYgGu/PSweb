@@ -509,7 +509,7 @@ const CHARACTERS = [
     skills: [
       { id: 'mysticBall', name: '미스틱 볼', cd: 5.5, out: 0.75, spd: 260, backSpd: 300, control: 2.0, wallMult: 2.0, wallCd: 0.4, element: 'dark', delivery: 'ranged' },
       { id: 'positioning', name: '포지셔닝', cd: 9, delay: 3.0 },
-      { id: 'accelerate', name: '액셀러레이트', cd: 7, spd: 900, spread: 0.75, bounces: 6, life: 3, mult: 0.35, dotDur: 2, dotPow: 4, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
+      { id: 'accelerate', name: '액셀러레이트', cd: 7, spd: 900, spread: 0.75, bounces: 6, life: 3, mult: 0.35, confDur: 2, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
     ],
     // 패시브 (js/mystic.js): 리플레이스(피격 시 20%·내부 쿨 4초 위치 교환 + 해로운 상태 넘기기), 리스트레인트(적중 시 20% 봉인 2초)
     passives: { replace: { chance: 0.2, icd: 4 }, restraint: { chance: 0.2, dur: 2 } },

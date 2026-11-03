@@ -73,7 +73,7 @@
 
   // ---------- 신비술사: 액셀러레이트 ----------
   SKILLS.accelerate = {
-    desc: '서로 다른 3방향으로 매우 빠른 마법구를 던집니다. 마법구는 벽·장애물에 튕기고 (3번째 충돌에서 소멸), 마법구끼리 부딪히면 함께 소멸. 상대를 관통하며 지나갈 때마다 피해 + 독(도트), 적중할 때마다 신비술사의 다른 스킬 쿨타임 감소.',
+    desc: '서로 다른 3방향으로 매우 빠른 마법구를 던집니다. 마법구는 벽·장애물에 튕기고 (3번째 충돌에서 소멸), 마법구끼리 부딪히면 함께 소멸. 상대를 관통하며 지나갈 때마다 피해 + 혼란, 적중할 때마다 신비술사의 다른 스킬 쿨타임 감소.',
     canUse: (u, e, d) => !e.dead && d < 260,
     use(u, e, b, slot) {
       const a0 = Math.atan2(e.y - u.y, e.x - u.x), sp = slot.spread || 0.75;
@@ -105,7 +105,7 @@
         const inR = !f.airborne && Math.hypot(f.x - o.x, f.y - o.y) < 12 + f.pad;
         if (inR && !o.inside.has(f)) {
           o.inside.add(f);
-          const dmg = b.damage(u, f, u.st.atk * (S.mult || 0.35), { element: S.element || 'dark', delivery: 'ranged', viaProj: true, color: '#e0b0ff', applies: [{ status: 'poison', duration: S.dotDur || 2, chance: 1, power: S.dotPow || 4 }] });
+          const dmg = b.damage(u, f, u.st.atk * (S.mult || 0.35), { element: S.element || 'dark', delivery: 'ranged', viaProj: true, color: '#e0b0ff', applies: [{ status: 'confusion', duration: S.confDur || 2, chance: 1 }] }); // 혼란 (기존 혼란 상태 그대로, 2초)
           b.sparks(f.x, f.y - 18, '#d890ff', 8, 150);
           if (dmg > 0) for (let k = 0; k < u.skills.length; k++) if (u.skills[k].id !== 'accelerate') u.skillT[k] = Math.max(0, u.skillT[k] - (S.cdCut || 0.8));
           if (dmg > 0) b.text(u.x, u.y - 70, '쿨타임 -' + (S.cdCut || 0.8) + '초', '#e0c8ff', 8);

@@ -19,7 +19,7 @@
     canUse: (u, e, d) => d > 20 && d < 170 && !e.airborne,
     use(u, e, b, slot) {
       b.chase(u, e, 720, 0.4, () => {
-        pose(u, 'peck', (slot.hits || 5) * (slot.gap || 0.08) + 0.2);
+        pose(u, 'peck', (slot.hits || 5) * (slot.gap || 0.08) + 0.2); charSfx(u, 'peckHit'); // 쪼기 소리 (닿아서 쪼기 시작)
         if (slot.dispel) { const gone = b.dispel(u, e); if (gone.length) { b.hooks.onSystem && b.hooks.onSystem(`쪼기: ${e.def.name}의 ${gone.join(', ')} 해제!`); b.text(e.x, e.y - 66, '해제!', '#ffe080', 11); } }
         for (let i = 0; i < (slot.hits || 5); i++) b.later(i * (slot.gap || 0.08), () => {
           if (e.dead || u.dead) return;
