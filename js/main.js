@@ -364,7 +364,7 @@
     open(rec, o = {}) {
       const a = CHARACTERS.find(c => c.id === rec.a), b = CHARACTERS.find(c => c.id === rec.b);
       if (!a || !b || !STAGE_DEFS[rec.stage]) { toast('이 리플레이의 캐릭터/스테이지를 찾을 수 없어요'); return false; }
-      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; Sfx.toggle(false); }
+      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; } // 리플레이도 소리 재생 (예전: 여기서 Sfx.toggle(false)로 꺼서 무음이었음)
       this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; // 모드 없는 옛 리플레이 = A
       this.range = rec.range ? rec.range.slice() : [0, rec.dur]; this.A = this.B = null; this.stopAt = null; this.warned = false; $('#rpWarn').textContent = rec.build !== BUILD ? '다른 버전에서 저장됨' : '';
       $('#select').classList.add('hidden'); $('#speed').classList.add('hidden');
@@ -377,7 +377,7 @@
       if (VID.active) VID.stop(true); Sfx.stopChar(); // 리플레이 닫기
       this.pause(); this.on = false; this.banner = 0; $('#rpBanner').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop', '#rpSave'].forEach(s => $(s).classList.add('hidden')); $('#speed').classList.remove('hidden');
-      const L = this.live; rng = null; Sfx.toggle(L ? L.sfx : true);
+      const L = this.live; rng = null; // 소리 설정은 리플레이가 바꾸지 않으므로 복원 불필요 (리플레이 중 소리 버튼으로 바꾼 값 유지)
       pick[0] = L.pick[0]; pick[1] = L.pick[1]; stageId = L.stageId; battleMode = L.mode || 'A'; fullLog = L.fullLog;
       if (L.battle && !L.select) { battle = L.battle; window.__battle = battle; $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden'); buildHud(); updateHud(9); updateHud(9); $('#log').innerHTML = L.log; $('#stageName').textContent = L.stg; if (L.result) $('#result').classList.remove('hidden'); }
       else { battle = null; $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); $('#result').classList.add('hidden'); $('#select').classList.remove('hidden'); refresh(); }
@@ -398,13 +398,15 @@
       updateHud(9); updateHud(9); this.ui();
     },
     play(v) { if (v && battle.time >= (this.stopAt || this.range[1]) - 0.01) this.seek(this.range[0]); this.playing = v; $('#rpPlay').textContent = v ? '❚❚' : '▶'; },
-    pause() { this.playing = false; const b = $('#rpPlay'); if (b) b.textContent = '▶'; },
+    pause() { if (this.playing) Sfx.stopChar(); this.playing = false; // 일시정지: 재생 중 캐릭터 소리 정지
+      const b = $('#rpPlay'); if (b) b.textContent = '▶'; },
     frame(dt) {
       if (this.banner > 0) { this.banner -= dt; if (this.banner <= 0) { $('#rpBanner').classList.add('hidden'); this.play(true); } }
       else if (this.playing && !this.drag) {
         const end = this.stopAt != null ? this.stopAt : this.range[1];
         this.acc += dt * this.spd; let n = 0;
-        while (this.acc >= STEP && n < 400) { if (battle.time >= end - 1e-9) { this.pause(); if (this.stopAt != null) { this.stopAt = null; toast('하이라이트 끝 — ★로 다시 보기'); } break; } this.step1(); this.acc -= STEP; n++; }
+        const mute = this.spd > 2 || this.acc > STEP * 8; if (mute) Sfx.hold(true); // 고배속(×2 초과)·밀린 프레임 몰아 돌리기: 소리 폭주 방지
+        try { while (this.acc >= STEP && n < 400) { if (battle.time >= end - 1e-9) { this.pause(); if (this.stopAt != null) { this.stopAt = null; toast('하이라이트 끝 — ★로 다시 보기'); } break; } this.step1(); this.acc -= STEP; n++; } } finally { if (mute) Sfx.hold(false); }
         battle.updateVisual(dt * this.spd);
       }
       updateHud(dt * (this.playing ? this.spd : 1)); this.ui();
@@ -540,7 +542,8 @@
       if (!RP.playing && RP.banner <= 0 && battle.time >= A.e - 0.02) this.stop(false);
     },
     async start(kind) {
-      if (this.active) return; const R = RP.rec; $('#rpSave').classList.add('hidden');
+      if (this.active) return; if (this.wantAudio()) Sfx.prime(); // 클릭(제스처) 안에서 오디오 시작 — 모바일은 await 뒤에 만들면 멈춘 상태라 무음 녹화
+      const R = RP.rec; $('#rpSave').classList.add('hidden');
       if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { toast('이 브라우저는 동영상 녹화를 지원하지 않아요'); return; }
       const ck = await this.check();
       if (ck.miss.length || ck.stale.length) { const go = await this.ask(ck); if (!go) return; }

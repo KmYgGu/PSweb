@@ -208,7 +208,7 @@ const Sfx = (() => {
     P = 1; V = 1;
   }
 
-  const unlock = () => { if (on) ac(); };
+  const unlock = () => ac(); // 사용자 제스처마다 오디오 시작/재개 (소리 끔·리플레이 중에도 — 녹화 오디오가 멈춘 컨텍스트로 무음 저장되는 것 방지, 소리 자체는 on 일 때만 남)
   ['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, unlock, { passive: true }));
 
   return {
@@ -219,7 +219,7 @@ const Sfx = (() => {
     get enabled() { return on; },
     volume(v) { if (typeof v === 'number') { vol = Math.max(0, Math.min(1, v)); if (master) master.gain.value = vol; } return vol; },
     get loaded() { return bufs.size; },
-    recStart, recStop, hold(v) { hold = !!v; }, // 녹화용 오디오 스트림 / 빨리감기 중 소리 막기
+    recStart, recStop, hold(v) { hold = !!v; }, prime() { return !!ac(); }, // prime: 녹화 버튼 클릭(제스처) 안에서 오디오 컨텍스트 시작/재개 // 녹화용 오디오 스트림 / 빨리감기 중 소리 막기
   };
 })();
 window.Sfx = Sfx;
