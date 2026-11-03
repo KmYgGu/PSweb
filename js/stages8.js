@@ -17,30 +17,43 @@
     name: '바베큐 불판', theme: 'bbq',
     desc: '뜨거운 숯불 불판! 고기 밖에선 열기 게이지가 차고(가득 차면 화상·혼란·깡충), 고기 위에선 식음. 고기는 위에 선 캐릭터가 많을수록 빨리 익음 — 아랫면이 익으면 거대한 손이 뒤집어 위의 캐릭터를 날려 기절, 양면이 다 익으면 손이 집어 가서 위에 있던 캐릭터는 먹힘(즉시 패배)!',
     spawns: [{ x: 180, y: 190 }, { x: 180, y: 470 }],
-    // meats: 고정 위치(겹치지 않음), cook: 초당 익힘 { base, per(위의 캐릭터 1명당) }, warn: 예고 { flip, pick }, notice: 집기 예고를 AI가 알아채고 피할 확률, grab: 집기 판정 배율(손바닥 범위), respawn: [최소, 최대]초
+    // meats: 고정 위치(겹치지 않음), cook: 초당 익힘 { base, per(위의 캐릭터 1명당) }, warn: 예고 { flip, pick }, notice: 집기 예고를 AI가 알아채고 피할 확률, grab: 집기 판정 배율(손바닥 범위), re: 재배치(relocate 참고), respawn: [최소, 최대]초
     // heat: { gain(고기 밖 초당), cool(고기 위 초당), reset, cd, dmg(최대 체력 비율), conf(혼란 초), hops, seek(AI가 고기로 피하는 열기) }
     bbq: { meats: [{ x: 92, y: 218 }, { x: 268, y: 218 }, { x: 180, y: 330 }, { x: 92, y: 442 }, { x: 268, y: 442 }], rx: 40, ry: 27,
-      cook: { base: 0.06, per: 0.25 }, notice: 0.25, grab: 1.3, warn: { flip: 0.6, pick: 0.8 }, respawn: [4, 5], flip: { stun: [1.0, 1.5], h: 48, dur: 0.7 },
+      cook: { base: 0.06, per: 0.25 }, notice: 0.25, grab: 1.3, re: { edge: 14, edgeTop: 30, gap: 1.2, prev: 1.5, unit: 22, tries: 40 }, warn: { flip: 0.6, pick: 0.8 }, respawn: [4, 5], flip: { stun: [1.0, 1.5], h: 48, dur: 0.7 },
       heat: { gain: [10, 12], cool: 6, reset: 40, cd: 2.0, dmg: [0.06, 0.08], conf: 2.5, hops: [3, 4], seek: 45 } }
   };
   STAGE_DEFS.classroom = {
     name: '수업 중의 교실', theme: 'classroom',
     desc: '수업 중 몰래 싸우기! 선생님이 칠판을 보다가 돌아보면(살짝 돌아가는 예고) 싸우던 캐릭터는 그 자리에 멈춰 선생님을 봐야 함. 공중에 떠 있거나 해로운 상태이상·돌진 등 동작 중이라 못 멈추면 들켜서 교탁 옆으로 끌려가 선생님이 다시 칠판을 볼 때까지 아무것도 못 함.',
     spawns: [{ x: 180, y: 270 }, { x: 180, y: 480 }],
-    // top: 이동 영역 시작 y (그 위는 칠판·선생님·학생 구역), board/look/warn: 선생님 주기(초), judge: 완전히 돈 뒤 판정까지, students: [최소, 최대]
-    classroom: { top: 200, board: [4, 7], look: [1.2, 1.8], warn: 0.5, judge: 0.2, students: [3, 6], drag: 0.5, back: 0.5 }
+    // top: 이동 영역 시작 y (그 위는 칠판·선생님·학생 구역), board/look/warn: 선생님 주기(초), judge: 완전히 돈 뒤 판정까지, students: [최소, 최대], side/back: 좌우·아래(교실 뒤) 학생 자리 띠 폭(이동 영역 밖)
+    classroom: { top: 200, board: [4, 7], look: [1.2, 1.8], warn: 0.5, judge: 0.2, students: [4, 8], side: 34, back: 40, drag: 0.5, back: 0.5 }
   };
   STATUS_DEFS.clsFreeze = { name: '얼음!', color: '#bfe4ff', positive: true, blocksMove: true, blocksAct: true, blocksSkill: true, noResistScale: true };
   STATUS_DEFS.clsCaught = { name: '들킴', color: '#ffb0a0', positive: false, blocksMove: true, blocksAct: true, blocksSkill: true, noResistScale: true };
 
   /* =================== 바베큐 불판 =================== */
   const onMeat = (b, m, u, k = 1) => { const C = b.bbq.C; if (m.state === 'gone') return false; const dx = (u.x - m.x) / (C.rx * k), dy = (u.y - m.y) / (C.ry * k); return dx * dx + dy * dy <= 1; };
+  // 재배치: 불판 안 무작위 위치 (다른 고기와 겹치지 않게, 방금 사라진 자리·캐릭터 근처 피함). 후보 수 고정 → 무한 루프 없음
+  // gap: 고기 사이 정규화 거리 ((dx/2rx)²+(dy/2ry)² 의 제곱근, 1 = 맞닿음), 가장자리 여유 edge, 사라진 자리 반경 prev, 캐릭터 여유 unit(px)
+  function relocate(b, D, m) {
+    const C = D.C, RS = C.re, x0 = AR.x + C.rx + RS.edge, x1 = AR.x + AR.w - C.rx - RS.edge, y0 = AR.y + C.ry + RS.edgeTop, y1 = AR.y + AR.h - C.ry - RS.edge;
+    const others = D.meats.filter(o => o !== m && o.state !== 'gone'), us = mains(b).filter(u => !u.dead);
+    const gapTo = (x, y) => others.reduce((g, o) => Math.min(g, Math.hypot((x - o.x) / (2 * C.rx), (y - o.y) / (2 * C.ry))), Infinity);
+    const okAt = (x, y, strict) => gapTo(x, y) >= (strict ? RS.gap : 1.02) && (!strict || (Math.hypot((x - m.x) / (2 * C.rx), (y - m.y) / (2 * C.ry)) >= RS.prev && us.every(u => Math.hypot((u.x - x) / (C.rx + RS.unit), (u.y - y) / (C.ry + RS.unit)) >= 1)));
+    let p = null;
+    for (let i = 0; i < RS.tries && !p; i++) { const x = rand(x0, x1), y = rand(y0, y1); if (okAt(x, y, true)) p = { x, y }; }
+    if (!p) { D.stats.fallback++; for (let i = 0; i < RS.tries && !p; i++) { const x = rand(x0, x1), y = rand(y0, y1); if (okAt(x, y, false)) p = { x, y }; } }
+    if (!p) p = C.meats.find(q => gapTo(q.x, q.y) >= 1.02) || { x: m.x, y: m.y }; // 최후: 비어 있는 기존 고정 구역 → 그래도 없으면 제자리
+    m.x = p.x; m.y = p.y; D.stats.respawns++; const g = gapTo(p.x, p.y); D.stats.minGap = Math.min(D.stats.minGap, g); D.stats.spots.push([Math.round(p.x), Math.round(p.y), +g.toFixed(2)]);
+  }
   const BQ = {
     match: st => !!st.bbq,
     init(b) {
       if (!b.stage.bbq) return;
       const C = b.stage.bbq;
-      b.bbq = { C, meats: C.meats.map((p, i) => ({ i, x: p.x, y: p.y, cook: [0, 0], down: 0, state: 'cook', t: 0, rot: rand(-0.12, 0.12), seed: i * 13 + 5, pop: 0 })), hand: [], stats: { flips: 0, picks: 0, eats: 0, bursts: 0 } };
+      b.bbq = { C, meats: C.meats.map((p, i) => ({ i, x: p.x, y: p.y, cook: [0, 0], down: 0, state: 'cook', t: 0, rot: rand(-0.12, 0.12), seed: i * 13 + 5, pop: 0 })), hand: [], stats: { flips: 0, picks: 0, eats: 0, bursts: 0, respawns: 0, fallback: 0, minGap: Infinity, spots: [] } };
       for (const u of b.u) { u.bbqHeat = 0; u.bbqCd = 0; u.bbqHop = 0; }
     },
     step(b, dt) {
@@ -48,7 +61,7 @@
       const ms = mains(b).filter(u => !u.dead);
       for (const m of D.meats) {
         m.t += dt; m.pop = Math.max(0, m.pop - dt * 3);
-        if (m.state === 'gone') { if (m.t >= m.wait) { m.state = 'cook'; m.t = 0; m.cook = [0, 0]; m.down = 0; m.rot = rand(-0.12, 0.12); m.pop = 1; } continue; }
+        if (m.state === 'gone') { if (m.t >= m.wait) { relocate(b, D, m); m.state = 'cook'; m.t = 0; m.cook = [0, 0]; m.down = 0; m.rot = rand(-0.12, 0.12); m.pop = 1; } continue; }
         const on = ms.filter(u => !u.airborne && !u.hidden && onMeat(b, m, u));
         if (m.state === 'cook' || m.state === 'flipped') {
           if (m.state === 'flipped' && m.t >= 0.4) { m.state = 'cook'; m.t = 0; }
@@ -180,26 +193,33 @@
   }
 
   /* =================== 수업 중의 교실 =================== */
+  function deskH(ctx, x, y) { ctx.save(); ctx.fillStyle = '#c9a06a'; ctx.fillRect(x - 14, y - 4, 28, 8); ctx.fillStyle = '#8f6a3e'; ctx.fillRect(x - 14, y + 4, 28, 2); ctx.fillRect(x - 12, y + 6, 2, 4); ctx.fillRect(x + 10, y + 6, 2, 4); ctx.restore(); }
+  function deskV(ctx, x, y) { ctx.save(); ctx.fillStyle = '#c9a06a'; ctx.fillRect(x - 4, y - 12, 8, 20); ctx.fillStyle = '#8f6a3e'; ctx.fillRect(x - 4, y + 8, 8, 2); ctx.fillRect(x - 3, y + 10, 2, 3); ctx.fillRect(x + 1, y + 10, 2, 3); ctx.restore(); }
   function drawBack(ctx, def, s) { // 뒷모습 (sprite.back 없으면 머리 부분을 머리색으로 덮음, 아이돌 무대와 같은 방식)
     if (s.back) { Sprites.draw(ctx, s.back, 0, false); return; }
     Sprites.draw(ctx, s, 0, false);
     const hair = (def.sprite && def.sprite.pal && def.sprite.pal.H) || '#555';
     ctx.save(); ctx.beginPath(); ctx.rect(-s.dw / 2, -s.dh + s.foot, s.dw, s.dh * 0.42); ctx.clip(); Sprites.drawTint(ctx, s, 0, hair); ctx.restore();
   }
+  // 학생 자리 (채우는 순서: 좌우 균형 → 뒷줄). row: 'L' 왼쪽 세로 열(오른쪽=교실 가운데를 봄), 'R' 오른쪽 열, 'B' 뒷줄(위를 봄)
+  function seatList(C) {
+    const lx = AR.x + C.side / 2, rx = AR.x + AR.w - C.side / 2, by = AR.y + AR.h - 8;
+    const L = y => ({ x: lx, y, row: 'L' }), Rr = y => ({ x: rx, y, row: 'R' }), B = x => ({ x, y: by, row: 'B' });
+    return [L(282), Rr(282), B(180), L(392), Rr(392), B(96), B(264), L(232), Rr(232)];
+  }
   const CL = {
     match: st => !!st.classroom,
     init(b) {
       if (!b.stage.classroom) return;
       const C = b.stage.classroom;
-      b.play = { x: AR.x, y: C.top, w: AR.w, h: AR.y + AR.h - C.top };
+      b.play = { x: AR.x + C.side, y: C.top, w: AR.w - C.side * 2, h: AR.y + AR.h - C.back - C.top }; // 좌우·뒤쪽 띠는 학생 자리
       const ids = new Set(b.u.map(u => u.def.id));
       for (const u of b.u) if (u.def.partner) ids.add(u.def.partner.id);
       const pool = CHARACTERS.filter(c => !ids.has(c.id) && c.sprite && !c.noDraw);
       const pick = () => pool.splice(Math.floor(rand(0, pool.length - 1e-9)), 1)[0];
       const teacher = pick() || CHARACTERS[0];
       const n = Math.min(pool.length, Math.floor(rand(C.students[0], C.students[1] + 1 - 1e-9)));
-      const slots = [44, 316, 102, 258, 150, 210].slice(0, n).sort((a, c) => a - c);
-      const studs = slots.map((x, i) => ({ def: pick(), x, y: 196, ph: rand(0, TAU) }));
+      const studs = seatList(C).slice(0, n).map(p => ({ def: pick(), x: p.x, y: p.y, row: p.row, ph: rand(0, TAU) }));
       b.cls = { C, teacher, studs, phase: 'board', t: 0, dur: rand(C.board[0], C.board[1]), judged: false, stats: { looks: 0, freezes: 0, caught: 0 } };
       for (const u of b.u) { u.clsSpot = null; }
     },
@@ -256,6 +276,9 @@
       x.save();
       x.fillStyle = '#b98a58'; x.fillRect(AR.x, AR.y, AR.w, AR.h); // 마룻바닥
       for (let yy = top; yy < AR.y + AR.h; yy += 16) { x.fillStyle = 'rgba(80,48,20,0.35)'; x.fillRect(AR.x, yy, AR.w, 1); for (let xx = AR.x + ((yy / 16) % 2) * 40; xx < AR.x + AR.w; xx += 80) x.fillRect(xx, yy, 1, 16); }
+      const Cc = st.classroom; x.fillStyle = 'rgba(70,40,15,0.16)'; x.fillRect(AR.x, top, Cc.side, AR.y + AR.h - top); x.fillRect(AR.x + AR.w - Cc.side, top, Cc.side, AR.y + AR.h - top); x.fillRect(AR.x + Cc.side, AR.y + AR.h - Cc.back, AR.w - Cc.side * 2, Cc.back); // 학생 자리 띠 (살짝 어둡게)
+      x.fillStyle = 'rgba(255,240,200,0.35)'; x.fillRect(AR.x + Cc.side - 1, top, 1, AR.y + AR.h - Cc.back - top); x.fillRect(AR.x + AR.w - Cc.side, top, 1, AR.y + AR.h - Cc.back - top); x.fillRect(AR.x + Cc.side, AR.y + AR.h - Cc.back, AR.w - Cc.side * 2, 1);
+      x.fillStyle = '#7d8c9a'; for (let i = 0; i < 6; i++) { x.fillRect(AR.x + Cc.side + 6 + i * 44, AR.y + AR.h - 5, 38, 5); } // 뒤쪽 벽 사물함
       x.fillStyle = '#d9d2b8'; x.fillRect(AR.x, AR.y, AR.w, top - AR.y - 26); // 벽
       x.fillStyle = '#8a6a44'; x.fillRect(AR.x, top - 30, AR.w, 4);
       x.fillStyle = '#6b4a2a'; x.fillRect(48, AR.y + 6, 264, 46); x.fillStyle = '#2f5a3c'; x.fillRect(52, AR.y + 10, 256, 38); // 칠판
@@ -277,14 +300,16 @@
       ctx.restore();
       ctx.save(); ctx.fillStyle = '#7a5530'; ctx.fillRect(tx - 22, ty - 18, 44, 22); ctx.fillStyle = '#5e3f22'; ctx.fillRect(tx - 22, ty - 18, 44, 4); ctx.restore(); // 교탁
       if (D.phase === 'warn' && !thumb) { ctx.save(); ctx.fillStyle = '#fff'; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(tx + 22, ty - 62, 9, 0, TAU); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#d33'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText('?', tx + 22, ty - 58); ctx.restore(); }
-      // 학생 + 책상 (선생님이 칠판 보면 싸움 구경, 돌아보면 선생님 봄)
+      // 학생 + 책상: 선생님이 칠판 보면 싸움(교실 가운데) 구경, 돌아보면 선생님(위) 쪽. 위를 보면 뒷모습
       for (const s of D.studs) {
-        const sp = Sprites.get(s.def), look = facing, sx = s.x, sy = s.y, bob = T ? Math.max(0, Math.sin(T * 3 + s.ph)) * -1 : 0;
-        ctx.save(); ctx.translate(sx, sy + bob); ctx.scale(0.72, 0.72);
-        if (look) drawBack(ctx, s.def, sp);
-        else { const near = mains(b).filter(u => !u.dead)[0]; ctx.scale(near && near.x < sx ? -1 : 1, 1); Sprites.draw(ctx, sp, 0, false); }
+        const sp = Sprites.get(s.def), sx = s.x, sy = s.y, bob = T && !facing ? Math.max(0, Math.sin(T * 3 + s.ph)) * -1 : 0;
+        const face = s.row === 'L' ? 1 : s.row === 'R' ? -1 : (sx < 180 ? 1 : -1), back = facing || s.row === 'B';
+        ctx.save(); ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(sx, sy, 11, 3.5, 0, 0, TAU); ctx.fill(); ctx.restore();
+        if (s.row === 'B') deskH(ctx, sx, sy - 22); // 뒷줄: 책상이 학생 앞(위쪽)
+        ctx.save(); ctx.translate(sx, sy + bob); ctx.scale(0.62, 0.62); ctx.scale(spriteSX(s.def, back && !!sp.back, face), 1);
+        if (back) drawBack(ctx, s.def, sp); else Sprites.draw(ctx, sp, 0, false);
         ctx.restore();
-        ctx.save(); ctx.fillStyle = '#c9a06a'; ctx.fillRect(sx - 15, sy - 4, 30, 9); ctx.fillStyle = '#8f6a3e'; ctx.fillRect(sx - 15, sy + 5, 30, 2); ctx.fillRect(sx - 13, sy + 7, 2, 4); ctx.fillRect(sx + 11, sy + 7, 2, 4); ctx.restore();
+        if (s.row !== 'B') deskV(ctx, sx + face * 12, sy - 6); // 좌우 열: 세로 책상이 교실 가운데 쪽
       }
     },
     drawTop(ctx, b) {

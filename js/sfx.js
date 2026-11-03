@@ -208,12 +208,37 @@ const Sfx = (() => {
     P = 1; V = 1;
   }
 
+  // 배경음악 (스테이지 전용, 지금은 바베큐 불판만): 무한 반복 AudioBufferSourceNode.loop. 루프 구간은 디코딩된 버퍼의 앞뒤 무음(|x| < 0.001)을 뺀 범위
+  // bgm(tok, cmd): tok = 판(전투 객체)별 토큰, cmd = 'play' | 'pause'(위치 기억, 재개 시 이어서) | 'fade'(1초 페이드아웃 후 정지) | 'stop'
+  const BGM_VOL = 0.4, BGM_FADE = 1.0;
+  const bg = { tok: null, src: null, g: null, off: 0, t0: 0, done: false, bufs: {}, dec: {}, fade: null };
+  function bgmBuf(name) {
+    if (bg.bufs[name] || bg.dec[name] || !(window.BGM_DATA && window.BGM_DATA[name]) || !ctx) return bg.bufs[name] || null;
+    bg.dec[name] = true; const bin = atob(window.BGM_DATA[name]), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    ctx.decodeAudioData(a.buffer, b => { let s = b.length, e = 0; for (let c = 0; c < b.numberOfChannels; c++) { const d = b.getChannelData(c); let i = 0; while (i < d.length && Math.abs(d[i]) < 0.001) i++; let j = d.length - 1; while (j > i && Math.abs(d[j]) < 0.001) j--; s = Math.min(s, i); e = Math.max(e, j + 1); }
+      b.loopA = s / b.sampleRate; b.loopB = Math.max(b.loopA + 0.05, e / b.sampleRate); bg.bufs[name] = b; }, () => {});
+    return null;
+  }
+  function bgmKill() { if (bg.src) { try { bg.src.stop(); } catch (e) { /* 이미 정지 */ } try { bg.g.disconnect(); } catch (e) { /* 무시 */ } } bg.src = null; bg.g = null; }
+  function bgmKillFade() { if (bg.fade) { try { bg.fade.s.stop(); bg.fade.g.disconnect(); } catch (e) { /* 무시 */ } bg.fade = null; } }
+  function bgmPos() { const b = bg.src.buffer, L = b.loopB - b.loopA; return ((ctx.currentTime - bg.t0) % L + L) % L; }
+  function bgm(tok, cmd, name = 'bbq') {
+    if (tok !== bg.tok) { bgmKill(); bgmKillFade(); bg.tok = tok; bg.off = 0; bg.done = false; }
+    if (cmd === 'stop') { bgmKill(); bgmKillFade(); bg.tok = null; bg.off = 0; bg.done = false; return; }
+    if (cmd === 'fade') { if (bg.src && ctx) { const t = ctx.currentTime; bg.g.gain.setValueAtTime(bg.g.gain.value, t); bg.g.gain.linearRampToValueAtTime(0, t + BGM_FADE); try { bg.src.stop(t + BGM_FADE + 0.05); } catch (e) { /* 무시 */ } bgmKillFade(); bg.fade = { s: bg.src, g: bg.g }; bg.src = null; bg.g = null; } bg.done = true; return; }
+    if (cmd !== 'play' || !(on || rec)) { if (bg.src) { bg.off = bgmPos(); bgmKill(); } return; } // 일시정지·소리 끔: 위치 기억
+    if (bg.done || bg.src || !ctx || ctx.state !== 'running') return; // 컨텍스트는 사용자 제스처(unlock)로만 시작
+    const b = bgmBuf(name); if (!b) return;
+    const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = b; s.loop = true; s.loopStart = b.loopA; s.loopEnd = b.loopB;
+    g.gain.value = BGM_VOL; s.connect(g); g.connect(master); s.start(0, b.loopA + bg.off); bg.t0 = ctx.currentTime - bg.off; bg.src = s; bg.g = g;
+  }
   const unlock = () => ac(); // 사용자 제스처마다 오디오 시작/재개 (소리 끔·리플레이 중에도 — 녹화 오디오가 멈춘 컨텍스트로 무음 저장되는 것 방지, 소리 자체는 on 일 때만 남)
   ['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, unlock, { passive: true }));
 
   return {
     play,
     toggle(v) { on = typeof v === 'boolean' ? v : !on; if (!on) stopChar(); return on; },
+    bgm, bgmStop: () => bgm(null, 'stop'), bgmState: () => ({ playing: !!bg.src, fading: !!bg.fade, done: bg.done, pos: bg.src ? bgmPos() : bg.off, loop: bg.src ? [bg.src.buffer.loopA, bg.src.buffer.loopB, bg.src.loop] : null, ctx: ctx && ctx.state }), // 배경음악 (테스트용 상태)
     stopChar, // 캐릭터 효과음만 즉시 정지 (일반 효과음·합성음은 그대로). 호출: js/main.js 판 시작·리플레이 탐색/닫기·나가기
     charPlaying: () => cSrc.size, // 테스트용
     get enabled() { return on; },

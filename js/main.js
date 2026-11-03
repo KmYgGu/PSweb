@@ -189,7 +189,7 @@
   window.startEscape = map => { if (!(pick[0] && pick[1])) return false; const m = ESCAPE.normalize(map); m.chars = [pick[0].id, pick[1].id]; m.rules.type = battleMode; if (escPrevStage == null) escPrevStage = stageId; stageId = 'arena'; startBattle({ escape: m }); return true; };
   window.leaveEscape = () => { escMap = null; if (escPrevStage != null) { stageId = escPrevStage; escPrevStage = null; } };
   function startBattle(opt = {}) {
-    Sfx.stopChar(); // 이전 판 캐릭터 소리 정지 (새 판·다시 하기·리플레이 시작/재시작·탈출맵 시작)
+    Sfx.stopChar(); Sfx.bgmStop(); // 이전 판 캐릭터 소리·배경음 정지 (새 판·다시 하기·리플레이 시작/재시작·탈출맵 시작)
     $('#select').classList.add('hidden'); $('#result').classList.add('hidden');
     $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden');
     $('#log').innerHTML = ''; fullLog = []; $('#fullLog').classList.add('hidden');
@@ -249,7 +249,7 @@
     try { if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback); else fallback(); } catch (e) { fallback(); }
   };
   $('#reselect').onclick = () => {
-    Sfx.stopChar(); // 나가기(캐릭터 선택·탈출맵 화면으로)
+    Sfx.stopChar(); Sfx.bgmStop(); // 나가기(캐릭터 선택·탈출맵 화면으로)
     battle = null; if (escMap) { escMap = null; if (window.ESC_UI) { $('#result').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); ESC_UI.open(); return; } }
     $('#result').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden');
     $('#select').classList.remove('hidden');
@@ -279,6 +279,15 @@
   // ---------- 루프 (고정 스텝) ----------
   const STEP = 1 / 120;
   let last = performance.now(), acc = 0;
+  // 배경음악 상태 맞추기 (매 프레임, 소리 전용 — 전투 상태·난수에 영향 없음). 바베큐 불판만, 탈출맵 제외
+  const bgmTok = new WeakMap(); let bgmN = 0;
+  function bgmSync() {
+    const b = battle;
+    if (!b || b.escape || escMap || b.stageId !== 'bbq' || !$('#select').classList.contains('hidden')) { Sfx.bgm(null, 'stop'); return; }
+    if (!bgmTok.has(b)) bgmTok.set(b, ++bgmN);
+    const cmd = RP.on ? (RP.playing ? 'play' : 'pause') : !$('#result').classList.contains('hidden') ? 'fade' : 'play'; // 리플레이: 재생 중만, 실전: 결과 화면에서 페이드아웃
+    Sfx.bgm(bgmTok.get(b), cmd);
+  }
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (RP.on) RP.frame(dt);
@@ -294,6 +303,7 @@
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0);
     if (VID.active) VID.frame();
+    bgmSync();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
@@ -374,7 +384,7 @@
       return true;
     },
     close() {
-      if (VID.active) VID.stop(true); Sfx.stopChar(); // 리플레이 닫기
+      if (VID.active) VID.stop(true); Sfx.stopChar(); Sfx.bgmStop(); // 리플레이 닫기
       this.pause(); this.on = false; this.banner = 0; $('#rpBanner').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop', '#rpSave'].forEach(s => $(s).classList.add('hidden')); $('#speed').classList.remove('hidden');
       const L = this.live; rng = null; // 소리 설정은 리플레이가 바꾸지 않으므로 복원 불필요 (리플레이 중 소리 버튼으로 바꾼 값 유지)
