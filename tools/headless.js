@@ -1,7 +1,7 @@
 // 게임 코드(index.html 의 스크립트 목록)를 DOM 없이 Node vm 에 올림 — tools/escape_check.js 와 server/ 가 함께 사용
 // 화면 전용 스크립트(main.js, escape_ui.js, escape_net.js, escape_config.js)는 제외. 캔버스·이미지는 아무것도 안 하는 가짜 객체.
 const fs = require('fs'), path = require('path'), vm = require('vm');
-const SKIP = /(^|\/)(main|escape_ui|escape_net|escape_config)\.js$/;
+const SKIP = /(^|\/)(main|escape_ui|escape_net|escape_config|sfxchar)\.js$/; // sfxchar: 캐릭터 효과음 데이터 (소리 전용, 시뮬 무관)
 function loadGame(root = path.join(__dirname, '..')) {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => !SKIP.test(s));

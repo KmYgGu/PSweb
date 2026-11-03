@@ -43,6 +43,33 @@ const Sfx = (() => {
     elec: ['metalLatch', 0.5], light: ['impactGlass_medium_000', 0.35, 1.2], slash: ['drawKnife1', 0.4], blunt: ['impactPlate_light_000', 0.3] };
   const KO_STING = [['impactBell_heavy_002', 0.5, 0.25], ['metalPot2', 0.5, 0.35]];
   const crit_RING = ['impactMetal_light_000', 0.45];
+  // ---- 캐릭터 효과음 (js/sfxchar.js 내장 mp3) ----
+  // CHAR[캐릭터 id][이벤트] = 샘플 이름들 (여럿이면 차례로 번갈아 재생 — 난수 미사용). 이벤트: basic(기본 공격), 스킬 id(시전 순간), 그 밖은 코드의 charSfx 호출 지점
+  const CHAR = {
+    swordsman: { basic: ['c_sw_slash'], dashSlash: ['c_sw_dash'], dashSlashHit: ['c_sw_slash'] },
+    archer: { basic: ['c_ar_shoot'], volley: ['c_ar_shoot'], volleyFly: ['c_ar_fly'], backStep: ['c_ar_sand'] },
+    mage: { teleport: ['c_mg_tele'], meteor: ['c_mg_meteor'] },
+    tank: { basic: ['c_tk_swing'], ironWall: ['c_tk_shield'] },
+    assassin: { basic: ['c_as_dagger'], shadowStrike: ['c_as_shadow1', 'c_as_shadow2'] },
+    lancer: { basic: ['c_ln_thrust'], lanceCharge: ['c_ln_dash'], lanceHit: ['c_ln_thrust'] },
+    priest: { holyLight: ['c_pr_holy'] },
+    berserker: { basic: ['c_bs_swing'], rage: ['c_bs_rage'] },
+    reinhardt: { basic: ['c_rh_hammer'], rCharge: ['c_rh_cstart'], charging: ['c_rh_cloop'], chargeImpact: ['c_rh_cbang'], fireStrike: ['c_rh_fire'] },
+    evelyn: { basic: ['c_ev_kick'], garrote: ['c_ev_garrote'], wireSnatch: ['c_ev_wire'], burst: ['c_ev_boom'] },
+    kidomusha: { basic: ['c_kd_blade'], ghostHit: ['c_kd_ghost1', 'c_kd_ghost2', 'c_kd_ghost3', 'c_kd_ghost4'], oni: ['c_kd_oni'], spirit: ['c_kd_spirit'] },
+    mystic: { mysticBall: ['c_my_ball'], controlWall: ['c_my_ctlwall'], positioning: ['c_my_posset'], posReturn: ['c_my_posret'], accelerate: ['c_my_accel'], replace: ['c_my_replace'], seal: ['c_my_seal'] },
+  };
+  const CSTAT = { poison: ['c_st_poison1', 'c_st_poison2'], paralysis: ['c_st_para'], petrify: ['c_st_petri1', 'c_st_petri2'], heal: ['c_st_heal'] }; // 상태이상 (캐릭터 공통)
+  const C_VOL = 0.8, C_GAP = 90, C_MAX = 6; // 캐릭터 소리 전체 음량, 같은 소리 최소 간격(ms), 동시 재생 상한
+  const cTurn = new Map(); let cVoices = 0;
+  function playChar(list, key) {
+    if (hold || !(on || rec) || !list || !list.length) return;
+    const c = ac(); if (!c) return;
+    const now = performance.now(); if (now - (last.get(key) || 0) < C_GAP || cVoices >= C_MAX) return;
+    const i = cTurn.get(key) || 0, n = list[i % list.length], b = bufs.get(n); if (!b) return;
+    last.set(key, now); cTurn.set(key, i + 1);
+    try { const G = window.SFX_CHAR_GAIN || {}; if (sample(n, C_VOL * (G[n] || 1), 1, 0, 0)) { cVoices++; setTimeout(() => { cVoices = Math.max(0, cVoices - 1); }, Math.min(1200, b.duration * 1000)); } } catch (e) { /* 소리 실패 무시 */ }
+  }
   const bufs = new Map();
   let loading = false;
 
@@ -72,6 +99,7 @@ const Sfx = (() => {
     if (loading) return; loading = true;
     const names = new Set();
     for (const k of ENABLED) if (SAMPLES[k]) SAMPLES[k][0].forEach(n => names.add(n));
+    for (const T of [...Object.values(CHAR), CSTAT]) for (const k in T) T[k].forEach(n => { if (window.SFX_DATA && window.SFX_DATA[n]) names.add(n); }); // 캐릭터 소리는 내장본만
     names.forEach(n => {
       const emb = window.SFX_DATA && window.SFX_DATA[n];
       if (emb) { const bin = atob(emb), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
@@ -145,6 +173,8 @@ const Sfx = (() => {
     try { comp.disconnect(ctx.destination); } catch (e) { /* 무시 */ } comp.connect(ctx.destination); rec = null;
   }
   function play(name, o) {
+    if (name === 'char') return o && CHAR[o.id] ? playChar(CHAR[o.id][o.ev], o.id + ':' + o.ev) : undefined;
+    if (name === 'cstat') return o ? playChar(CSTAT[o.id], 'st:' + o.id) : undefined;
     if (hold || !(on || rec) || !SYN[name] || !ENABLED.has(name)) return;
     const c = ac(); if (!c) return;
     const now = performance.now();

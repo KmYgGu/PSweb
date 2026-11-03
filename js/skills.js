@@ -16,7 +16,7 @@ const SKILLS = {
       b.telegraphLine(u.x, u.y, p.x, p.y, 14, 0.25, '#9fd0ff');
       b.glow(u.x, u.y - 18, 30, '#8fc8ff', 0.3);
       b.windup(u, 0.25, () => b.chase(u, e, 1100, 0.35, () => {
-        b.damage(u, e, u.st.atk * 2.4, { big: true, ...hit(slot) });
+        charSfx(u, 'dashSlashHit'); b.damage(u, e, u.st.atk * 2.4, { big: true, ...hit(slot) });
         const a = Math.atan2(e.y - u.y, e.x - u.x);
         b.crescent(e.x, e.y - 18, 34, a - 0.6, '#bfe0ff', 0.32);
         b.crescent(e.x, e.y - 18, 30, a + 0.9, '#e8f4ff', 0.28, 0.06);
@@ -35,6 +35,7 @@ const SKILLS = {
       b.telegraphFan(u.x, u.y - 14, a, 0.6, 210, 0.3, '#b8f0a0');
       b.glow(u.x + u.facing * 10, u.y - 18, 24, '#a8f07a', 0.3);
       b.windup(u, 0.3, () => {
+        charSfx(u, 'volley'); charSfx(u, 'volleyFly'); // 화살을 쏨 + 화살이 날아감
         b.shock(u.x, u.y, 4, 34, '#b8f0a0', 0.3, 3);
         for (let i = -2; i <= 2; i++) {
           b.later(Math.abs(i) * 0.04, () => b.shoot(u, { angle: a + i * 0.12, spd: 600, dmg: u.st.atk * 0.85, kind: 'arrowG', hit: hit(slot) }));
@@ -52,6 +53,7 @@ const SKILLS = {
       b.glow(u.x, u.y - 30, 26, '#ffb36b', 0.5);
       b.meteor(x, y, t);
       b.later(t, () => {
+        charSfx(u, 'meteor'); // 메테오 충돌
         b.explosion(x, y, r);
         if (Math.hypot(e.x - x, e.y - y) <= r + 8) b.damage(u, e, u.st.atk * 3.4 * chg, { big: true, color: '#ffc27a', ...hit(slot) });
       });
@@ -117,7 +119,7 @@ const SKILLS = {
       b.telegraphLine(u.x, u.y, p.x, p.y, 20, 0.35, '#ffcf8a');
       b.glow(u.x, u.y - 18, 30, '#ffc070', 0.35);
       b.windup(u, 0.35, () => b.dash(u, p.x, p.y, 0.2, () => {
-        b.damage(u, e, u.st.atk * 1.8, { big: true, ...hit(slot) });
+        charSfx(u, 'lanceHit'); b.damage(u, e, u.st.atk * 1.8, { big: true, ...hit(slot) });
         b.shock(e.x, e.y, 6, 56, '#ffd08a', 0.45, 6);
         b.glow(e.x, e.y - 18, 52, '#ffb050', 0.45);
         b.sparks(e.x, e.y - 18, '#ffe0a8', 24, 280, a);
@@ -183,7 +185,7 @@ const SKILLS = {
       b.telegraphLine(u.x, u.y, u.x + Math.cos(a) * 200, u.y + Math.sin(a) * 200, 20, 0.22, '#ffd08a');
       b.glow(u.x, u.y - 20, 40, '#ffb36b', 0.3);
       b.visualFx.push({ type: 'chargeCue', u, ang: a, color: '#ffd08a', t: 0, dur: 0.22 });
-      b.windup(u, 0.22, () => b.charge(u, a, 560, slot));
+      b.windup(u, 0.22, () => { charSfx(u, 'charging'); b.charge(u, a, 560, slot); }); // 돌진 중 부우웅
       u.action.chargeTell = true;
     },
   },
@@ -271,7 +273,7 @@ const SKILLS = {
       b.hitstop(0.08);
       b.windup(u, 0.7, () => {
         if (e.dead) return;
-        b.explosion(e.x, e.y, 56);
+        charSfx(u, 'burst'); b.explosion(e.x, e.y, 56);
         b.shock(e.x, e.y - 10, 6, 74, '#ffe0a0', 0.5, 6);
         b.zoomAt(e.x, e.y - 18, 0.06); b.shake(3);
         b.damage(u, e, u.st.atk * (slot.mult || 5), { big: true, color: '#ffc27a', ...hit(slot) });

@@ -23,6 +23,8 @@ const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const playSfx = (name, o) => { if (window.Sfx) Sfx.play(name, o); };
+// 캐릭터 효과음: (캐릭터 id, 이벤트) → js/sfx.js CHAR 표. 소리만 냄 (시뮬 상태·난수 사용 안 함, 헤드리스에선 아무것도 안 함)
+const charSfx = (u, ev) => { if (window.Sfx && u && u.def) Sfx.play('char', { id: u.def.id, ev }); };
 const projectileColor = p => p.kind === 'magic' && p.hit && ELEMENT_DEFS[p.hit.element] ? ELEMENT_DEFS[p.hit.element].color : PROJ_COL[p.kind] || '#a8d8ff';
 // 스프라이트 좌우 배율: sprite.faces = { front: 'left'|'right', back: ... } (원본이 바라보는 방향). 없으면 원본은 오른쪽을 본다고 가정
 const waterImmune = (u, z) => !!(z && (z.water || z.id === 'water') && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'
@@ -434,7 +436,7 @@ class Battle {
       let ok; try { ok = slot.canUse ? slot.canUse(u, e, d, this) : sk.canUse(u, e, d, this); } catch (err) { console.warn('skill canUse error', slot.id, err); u.skillT[i] = 9999; continue; } // 오류난 스킬은 끄고 계속 (게임 멈춤 방지)
       if (!ok) continue;
       u.skillT[i] = slot.cd; if (this.modeB && B_MODE.skillCd && u.st.range < MELEE_RANGE) u.skillT[i] *= bMeleeCdK(u);
-      this.pay(u, slot);
+      this.pay(u, slot); charSfx(u, slot.id); // 스킬 시전 효과음
       const vl = sk.say ? sk.say(u, e, this, slot) : this.line(u, 'skill', slot.name); // sk.say: 동적 대사 (예: '기를 낮추거라 <상대>!')
       this.hooks.onSkill && this.hooks.onSkill(u, slot.name, vl);
       if (vl) this.bubble(u, vl);
@@ -491,7 +493,7 @@ class Battle {
     if (id === 'stun') this.later(0, () => { if (!s.knock) this.say(tgt, 'stunned'); });
     if (!d.positive) this.say(tgt, 'debuffed'); // 해로운 상태이상 (positive: true 면 제외)
     this.hooks.onStatus && this.hooks.onStatus(tgt, d.name, d.color);
-    playSfx(id === 'stun' ? 'stun' : d.positive ? 'buff' : 'status', { element: id });
+    playSfx(id === 'stun' ? 'stun' : d.positive ? 'buff' : 'status', { element: id }); if (window.Sfx) Sfx.play('cstat', { id }); // 상태이상 효과음 (독·마비·석화, 캐릭터 공통)
     this.text(tgt.x, tgt.y - 84, d.name + '!', d.color, 11);
     this.shock(tgt.x, tgt.y - 18, 6, 30, d.color, 0.35, 3);
     return s;
@@ -898,6 +900,7 @@ class Battle {
   }
   releasePin(e) { e.statuses = e.statuses.filter(s => s.id !== 'pin'); }
   chargeImpact(u, e, a, w, front) {
+    charSfx(u, 'chargeImpact'); // 돌진 충돌 (라인하르트 돌진쾅)
     u.action = null; u.dir = fixAngle(a.ang + Math.PI + rand(-0.6, 0.6));
     // 얼음벽: 균열 / 크레바스
     if (this.iceSegs.length && !w.bl) {
@@ -934,7 +937,7 @@ class Battle {
   updateOni(u, dt) { // 오니화: 게이지 가득 → 변신, 서서히 감소, 0이면 복귀
     const O = u.def.oni, R = u.def.resources[O.res], v = u.res[O.res] || 0;
     if (!u.oni && v >= R.max) {
-      u.oni = true; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화!'); this.say(u, 'oniAwaken');
+      u.oni = true; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화!'); this.say(u, 'oniAwaken'); charSfx(u, 'oni');
       this.shock(u.x, u.y, 6, 60, '#ff4a5a', 0.5, 5); this.glow(u.x, u.y - 22, 50, '#ff4a5a', 0.6); this.embers(u.x, u.y, '#ff6a7a', 16); this.hitstop(0.08);
     } else if (u.oni) {
       u.res[O.res] = Math.max(0, v - O.drain * dt);
@@ -1081,7 +1084,7 @@ class Battle {
   }
   basicAttack(u, e) {
     if (this.emit('attack', u, e)) { this.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정
-    u.swing = 0.2;
+    u.swing = 0.2; charSfx(u, 'basic'); // 기본 공격 효과음 (휘두르기·발사 순간)
     const miss = Math.random() < u.smax('misdirect') && !(u.st.range >= 80 && e.airborne); // 혼란: 오조준 (공중 대상 원거리는 반드시 명중)
     const atk = { ...(u.def.attack || {}), applies: u.def.attackApplies, basic: true }; // 기본 공격 피해 속성 (basic: 기본/충돌 공격 표시)
     if (u.st.range >= 80) {
@@ -1301,7 +1304,7 @@ class Battle {
     if (!Number.isFinite(u.hp)) u.hp = u.maxHp;
     amt = Math.round(Math.min(amt, u.maxHp - u.hp));
     if (amt <= 0) return;
-    u.hp += amt; this.say(u, 'healed');
+    u.hp += amt; this.say(u, 'healed'); if (!quiet && window.Sfx) Sfx.play('cstat', { id: 'heal' }); // 체력 회복 효과음 (흡혈 등 조용한 회복 제외)
     if (!quiet || amt >= 8) this.text(u.x + rand(-6, 6), u.y - 44, '+' + amt, '#9cf0a0', quiet ? 10 : 13);
   }
   stun(u, t, src) { this.applyStatus(u, 'stun', t, src || this.enemy(u)); }

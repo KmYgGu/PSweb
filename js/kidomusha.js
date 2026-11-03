@@ -57,7 +57,7 @@
       after(u, b);
       if (d <= u.reach * 0.75) {
         u.swing = 0.2; u.action = null;
-        const ok = b.damage(u, e, u.st.atk, { airHit: true, noCrit: true, color: '#ffb0b8', element: slot.element, delivery: slot.delivery }) > 0; /* 중간 타: 치명타 없음 */
+        charSfx(u, 'ghostHit'); const ok = b.damage(u, e, u.st.atk, { airHit: true, noCrit: true, color: '#ffb0b8', element: slot.element, delivery: slot.delivery }) > 0; /* 중간 타: 치명타 없음 */
         if (!ok) { b.text(u.x, u.y - 58, '연계 끊김', '#ffb0b8', 9); u.dir = fixAngle(rand(0, TAU)); return; }
         u.ghostChain = { n, t: 1, slot, e }; window.ghostBump(u, b);
       } else if (st.t > 0.6) { u.action = null; u.dir = fixAngle(rand(0, TAU)); b.text(u.x, u.y - 58, '연계 끊김', '#ffb0b8', 9); }
@@ -74,7 +74,7 @@
   window.ghostBump = (u, b) => {
     const G = u.ghostChain; if (!G || u.action) return;
     u.ghostChain = null; const e = G.e, slot = G.slot, n = G.n + 1;
-    b.text(e.x + 14, e.y - 66, n + '연', '#ff8a96', 10); b.slashFx(e.x, e.y - 18, u.facing, '#ffd0d4', 1);
+    charSfx(u, 'ghostHit'); b.text(e.x + 14, e.y - 66, n + '연', '#ff8a96', 10); b.slashFx(e.x, e.y - 18, u.facing, '#ffd0d4', 1);
     if (n >= (slot.reps || 6)) { // 거대한 X자 참격
       const x = e.x, y = e.y - 20 - b.airZ(e), L = 70;
       b.streak(x - L, y - L, x + L, y + L, '#ff4a5a', 14, 0.5); b.streak(x + L, y - L, x - L, y + L, '#ff4a5a', 14, 0.5);
@@ -99,7 +99,7 @@
         if (d > 26) { u.x += (e.x - u.x) / d * Math.min(sp, d - 24); u.y += (e.y - u.y) / d * Math.min(sp, d - 24); }
         after(u, b);
         if (d <= 30) {
-          b.damage(u, e, u.st.atk * slot.mult, { airHit: true, noCrit: true, color: '#ffb0b8', element: slot.element, delivery: slot.delivery }); /* 첫 일격(중간 타): 치명타 없음 */
+          charSfx(u, 'ghostHit'); b.damage(u, e, u.st.atk * slot.mult, { airHit: true, noCrit: true, color: '#ffb0b8', element: slot.element, delivery: slot.delivery }); /* 첫 일격(중간 타): 치명타 없음 */
           b.slashFx(e.x, e.y - 18 - b.airZ(e), u.facing, '#ff8a96', 1.2);
           if (e.air && !e.air.fling) e.air.t = Math.max(e.air.t, e.air.dur * 0.75); // 첫 타 후 곧 착지 → 상대는 정상 행동
           u.action = circleAction(u, e, b, slot, 0);
