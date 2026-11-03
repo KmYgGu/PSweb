@@ -24,7 +24,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const playSfx = (name, o) => { if (window.Sfx) Sfx.play(name, o); };
 // 캐릭터 효과음: (캐릭터 id, 이벤트) → js/sfx.js CHAR 표. 소리만 냄 (시뮬 상태·난수 사용 안 함, 헤드리스에선 아무것도 안 함)
-const charSfx = (u, ev) => { if (window.Sfx && u && u.def) Sfx.play('char', { id: u.def.id, ev }); };
+const charSfx = (u, ev) => { if (window.Sfx && u && u.def) Sfx.play('char', { id: u.def.id, ev, alt: ev !== 'basic' && u.schCopy ? u.schCopy.schFromId : undefined }); }; // alt: 슈르프가 흡수한 스킬 → 원 캐릭터 소리 (슈르프 자기 소리가 우선, 기본 공격 제외)
 const projectileColor = p => p.kind === 'magic' && p.hit && ELEMENT_DEFS[p.hit.element] ? ELEMENT_DEFS[p.hit.element].color : PROJ_COL[p.kind] || '#a8d8ff';
 // 스프라이트 좌우 배율: sprite.faces = { front: 'left'|'right', back: ... } (원본이 바라보는 방향). 없으면 원본은 오른쪽을 본다고 가정
 const waterImmune = (u, z) => !!(z && (z.water || z.id === 'water') && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'

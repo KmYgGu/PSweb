@@ -60,7 +60,8 @@ const Sfx = (() => {
     duck: { quack: ['c_dk_quack'], peckHit: ['c_dk_peck'], flap: ['c_dk_flap'] }, // 꽥꽥!·쪼기(쪼기 시작 순간)·푸드덕!
     galford: { basic: ['c_gf_slash'], galMegaSlash: ['c_gf_slash'], galGrab: ['c_gf_grab'], galClone: ['c_gf_clone'], galLand: ['c_gf_land'], plasmaDog: ['c_gf_bark'], dogDrop: ['c_gf_bark'], galShockFire: ['c_gf_shock'] }, // 회익베기(기본 공격·메가 연속 베기)·잡기 성공·분신술·동반 낙하 착지·멍!(포피 스킬 시전)·전기 투사체(발사 순간)
     blade: { bladeThrow: ['c_bl_throw'] }, // 블레이드 투척: 표식 후 칼날 8개 연속 투척 (한 개마다)
-    yugi: { draw: ['c_yg_draw'] }, // 드로우 (카드 뽑는 순간, 효과 드로우 포함)
+    yugi: { draw: ['c_yg_draw'] }, kaiba: { draw: ['c_yg_draw'] }, ghoul: { draw: ['c_yg_draw'] }, // 카이바·구울즈도 같은 카드 엔진 드로우 소리
+    // 드로우 (카드 뽑는 순간, 효과 드로우 포함)
     rudelian: { basic: ['c_rd_slash'], hellInferno: ['c_rd_inferno'], darkParallel: ['c_rd_dark'], hellFire: ['c_rd_fire'], deepBloodEye: ['c_rd_eye'] }, // 치잉베기 = 마검 기본 공격
     schurf: { absorb: ['c_sc_absorb'], dustTornado: ['c_sc_tornado'], schTransform: ['c_sc_trans'], dragonBreath: ['c_sc_dragon'] }, // 드래곤불뿜기: 최후의 변신 → 드래곤 불길 시작 순간 1회 (원본 12초)
     lamia: { lmArm: ['c_lm_plant'], lmSpreadFire: ['c_lm_calc'], lmCircleFire: ['c_lm_circle'], lmFreezeHit: ['c_lm_freeze'], lmSlap: ['c_lm_slap'], lmGrab: ['c_lm_laugh'] }, // 절대계산설치(팔 설치)·절대계산(산개 광선 발사)·광역광선(서클 발사)·얼어붙는 듯한 땅(빙결 착탄)·찰싹(뺨)·후훗..음 흐(스탠드가 붙잡아 '후후훗')
@@ -180,7 +181,8 @@ const Sfx = (() => {
     try { comp.disconnect(ctx.destination); } catch (e) { /* 무시 */ } comp.connect(ctx.destination); rec = null;
   }
   function play(name, o) {
-    if (name === 'char') return o && CHAR[o.id] ? playChar(CHAR[o.id][o.ev], o.id + ':' + o.ev) : undefined;
+    if (name === 'char') { if (!o) return; let id = o.id; if (!(CHAR[id] && CHAR[id][o.ev]) && o.alt && CHAR[o.alt] && CHAR[o.alt][o.ev]) id = o.alt; // 자기 소리 없으면 흡수 원본 캐릭터 소리
+      return CHAR[id] ? playChar(CHAR[id][o.ev], id + ':' + o.ev) : undefined; }
     if (name === 'cstat') return o ? playChar(CSTAT[o.id], 'st:' + o.id) : undefined;
     if (hold || !(on || rec) || !SYN[name] || !ENABLED.has(name)) return;
     const c = ac(); if (!c) return;
