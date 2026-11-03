@@ -68,7 +68,7 @@
         if (!L.thrown && L.t >= S.delay) { L.thrown = true; L.bt = 0; b.text(u.x, u.y - 80, '마법서!', '#bfe8ff', 10); }
         if (L.thrown) L.bt += dt;
         if (L.thrown && !L.done && L.bt >= S.fall) { L.done = true; // 착탄: 땅 위 모두 빙결
-          b.shock(u.x, u.y, 10, 320, '#bfe8ff', 0.7, 8); b.shock(u.x, u.y, 6, 180, '#ffffff', 0.5, 4); b.shake(2); b.glow(u.x, u.y, 80, '#bfe8ff', 0.5);
+          charSfx(u, 'lmFreezeHit'); b.shock(u.x, u.y, 10, 320, '#bfe8ff', 0.7, 8); /* 얼어붙는 듯한 땅 */ b.shock(u.x, u.y, 6, 180, '#ffffff', 0.5, 4); b.shake(2); b.glow(u.x, u.y, 80, '#bfe8ff', 0.5);
           for (const o of b.u) { if (o === u || o.dead || o.hidden || o.airborne || o.def.noDraw || (o.summon && o.summon.owner === u)) continue;
             b.applyStatus(o, 'lmFrozen', S.dur, u); b.damage(u, o, u.st.atk * S.mult, { element: 'ice', delivery: 'ranged', color: '#bfe8ff', quiet: true }); }
         }
@@ -99,7 +99,7 @@
           if (e.counter || e.evadeT > b.time) { b.damage(s, e, 1, {}); return; }
           O.grab = true; O.holdA = angTo(u, e); e.action = null; // 스탠드는 상대 너머(라미아 반대쪽)로 돌아가 붙잡음 → 라미아 접근 경로 확보
            e.statuses = e.statuses.filter(x => x.id !== 'pin'); b.applyStatus(e, 'pin', S.limit + 3, s);
-          b.text(e.x, e.y - 70, '붙잡힘!', '#bfe8ff', 11); b.say(u, 'orderOk'); b.text(u.x, u.y - 70, '후후훗', '#ffe8b0', 10);
+          b.text(e.x, e.y - 70, '붙잡힘!', '#bfe8ff', 11); b.say(u, 'orderOk'); b.text(u.x, u.y - 70, '후후훗', '#ffe8b0', 10); charSfx(u, 'lmGrab'); // 후훗..음 흐
         }
       } };
       u.action = { type: 'lmCommand', step(dt) {
@@ -119,7 +119,7 @@
           u.facing = e.x >= u.x ? 1 : -1; u.moving = true; u.walk += dt * 18; return; }
         O.slap = true; s.lmOrder = null; s.action = null; u.action = null; b.releasePin(e);
         b.damage(u, e, u.st.atk * S.mult, { element: 'blunt', delivery: 'melee', big: true, color: '#ffd0d0', airHit: true });
-        b.slashFx(e.x, e.y - 30, u.facing, '#ffffff', 1.2); b.text(e.x, e.y - 66, '짝!', '#ffffff', 14); b.hitstop(0.08); b.shake(1.5);
+        b.slashFx(e.x, e.y - 30, u.facing, '#ffffff', 1.2); b.text(e.x, e.y - 66, '짝!', '#ffffff', 14); charSfx(u, 'lmSlap'); /* 찰싹 */ b.hitstop(0.08); b.shake(1.5);
         b.knockback(e, angTo(u, e), 260, 0.2);
       } };
     },
@@ -136,11 +136,11 @@
     if (u.dead || b.over) { u.lmSp = null; return; }
     for (const A of P.arms) if (A.age < TRACK) { A.age += dt; if (e) A.a = Math.atan2(e.y - 18 - A.y, e.x - A.x); }
     if (P.phase === 'plant') {
-      if ((P.next -= dt) <= 0 && P.arms.length < P.n) { P.next = S.gap; P.arms.push({ x: u.x, y: u.y - 22, a: e ? Math.atan2(e.y - 18 - (u.y - 22), e.x - u.x) : 0, age: 0 }); /* 설치 후 0.3초 추적 → 고정 */ b.ring(u.x, u.y - 22, 3, 16, 0.25, '#bfe8ff'); }
+      if ((P.next -= dt) <= 0 && P.arms.length < P.n) { P.next = S.gap; charSfx(u, 'lmArm'); P.arms.push({ x: u.x, y: u.y - 22, a: e ? Math.atan2(e.y - 18 - (u.y - 22), e.x - u.x) : 0, age: 0 }); /* 설치 후 0.3초 추적 → 고정 */ b.ring(u.x, u.y - 22, 3, 16, 0.25, '#bfe8ff'); }
       if (P.arms.length >= P.n && P.arms[P.arms.length - 1].age >= TRACK) { P.phase = 'lock'; P.t = 0; b.text(u.x, u.y - 66, '쏴라.', '#fff4c0', 10); }
     } else if (P.phase === 'lock') {
       if (P.t >= S.lock) { P.phase = 'fire'; P.t = 0;
-        for (const A of P.arms) fireBeam(b, u, A, S);
+        for (const A of P.arms) fireBeam(b, u, A, S); charSfx(u, 'lmSpreadFire'); // 절대계산 (산개 광선 발사)
         b.shake(1.5);
       }
     } else if (P.t >= 0.3) u.lmSp = null;
@@ -184,7 +184,7 @@
         const C2 = u.lmCircle; if (!C2) { u.action = null; return; } C2.t += dt;
         if (C2.phase === 'lock') for (const A of C2.arms) { A.x = u.x + Math.cos(A.a) * S.r; A.y = u.y - 22 + Math.sin(A.a) * S.r * 0.8; }
         if (C2.phase === 'lock' && C2.t >= S.lock) { C2.phase = 'fire'; C2.t = 0; C2.w = TAU / C2.arms.length / S.sweep; // 회전: 다음 팔 방향까지 S.sweep초 (팔 적을수록 빠름)
-          for (const A of C2.arms) { A.hit = new Set(); fireBeam(b, u, A, S, A.hit); } b.shake(1.8); b.glow(u.x, u.y - 22, 40, '#fff4c0', 0.3); }
+          for (const A of C2.arms) { A.hit = new Set(); fireBeam(b, u, A, S, A.hit); } charSfx(u, 'lmCircleFire'); /* 라미아광역광선 */ b.shake(1.8); b.glow(u.x, u.y - 22, 40, '#fff4c0', 0.3); }
         else if (C2.phase === 'fire') { const da = C2.w * Math.min(dt, Math.max(0, S.sweep - (C2.t - dt)));
           if (da > 0) for (const A of C2.arms) { A.a += da; A.x = u.x + Math.cos(A.a) * S.r; A.y = u.y - 22 + Math.sin(A.a) * S.r * 0.8; fireBeam(b, u, A, S, A.hit); } // 팔마다 같은 대상은 1회만
           if (C2.t >= S.sweep) { u.lmCircle = null; u.action = null; } }

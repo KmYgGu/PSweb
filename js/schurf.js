@@ -217,7 +217,7 @@
     const D = u.def.sch.fin; setForm(b, u, 'dragon', 1e9); u.schForm.aim = angTo(u, mainFoe(b, u)); u.schForm.tick = 0;
     u.air = null; u.push = null; u.pull = null; u.v = null; u.schPin = { x: u.x, y: u.y, stage: b.stageId }; // 제자리 고정
     b.shock(u.x, u.y - 30, 10, 80, '#ff6a3a', 0.6, 6); b.shake(3); b.burst(u.x, u.y - 30, '#ff8a3a', 24);
-    b.hooks.onSystem && b.hooks.onSystem('슈르프가 드래곤으로 변신했습니다!');
+    b.hooks.onSystem && b.hooks.onSystem('슈르프가 드래곤으로 변신했습니다!'); charSfx(u, 'dragonBreath'); // 드래곤 불 뿜기 소리 (시작 1회)
     u.schDragonA = u.action = { type: 'schDragon', step(dt) { // 제자리 고정, 회전 속도 제한된 조준으로 계속 불 뿜기
       const F = u.schForm, e = mainFoe(b, u); if (!F || u.dead) return;
       if (e && !e.dead) F.aim = turn(F.aim, angTo(u, e), D.turn * dt);

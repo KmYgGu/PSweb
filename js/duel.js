@@ -82,7 +82,7 @@
       if (dc.def.onDraw) b.later(0.05, () => { if (!u.dead && !b.over && S.hand.includes(dc)) { try { dc.def.onDraw(b, u, dc); } catch (err) { console.warn('[duel] onDraw failed', dc.id, err); } } });
     }
     if (got) {
-      b.text(u.x, u.y - 70 - u.pad * 2, got > 1 ? `드로우 ×${got}!` : '드로우!', '#ffe9a0', 10);
+      b.text(u.x, u.y - 70 - u.pad * 2, got > 1 ? `드로우 ×${got}!` : '드로우!', '#ffe9a0', 10); charSfx(u, 'draw'); // 드로우 소리 (유희만 연결, js/sfx.js CHAR)
       say(b, u, `드로우!${got > 1 ? ' ×' + got : ''} <span class="dmini">패 ${S.hand.length} · 덱 ${S.deck.length}</span>`);
       if (!o.quiet) b.say(u, 'draw');
       if (S.deck.length === 0) sys(b, `${u.def.name}의 덱이 0장! 다음 드로우는 패배`);

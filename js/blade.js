@@ -175,7 +175,7 @@
     for (let i = 0; i < n; i++) b.later(0.1 + i * gap, () => {
       if (u.dead || e.dead || b.over) return;
       const tx = e.x, ty = e.y - 18 - b.airZ(e), a = Math.atan2(ty - (u.y - 18 - b.airZ(u)), tx - u.x); // 던지는 순간의 현재 위치 (유도 없음)
-      throwShard(b, u, a, slot.spd || 520, u.st.atk * (slot.mult || 0.7), slot, { life: 1.0 });
+      throwShard(b, u, a, slot.spd || 520, u.st.atk * (slot.mult || 0.7), slot, { life: 1.0 }); charSfx(u, 'bladeThrow'); // 블레이드 투척 소리
     });
   }
 

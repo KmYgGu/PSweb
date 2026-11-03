@@ -78,7 +78,7 @@
       const tx = e.x, ty = e.y - b.airZ(e);
       b.glow(u.x + u.facing * 12, u.y - 18, 22, ELEC, 0.3);
       b.windup(u, 0.2, () => {
-        const a = Math.atan2(ty - u.y, tx - u.x);
+        const a = Math.atan2(ty - u.y, tx - u.x); charSfx(u, 'galShockFire'); // 전기 투사체 발사 소리
         b.proj.push({ x: u.x + u.facing * 12, y: u.y - 18, vx: Math.cos(a) * 480, vy: Math.sin(a) * 480, spd: 480, src: u, noAirLock: true, dmg: u.st.atk * (slot.mult || 1.4), kind: 'magic', life: 1.4, trail: 0, r: 12,
           hit: hitO(slot), draw: (ctx, p) => drawOrb(ctx, p),
           onHit: o => elecBurst(b, o.x, o.y - 18, 0.8) });
@@ -124,7 +124,7 @@
       st.step = (dt) => {
         st.t += dt;
         if (u.air && st.t < dur + 0.3) return;
-        u.action = null; u.galDog = null;
+        u.action = null; u.galDog = null; charSfx(u, 'galLand'); // 착지 소리
         b.shock(u.x, u.y, 6, r + 14, '#bfe6ff', 0.45, 5); b.shake(2.5); b.hitstop(0.08);
         fxList(b).push({ type: 'dogSit', x: u.x - u.facing * 18, y: u.y, face: u.facing, t: 0, dur: 0.5 });
         for (const o of b.foes(u)) if (Math.hypot(o.x - u.x, (o.y - u.y) / 0.75) <= r + o.pad && !o.airborne) {
@@ -208,7 +208,7 @@
         if (st.phase === 0) { // 돌진 베기 (방향 고정)
           if (st.t <= dashT) { move(dashD / dashT * dt); if (Math.random() < 0.4) b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.18, a: 0.35 }); }
           while (st.n < hits && st.t >= st.n * gap) {
-            st.n++; u.swing = 0.12;
+            st.n++; u.swing = 0.12; charSfx(u, 'galMegaSlash'); // 회익베기 (연속 베기 한 번마다)
             const hx = u.x + cx * reach, hy = u.y + cy * reach;
             b.slashFx(hx + rand(-4, 4), hy - 18 + rand(-4, 4), st.n % 2 ? u.facing : -u.facing, '#e8f4ff', 0.9);
             for (const o of b.foes(u)) if (inBox(o, reach, sr)) b.damage(u, o, u.st.atk * (slot.mult || 0.5), hitO(slot, { noCrit: st.n > 1, element: 'slash' }));
@@ -224,7 +224,7 @@
             b.applyStatus(o, 'stun', dur + 0.25, u, { noResistScale: true });
             o.action = null;
             u.air = { t: 0, dur, h: slot.h || 90 }; o.air = { t: 0, dur, h: (slot.h || 90) + 6 };
-            b.text(o.x, o.y - 60, '잡았다!', '#ffffff', 10); b.dust(u.x, u.y);
+            b.text(o.x, o.y - 60, '잡았다!', '#ffffff', 10); b.dust(u.x, u.y); charSfx(u, 'galGrab'); // 잡기 성공 소리
           } else if (st.t >= gT) { // 헛잡음 → 경직
             st.phase = 3; st.t = 0;
             b.text(u.x, u.y - 60, '헛잡음!', '#c8d0e0', 10); b.dust(u.x + cx * gReach, u.y + cy * gReach);
