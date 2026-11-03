@@ -189,6 +189,7 @@
   window.startEscape = map => { if (!(pick[0] && pick[1])) return false; const m = ESCAPE.normalize(map); m.chars = [pick[0].id, pick[1].id]; m.rules.type = battleMode; if (escPrevStage == null) escPrevStage = stageId; stageId = 'arena'; startBattle({ escape: m }); return true; };
   window.leaveEscape = () => { escMap = null; if (escPrevStage != null) { stageId = escPrevStage; escPrevStage = null; } };
   function startBattle(opt = {}) {
+    Sfx.stopChar(); // 이전 판 캐릭터 소리 정지 (새 판·다시 하기·리플레이 시작/재시작·탈출맵 시작)
     $('#select').classList.add('hidden'); $('#result').classList.add('hidden');
     $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden');
     $('#log').innerHTML = ''; fullLog = []; $('#fullLog').classList.add('hidden');
@@ -248,6 +249,7 @@
     try { if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback); else fallback(); } catch (e) { fallback(); }
   };
   $('#reselect').onclick = () => {
+    Sfx.stopChar(); // 나가기(캐릭터 선택·탈출맵 화면으로)
     battle = null; if (escMap) { escMap = null; if (window.ESC_UI) { $('#result').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); ESC_UI.open(); return; } }
     $('#result').classList.add('hidden'); $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden');
     $('#select').classList.remove('hidden');
@@ -372,7 +374,7 @@
       return true;
     },
     close() {
-      if (VID.active) VID.stop(true);
+      if (VID.active) VID.stop(true); Sfx.stopChar(); // 리플레이 닫기
       this.pause(); this.on = false; this.banner = 0; $('#rpBanner').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop', '#rpSave'].forEach(s => $(s).classList.add('hidden')); $('#speed').classList.remove('hidden');
       const L = this.live; rng = null; Sfx.toggle(L ? L.sfx : true);
@@ -387,6 +389,7 @@
       if (this.steps % CHECK_EVERY === 0 && !this.warned) { const c = this.rec.check && this.rec.check[this.steps / CHECK_EVERY - 1]; if (c && c[1] !== hashB(battle)) { this.warned = true; $('#rpWarn').textContent = '⚠ 재현 불일치 (버전 차이?)'; console.warn('[replay] desync at', battle.time.toFixed(2)); } }
     },
     seek(T) {
+      Sfx.stopChar(); // 리플레이 탐색(되감기·하이라이트 이동) 전 재생 중 캐릭터 소리 정지
       T = clamp(T, this.range[0], this.range[1]);
       if (T < battle.time - 1e-6) this.restart();
       RPQ.quiet = true; Sfx.hold(true); let g = 0;

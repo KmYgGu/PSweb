@@ -70,13 +70,15 @@ const Sfx = (() => {
   const CSTAT = { poison: ['c_st_poison1', 'c_st_poison2'], paralysis: ['c_st_para'], petrify: ['c_st_petri1', 'c_st_petri2'], heal: ['c_st_heal'] }; // 상태이상 (캐릭터 공통)
   const C_VOL = 0.8, C_GAP = 90, C_MAX = 6; // 캐릭터 소리 전체 음량, 같은 소리 최소 간격(ms), 동시 재생 상한
   const cTurn = new Map(); let cVoices = 0;
+  const cSrc = new Set(); // 재생 중인 캐릭터 소리 노드 (판/화면 전환 시 stopChar로 정지 — 드래곤불뿜기 12초 등 긴 소리)
+  function stopChar() { for (const s of cSrc) { try { s.onended = null; s.stop(); } catch (e) { /* 이미 끝남 */ } } cSrc.clear(); cVoices = 0; }
   function playChar(list, key) {
     if (hold || !(on || rec) || !list || !list.length) return;
     const c = ac(); if (!c) return;
     const now = performance.now(); if (now - (last.get(key) || 0) < C_GAP || cVoices >= C_MAX) return;
     const i = cTurn.get(key) || 0, n = list[i % list.length], b = bufs.get(n); if (!b) return;
     last.set(key, now); cTurn.set(key, i + 1);
-    try { const G = window.SFX_CHAR_GAIN || {}; if (sample(n, C_VOL * (G[n] || 1), 1, 0, 0)) { cVoices++; setTimeout(() => { cVoices = Math.max(0, cVoices - 1); }, Math.min(1200, b.duration * 1000)); } } catch (e) { /* 소리 실패 무시 */ }
+    try { const G = window.SFX_CHAR_GAIN || {}; const s = sample(n, C_VOL * (G[n] || 1), 1, 0, 0); if (s) { cSrc.add(s); s.onended = () => cSrc.delete(s); cVoices++; setTimeout(() => { cVoices = Math.max(0, cVoices - 1); }, Math.min(1200, b.duration * 1000)); } } catch (e) { /* 소리 실패 무시 */ }
   }
   const bufs = new Map();
   let loading = false;
@@ -121,7 +123,7 @@ const Sfx = (() => {
     const b = bufs.get(n); if (!b) return false;
     const t = ctx.currentTime + (delay || 0), s = ctx.createBufferSource(), g = out(send == null ? 0.5 : send);
     s.buffer = b; s.playbackRate.value = rate || 1; g.gain.value = gain; s.connect(g); s.start(t);
-    return true;
+    return s; // 재생 노드 (캐릭터 소리 정지 추적용, 참 값)
   }
   function env(t, dur, peak, send) {
     const g = ctx.createGain(); g.connect(out(send == null ? 0.4 : send));
@@ -211,7 +213,9 @@ const Sfx = (() => {
 
   return {
     play,
-    toggle(v) { on = typeof v === 'boolean' ? v : !on; return on; },
+    toggle(v) { on = typeof v === 'boolean' ? v : !on; if (!on) stopChar(); return on; },
+    stopChar, // 캐릭터 효과음만 즉시 정지 (일반 효과음·합성음은 그대로). 호출: js/main.js 판 시작·리플레이 탐색/닫기·나가기
+    charPlaying: () => cSrc.size, // 테스트용
     get enabled() { return on; },
     volume(v) { if (typeof v === 'number') { vol = Math.max(0, Math.min(1, v)); if (master) master.gain.value = vol; } return vol; },
     get loaded() { return bufs.size; },

@@ -40,7 +40,7 @@
         const L = (e.def.skills || []).filter(s => !s.hidden && SKILLS[s.id] && !NOCOPY.has(s.id) && !s.cost && !(s.canUse && s.canUse.length === 0));
         let pick = L.length && !e.def.duelist ? L[Math.floor(Math.random() * L.length)] : null;
         const copy = pick ? { ...pick, schCopied: true, schFrom: e.def.name, schFromId: e.def.id } : { id: 'schCard', name: '흡수한 카드', cd: 4, n: 3, mult: 0.8, schCopied: true, schFrom: e.def.name };
-        u.skills.push(copy); u.skillT.push(0.6); u.schCopy = copy;
+        u.skills.push(copy); u.skillT.push(0.6); u.schCopy = copy; u.schLastFrom = copy.schFromId; // schLastFrom: 소리 전용 (game.js charSfx), 시뮬레이션 로직은 읽지 않음
         b.text(u.x, u.y - 70, '흡수! ' + copy.name, '#ffe8b0', 11);
         b.shock(u.x, u.y - 20, 6, 40, '#e8d8a8', 0.4, 4);
         b.hooks.onSystem && b.hooks.onSystem(pick ? `슈르프가 ${e.def.name}에게서 스킬 '${copy.name}' 흡수!` : `슈르프가 ${e.def.name}에게서 카드의 힘 흡수! ('${copy.name}')`);
