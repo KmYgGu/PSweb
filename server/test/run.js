@@ -97,6 +97,27 @@ const results = []; const ok = (name, cond, info) => { if (process.env.V) consol
   await rej('경로가 끊김', featMap({ movers: [{ path: [[0, 16], [2, 16]], w: 1, h: 1, at: 0, speed: 80, mode: 'pingpong' }] }), /이어진/);
   await rej('열린 경로에 순환', featMap({ movers: [{ path: [[0, 16], [1, 16], [2, 16]], w: 1, h: 1, at: 0, speed: 80, mode: 'loop' }] }), /순환/);
   await rej('움직이는 벽 속도 범위 밖', featMap({ movers: [{ path: [[0, 16], [1, 16]], w: 1, h: 1, at: 0, speed: 5000, mode: 'pingpong' }] }), /속도/);
+  // 직접 그린 움직이는 벽 (movers[].cells, 경로 칸 기준 [dx,dy])
+  { const P7 = [[0, 16], [1, 16], [2, 16], [3, 16], [4, 16], [5, 16], [6, 16]], mvC = cells => ({ path: P7, cells, at: 0, speed: 80, mode: 'pingpong' });
+    const L = game.ESCAPE.runHeadless(featMap({ movers: [{ path: P7, w: 2, h: 1, at: 0, speed: 80, mode: 'pingpong' }] })), C2 = game.ESCAPE.runHeadless(featMap({ movers: [mvC([[0, 0], [1, 0]])] }));
+    ok('cells [[0,0],[1,0]] = 구형식 w2×h1 (스텝·도착·위치·미리보기 동일)', L.steps === C2.steps && JSON.stringify([L.arrived, L.pos, L.preview]) === JSON.stringify([C2.arrived, C2.pos, C2.preview]), { L: L.steps, C: C2.steps });
+    const shape = [[0, 0], [1, 0], [2, 0], [0, 1], [2, -1], [4, 0]]; // ㄱ자 + 떨어진 칸 (연결 안 돼도 허용)
+    const cm = game.ESCAPE.normalize(featMap({ movers: [mvC(shape)] })), r1 = game.ESCAPE.runHeadless(cm), r2 = game.ESCAPE.runHeadless(JSON.parse(JSON.stringify(cm)));
+    ok('cells 모양: 정규화 정렬·w/h 없음', JSON.stringify(cm.movers[0].cells) === JSON.stringify([[2, -1], [0, 0], [1, 0], [2, 0], [4, 0], [0, 1]]) && !('w' in cm.movers[0]) && cm.movers[0].path.length === 7, cm.movers[0]);
+    ok('cells 모양: 시뮬 결정성 (2회 동일)', r1.steps === r2.steps && JSON.stringify([r1.arrived, r1.pos, r1.preview]) === JSON.stringify([r2.arrived, r2.pos, r2.preview]), [r1.steps, r2.steps]);
+    { const R = game.ESCAPE.moverRects(cm.movers[0]); ok('cells 모양: 충돌 사각형 병합 (4개, 넓이 합 6칸)', R.length === 4 && R.reduce((a, q) => a + q.w * q.h, 0) === 6, R); }
+    const q = await call('POST', '/maps', { map: cm, title: '직접 그린 움직이는 벽' }, { ip: '20.0.0.4' });
+    ok('cells 모양 맵 올리기 성공 (또는 클리어 불가만 사유)', q.s === 201 || (q.s === 400 && /클리어|도착/.test(q.j.error)), q.j);
+    if (q.s === 201) { const f = JSON.parse(Buffer.from(M.files[`maps/${q.j.id}.json`].b64, 'base64').toString());
+      ok('cells 모양: 저장 = 보낸 값, 서버 재검증 = 로컬', JSON.stringify(f.map.movers) === JSON.stringify(cm.movers) && f.verify.steps === r1.steps && JSON.stringify(f.verify.preview) === JSON.stringify(r1.preview), { v: f.verify.steps, l: r1.steps }); }
+    await rej('cells 칸 수 초과(65)', featMap({ movers: [mvC(Array.from({ length: 65 }, (_, i) => [i % 7, Math.floor(i / 7) - 4]))] }), /1~64칸/);
+    await rej('cells 범위 8×8 초과', featMap({ movers: [mvC([[-4, 0], [4, 0]])] }), /8×8/);
+    await rej('cells 중복 칸', featMap({ movers: [mvC([[0, 0], [1, 0], [0, 0]])] }), /두 번/);
+    await rej('cells 형식 이상(소수)', featMap({ movers: [mvC([[0, 0], [0.5, 0]])] }), /형식/);
+    await rej('cells 빈 배열', featMap({ movers: [mvC([])] }), /1~64칸/);
+    await rej('cells 와 w·h 같이', featMap({ movers: [{ ...mvC([[0, 0]]), w: 1, h: 1 }] }), /하나만/);
+    await rej('cells 모양이 맵 밖 (왼쪽으로 삐져나옴)', featMap({ movers: [mvC([[-1, 0], [0, 0]])] }), /맵 밖/);
+    await rej('cells 모양이 시작점 위', featMap({ movers: [{ path: [[3, 28], [4, 28], [5, 28]], cells: [[0, 0], [0, 1]], at: 0, speed: 80, mode: 'pingpong' }] }), /시작 지점이 움직이는 벽/); }
   await rej('격자에 모르는 문자', featMap({ grid: fm.grid.map((x, i) => i === 5 ? 'x' + x.slice(1) : x) }), /격자/);
   await rej('시작 지점이 파괴벽 위', featMap({ breakables: [{ c: 3, r: 29, n: 2, m: 'hits' }] }), /파괴벽 위/);
   { const big = featMap({ breakables: Array.from({ length: 1501 }, (_, i) => ({ c: i % 18, r: i, n: 1, m: 'hits' })) }); const q = await call('POST', '/maps', { map: big, title: '파괴벽 너무 많음' }, { ip: '20.0.0.3' }); ok('특수 요소 거절: 파괴벽 개수 상한', q.s === 400 || q.s === 413, q.s); }

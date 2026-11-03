@@ -31,11 +31,25 @@ function checkExtras(raw, game, cols, rows) {
     const M = raw.movers; if (!Array.isArray(M) || M.length > L.movers) throw bad(`움직이는 벽은 ${L.movers}개 이하여야 해요`);
     for (const m of M) {
       if (!m || typeof m !== 'object' || !Array.isArray(m.path) || m.path.length < 2 || m.path.length > L.path) throw bad(`움직이는 벽 경로는 2~${L.path}칸이어야 해요`);
-      if (!isInt(m.w, 1, L.mvTiles) || !isInt(m.h, 1, L.mvTiles)) throw bad(`움직이는 벽 크기는 1~${L.mvTiles}칸이어야 해요`);
+      let B; // 모양: 구형식 w×h 사각형 또는 cells [[dx,dy]..] (경로 칸 기준 오프셋) 중 하나만
+      if (m.cells !== undefined) {
+        if (m.w !== undefined || m.h !== undefined) throw bad('움직이는 벽은 cells 또는 w·h 중 하나만 써야 해요');
+        if (!Array.isArray(m.cells) || m.cells.length < 1 || m.cells.length > L.mvCells) throw bad(`움직이는 벽 모양은 1~${L.mvCells}칸이어야 해요`);
+        const seen = new Set(); B = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+        for (const q of m.cells) {
+          if (!Array.isArray(q) || q.length !== 2 || !isInt(q[0], -(L.mvBox - 1), L.mvBox - 1) || !isInt(q[1], -(L.mvBox - 1), L.mvBox - 1)) throw bad('움직이는 벽 모양 칸 형식이 맞지 않아요 ([dx, dy] 정수)');
+          const key = q[0] + ',' + q[1]; if (seen.has(key)) throw bad('움직이는 벽 모양에 같은 칸이 두 번 있어요'); seen.add(key);
+          B.x0 = Math.min(B.x0, q[0]); B.x1 = Math.max(B.x1, q[0]); B.y0 = Math.min(B.y0, q[1]); B.y1 = Math.max(B.y1, q[1]);
+        }
+        if (B.x1 - B.x0 >= L.mvBox || B.y1 - B.y0 >= L.mvBox) throw bad(`움직이는 벽 모양은 ${L.mvBox}×${L.mvBox}칸 안에 들어가야 해요`);
+      } else {
+        if (!isInt(m.w, 1, L.mvTiles) || !isInt(m.h, 1, L.mvTiles)) throw bad(`움직이는 벽 크기는 1~${L.mvTiles}칸이어야 해요`);
+        B = { x0: 0, y0: 0, x1: m.w - 1, y1: m.h - 1 };
+      }
       if (!isInt(m.speed, L.spdMin, L.spdMax)) throw bad(`움직이는 벽 속도는 ${L.spdMin}~${L.spdMax} 정수여야 해요`);
       if (!isInt(m.at, 0, m.path.length - 1) || (m.mode !== 'pingpong' && m.mode !== 'loop')) throw bad('움직이는 벽 형식이 맞지 않아요 (at, mode)');
       for (let i = 0; i < m.path.length; i++) {
-        const p = m.path[i]; if (!Array.isArray(p) || p.length !== 2 || !isInt(p[0], 0, cols - m.w) || !isInt(p[1], 0, rows - m.h)) throw bad('움직이는 벽 경로가 맵 밖으로 나가요');
+        const p = m.path[i]; if (!Array.isArray(p) || p.length !== 2 || !isInt(p[0], -B.x0, cols - 1 - B.x1) || !isInt(p[1], -B.y0, rows - 1 - B.y1)) throw bad('움직이는 벽 경로가 맵 밖으로 나가요');
         if (i && Math.abs(p[0] - m.path[i - 1][0]) + Math.abs(p[1] - m.path[i - 1][1]) !== 1) throw bad('움직이는 벽 경로는 상하좌우로 이어진 칸이어야 해요');
       }
     }
@@ -52,7 +66,7 @@ function checkMap(raw, game) {
   let n; try { n = game.ESCAPE.normalize(raw); } catch (e) { throw bad('맵 검증 실패: ' + e.message); }
   if (n.chars.length !== 2 || n.chars.some(id => !game.CHARACTERS.some(c => c.id === id))) throw bad('캐릭터 2종(chars)이 올바르지 않아요');
   if (n.timeLimit > C.MAX_UPLOAD_TIME_LIMIT) throw bad(`제한 시간은 ${C.MAX_UPLOAD_TIME_LIMIT}초 이하로 해 주세요`, 'limit');
-  const walls = n.grid.reduce((a, r) => a + (r.match(/#/g) || []).length, 0) + (n.breakables || []).length + (n.movers || []).reduce((a, m) => a + m.w * m.h, 0); // 파괴벽·움직이는 벽 칸도 벽으로 셈
+  const walls = n.grid.reduce((a, r) => a + (r.match(/#/g) || []).length, 0) + (n.breakables || []).length + (n.movers || []).reduce((a, m) => a + (m.cells ? m.cells.length : m.w * m.h), 0); // 파괴벽·움직이는 벽 칸도 벽으로 셈
   if (walls < C.MIN_WALL_TILES) throw bad(`벽 칸이 너무 적어요 (최소 ${C.MIN_WALL_TILES}칸, 현재 ${walls}칸)`, 'too_simple');
   const wallAt = (x, y) => n.grid[Math.floor(y / TILE)][Math.floor(x / TILE)] === '#';
   const ex = n.exit.x + n.exit.w / 2, ey = n.exit.y + n.exit.h / 2;
@@ -60,7 +74,7 @@ function checkMap(raw, game) {
     const s = n.starts[i]; if (wallAt(s.x, s.y)) throw bad(`P${i + 1} 시작 지점이 벽 위에 있어요`);
     const sc = Math.floor(s.x / TILE), sr = Math.floor(s.y / TILE);
     if ((n.breakables || []).some(k => k.c === sc && k.r === sr)) throw bad(`P${i + 1} 시작 지점이 파괴벽 위에 있어요`);
-    if ((n.movers || []).some(m => { const p = game.ESCAPE.moverPos(m, 0); return s.x >= p.x && s.x < p.x + m.w * TILE && s.y >= p.y && s.y < p.y + m.h * TILE; })) throw bad(`P${i + 1} 시작 지점이 움직이는 벽의 처음 위치와 겹쳐요`);
+    if ((n.movers || []).some(m => { const p = game.ESCAPE.moverPos(m, 0); return game.ESCAPE.moverRects(m).some(q => { const x = p.x + q.dx * TILE, y = p.y + q.dy * TILE; return s.x >= x && s.x < x + q.w * TILE && s.y >= y && s.y < y + q.h * TILE; }); })) throw bad(`P${i + 1} 시작 지점이 움직이는 벽의 처음 위치와 겹쳐요`);
     const d = Math.hypot(s.x - ex, s.y - ey); if (d < C.MIN_START_EXIT_DIST) throw bad(`P${i + 1} 시작 지점이 출구와 너무 가까워요 (최소 ${C.MIN_START_EXIT_DIST}px, 현재 ${Math.round(d)}px)`, 'too_simple');
   }
   return { n, walls };

@@ -21,7 +21,7 @@
   const ONEWAY_ALIGN = Math.SQRT1_2; // 진행 방향이 타일 방향과 45° 이내면 '같은 방향'
   const ONEWAY_SPD = 2;              // 같은 방향 이동 속도 배율
   const WATER = { spd: 0.6, o2: 3, drain: 1, regen: 1.5, tick: 0.5, dmgFrac: 0.08 }; // 물: 속도 ×0.6, 산소 3초(초당 1 감소, 밖에서 초당 1.5 회복), 바닥나면 0.5초마다 최대 HP 8% 피해 (피해 0 옵션과 무관)
-  const LIM = { brk: 1500, brkHits: 99, brkHp: 9999, movers: 16, path: 200, mvTiles: 6, spdMin: 20, spdMax: 400, spdDef: 80 };
+  const LIM = { brk: 1500, brkHits: 99, brkHp: 9999, movers: 16, path: 200, mvTiles: 6, mvCells: 64, mvBox: 8, spdMin: 20, spdMax: 400, spdDef: 80 };
   const intIn = (v, a, b, d) => { v = Math.round(num(+v, d)); return Math.min(b, Math.max(a, v)); };
   function normBreak(list, cols, rows) { // [{c,r,n,m}] m: 'hits' = 부딪힌 횟수, 'hp' = 충돌 피해 합계
     const out = [], seen = new Set();
@@ -32,18 +32,39 @@
     }
     return out;
   }
-  function normMovers(list, cols, rows) { // [{path:[[c,r]..], w, h, at, speed, mode}] 경로 칸은 상하좌우로 이어져야 함 (끊기면 거기까지)
+  // 직접 그린 모양: cells = [[dx,dy]..] 경로 칸 기준 상대 오프셋 (정수, 중복 제거, (dy,dx) 순 정렬). 최대 mvCells 칸, 범위(bounding box) mvBox×mvBox 이내. 연결 안 돼도 한 덩어리로 같이 움직임
+  function normCells(list) {
+    if (!Array.isArray(list)) return null; const seen = new Set(), out = [];
+    for (const q of list.slice(0, LIM.mvCells * 4)) {
+      if (!Array.isArray(q) || out.length >= LIM.mvCells) continue; const dx = Math.round(num(+q[0], NaN)), dy = Math.round(num(+q[1], NaN));
+      if (!Number.isFinite(dx) || !Number.isFinite(dy) || Math.abs(dx) >= LIM.mvBox || Math.abs(dy) >= LIM.mvBox || seen.has(dx + ',' + dy)) continue; seen.add(dx + ',' + dy); out.push([dx, dy]);
+    }
+    out.sort((a, b) => a[1] - b[1] || a[0] - b[0]); const k = [];
+    for (const q of out) { const x0 = Math.min(...k.map(v => v[0]), q[0]), x1 = Math.max(...k.map(v => v[0]), q[0]), y0 = Math.min(...k.map(v => v[1]), q[1]), y1 = Math.max(...k.map(v => v[1]), q[1]); if (x1 - x0 < LIM.mvBox && y1 - y0 < LIM.mvBox) k.push(q); } // 범위를 넘는 칸은 버림 (정렬 순서대로)
+    return k.length ? k : null;
+  }
+  const cellBox = cells => { let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of cells) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } return { x0, y0, x1, y1 }; };
+  // 움직이는 벽의 충돌 사각형(타일 단위, 경로 칸 기준 오프셋): cells 는 mergeGrid 로 병합, 구형식은 w×h 하나
+  function moverRects(mv) {
+    if (!mv.cells) return [{ dx: 0, dy: 0, w: mv.w, h: mv.h }];
+    const B = cellBox(mv.cells), g = Array.from({ length: B.y1 - B.y0 + 1 }, () => Array(B.x1 - B.x0 + 1).fill('.'));
+    for (const [x, y] of mv.cells) g[y - B.y0][x - B.x0] = '#';
+    return mergeGrid(g.map(a => a.join(''))).map(r => ({ dx: r.x / TILE + B.x0, dy: r.y / TILE + B.y0, w: r.w / TILE, h: r.h / TILE }));
+  }
+  function normMovers(list, cols, rows) { // [{path:[[c,r]..], w, h | cells, at, speed, mode}] 경로 칸은 상하좌우로 이어져야 함 (끊기면 거기까지)
     const out = [];
     for (const o of (Array.isArray(list) ? list : []).slice(0, LIM.movers)) {
-      if (!o || !Array.isArray(o.path)) continue; const w = intIn(o.w, 1, LIM.mvTiles, 1), h = intIn(o.h, 1, LIM.mvTiles, 1), path = [];
+      if (!o || !Array.isArray(o.path)) continue; const cells = normCells(o.cells), w = intIn(o.w, 1, LIM.mvTiles, 1), h = intIn(o.h, 1, LIM.mvTiles, 1), path = [];
+      if (o.cells !== undefined && !cells) continue; // cells 가 있는데 쓸 칸이 없으면 버림
+      const B = cells ? cellBox(cells) : { x0: 0, y0: 0, x1: w - 1, y1: h - 1 };
       for (const p of o.path.slice(0, LIM.path)) {
         if (!Array.isArray(p)) break; const c = Math.round(num(+p[0], -1)), r = Math.round(num(+p[1], -1));
-        if (c < 0 || r < 0 || c + w > cols || r + h > rows) break;
+        if (!(c + B.x0 >= 0 && r + B.y0 >= 0 && c + B.x1 < cols && r + B.y1 < rows)) break;
         const q = path[path.length - 1]; if (q && Math.abs(q[0] - c) + Math.abs(q[1] - r) !== 1) break; path.push([c, r]);
       }
       if (path.length < 2) continue;
       const a = path[0], z = path[path.length - 1], closed = path.length >= 4 && Math.abs(a[0] - z[0]) + Math.abs(a[1] - z[1]) === 1;
-      out.push({ path, w, h, at: intIn(o.at, 0, path.length - 1, 0), speed: intIn(o.speed, LIM.spdMin, LIM.spdMax, LIM.spdDef), mode: o.mode === 'loop' && closed ? 'loop' : 'pingpong' });
+      out.push({ path, ...(cells ? { cells } : { w, h }), at: intIn(o.at, 0, path.length - 1, 0), speed: intIn(o.speed, LIM.spdMin, LIM.spdMax, LIM.spdDef), mode: o.mode === 'loop' && closed ? 'loop' : 'pingpong' });
     }
     return out;
   }
@@ -134,7 +155,7 @@
     b.play = { x: 0, y: 0, w: m.w, h: m.h };
     b.buildings = m.walls.map(mkWall);
     for (const k of m.breakables || []) b.buildings.push({ x: k.c * TILE, y: k.r * TILE, w: TILE, h: TILE, hp: k.n, maxHp: k.n, dead: false, hitT: 0, solid: false, escBreak: k.m, cracks: [[], [], []], rubble: [], windows: [], draw: drawBreak });
-    for (const mv of m.movers || []) { const p = moverPos(mv, 0); b.buildings.push(Object.assign(mkWall({ x: p.x, y: p.y, w: mv.w * TILE, h: mv.h * TILE }, 0), { escMover: mv, draw: drawMover })); }
+    for (const mv of m.movers || []) { const p = moverPos(mv, 0); for (const q of moverRects(mv)) b.buildings.push(Object.assign(mkWall({ x: p.x + q.dx * TILE, y: p.y + q.dy * TILE, w: q.w * TILE, h: q.h * TILE }, 0), { escMover: mv, escOff: [q.dx * TILE, q.dy * TILE], draw: drawMover })); } // 구형식(w,h)은 오프셋 0 사각형 1개 (기존과 같음)
     E.special = []; m.grid.forEach((row, r) => { for (let c = 0; c < row.length; c++) if (row[c] !== '.' && row[c] !== '#') E.special.push([c, r, row[c]]); }); // 물·일방통행 칸 (그리기용)
     b.u.filter(u => !u.summon).forEach((u, k) => {
       const s = m.starts[u.team] || m.starts[k % 2];
@@ -172,7 +193,7 @@
   const waterproof = u => !!(u.def && u.def.traits && u.def.traits.includes('waterproof')); // 패시브 '오리'는 물 영향 없음 (기존 물 지형과 같은 규칙)
   function escWorld(b, dt) {
     const E = b.escape; if (!E || E.done || b.over) return; const m = E.map;
-    if (m.movers) for (const bl of b.buildings) if (bl.escMover) { const p = moverPos(bl.escMover, b.time); bl.x = p.x; bl.y = p.y; } // 겹친 캐릭터는 다음 스텝 엔진 벽 처리(resolveBuildings)로 밀려나며 튕김
+    if (m.movers) for (const bl of b.buildings) if (bl.escMover) { const p = moverPos(bl.escMover, b.time); bl.x = p.x + bl.escOff[0]; bl.y = p.y + bl.escOff[1]; } // 겹친 캐릭터는 다음 스텝 엔진 벽 처리(resolveBuildings)로 밀려나며 튕김
     for (const u of b.u) {
       if (u.dead || u.esDone) { u.terrainMul = 1; continue; }
       let c = Math.floor(u.x / TILE), r = Math.floor(u.y / TILE), ch = tileCh(m, c, r);
@@ -269,7 +290,7 @@
       starts: m.starts.map((p, i) => inR(p.x, p.y) ? [p.x - best.x, p.y - best.y, i] : null).filter(Boolean),
       exit: ix2 > ix && iy2 > iy ? [ix - best.x, iy - best.y, ix2 - ix, iy2 - iy] : null, pts, mw: m.w, mh: m.h,
       ...(m.breakables ? { brk: m.breakables.filter(k => inR(k.c * T + 1, k.r * T + 1)).slice(0, 48).map(k => [k.c - c0, k.r - r0]) } : {}),
-      ...(m.movers ? { mov: m.movers.map(mv => { const p = moverPos(mv, 0); return [p.x - best.x, p.y - best.y, mv.w * T, mv.h * T]; }).filter(q => q[0] < W && q[1] < H && q[0] + q[2] > 0 && q[1] + q[3] > 0) } : {}) };
+      ...(m.movers ? { mov: m.movers.flatMap(mv => { const p = moverPos(mv, 0); return moverRects(mv).map(q => [p.x + q.dx * T - best.x, p.y + q.dy * T - best.y, q.w * T, q.h * T]); }).filter(q => q[0] < W && q[1] < H && q[0] + q[2] > 0 && q[1] + q[3] > 0) } : {}) };
   }
   function drawPreview(cv, pv) { // pv → 캔버스 (벽 / S / E / 충돌 점 + 구석에 전체 맵 속 위치)
     const ctx = cv.getContext('2d'), Wc = cv.width, Hc = cv.height, k = Math.min(Wc / pv.w, Hc / pv.h);
@@ -376,5 +397,5 @@
     return normalize({ name: '샘플 탈출맵', w: 720, h: 1280, grid: g.map(a => a.join('')), starts: [{ x: 140, y: 1180 }, { x: 580, y: 1180 }], exit: { x: 280, y: 40, w: 160, h: 120 }, chars: [], seed: 1, timeLimit: DEF_TIME, rules: {} });
   }
 
-  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng, preview, drawPreview, moverPos, drawSpecial, WATER, ONEWAY, ONEWAY_ALIGN, ONEWAY_SPD, LIM };
+  G.ESCAPE = { FORMAT, VERSION, TILE, SIZES, DEF_TIME, MAX_TIME, normalize, toJSON, mergeGrid, emptyGrid, apply, runHeadless, findSeed, updateCam, sampleMap, mkRng, preview, drawPreview, moverPos, moverRects, drawSpecial, WATER, ONEWAY, ONEWAY_ALIGN, ONEWAY_SPD, LIM };
 })(typeof window !== 'undefined' ? window : globalThis);
