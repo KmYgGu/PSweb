@@ -10,12 +10,15 @@
   const slotOf = (u, id) => u.skills.find(s => s.id === id);
 
   // ---------- 미스틱 볼 ----------
+  // MB_RANGE: 구슬이 나아가는 고정 거리 (상대 거리와 무관). 끝까지 가거나 벽·장애물에 닿으면 시전자에게 돌아옴.
+  //  적중: 갈 때 1회 + 올 때 1회 (올 때는 이미 이 신비술사에게 조종 중인 상대면 건너뜀 → 조종 시간 갱신 남용 없음)
+  const MB_RANGE = 220;
   SKILLS.mysticBall = {
-    desc: '상대의 현재 위치를 향해 마법 구슬을 날립니다(유도 없음). 잠시 뒤 시전자에게 유도되어 돌아옵니다. 구슬에 닿은 상대는 조종 상태: 신비술사가 움직이는 대로 끌려다니며, 벽에 부딪히면 큰 피해.',
+    desc: '상대의 현재 위치 방향으로 마법 구슬을 날립니다(유도 없음). 구슬은 상대 거리와 상관없이 항상 일정 거리를 나아간 뒤(벽에 닿으면 그 자리에서) 시전자에게 돌아옵니다. 갈 때와 올 때 모두 맞힐 수 있고, 구슬에 닿은 상대는 조종 상태: 신비술사가 움직이는 대로 끌려다니며, 벽에 부딪히면 큰 피해.',
     canUse: (u, e, d) => !u.orb && !e.dead && d < 280,
     use(u, e, b, slot) {
       const a = Math.atan2(e.y - u.y, e.x - u.x);
-      u.orb = { x: u.x + Math.cos(a) * 12, y: u.y - 18, tx: e.x, ty: e.y - 18, phase: 'out', t: 0, hit: false, slot, trail: [] };
+      u.orb = { x: u.x + Math.cos(a) * 12, y: u.y - 18, dx: Math.cos(a), dy: Math.sin(a), go: 0, phase: 'out', t: 0, hit: false, hitBack: false, slot, trail: [] };
       b.glow(u.x, u.y - 20, 30, '#d890ff', 0.35);
     },
   };
@@ -24,9 +27,9 @@
     const e = b.foes(u).find(f => Math.hypot(f.x - O.x, (f.y - 18 - b.airZ(f)) - O.y) < 14 + f.pad) || b.enemy(u); // 다인 팀: 구슬에 닿은 상대
     O.t += dt;
     if (O.phase === 'out') {
-      const dx = O.tx - O.x, dy = O.ty - O.y, d = Math.hypot(dx, dy), st = S.spd * dt;
-      if (d <= st || O.t >= S.out) { O.x = d <= st ? O.tx : O.x + dx / d * st; O.y = d <= st ? O.ty : O.y + dy / d * st; O.phase = 'back'; }
-      else { O.x += dx / d * st; O.y += dy / d * st; }
+      const st = Math.min(S.spd * dt, MB_RANGE - O.go), nx = O.x + O.dx * st, ny = O.y + O.dy * st, q = b.clampPos(nx, ny + 18, 4);
+      if (Math.abs(q.x - nx) > 0.5 || Math.abs(q.y - (ny + 18)) > 0.5 || (b.blockAt && b.blockAt(nx, ny + 14, 4))) O.phase = 'back'; // 벽·장애물: 그 자리에서 돌아오기
+      else { O.x = nx; O.y = ny; O.go += st; if (O.go >= MB_RANGE - 1e-6) O.phase = 'back'; } // 고정 거리 도달 → 돌아오기
     } else {
       const dx = u.x - O.x, dy = u.y - 18 - O.y, d = Math.hypot(dx, dy), st = S.backSpd * dt;
       if (d <= Math.max(st, 10) || u.dead || O.t > 4) { u.orb = null; if (!u.dead) b.glow(u.x, u.y - 20, 22, '#d890ff', 0.25); return; }
@@ -34,8 +37,10 @@
     }
     O.trail.push([O.x, O.y]); if (O.trail.length > 8) O.trail.shift();
     if (Math.random() < 0.5) b.parts.push({ x: O.x + rand(-3, 3), y: O.y + rand(-3, 3), vx: rand(-10, 10), vy: rand(-10, 10), life: 0.35, max: 0.35, color: '#e0b0ff', size: 2, glow: true });
-    if (!O.hit && !e.dead && !b.over && Math.hypot(e.x - O.x, (e.y - 18 - b.airZ(e)) - O.y) < 14 + e.pad) {
-      O.hit = true; // 1회만
+    const back = O.phase === 'back', ctl = e.status && e.status('control');
+    if (!(back ? O.hitBack || (ctl && ctl.src === u) : O.hit) && !e.dead && !b.over && Math.hypot(e.x - O.x, (e.y - 18 - b.airZ(e)) - O.y) < 14 + e.pad) {
+      if (back) O.hitBack = true; else O.hit = true; // 갈 때 1회, 올 때 1회
+      b.stats.mbHitOut = (b.stats.mbHitOut || 0) + (back ? 0 : 1); b.stats.mbHitBack = (b.stats.mbHitBack || 0) + (back ? 1 : 0);
       b.shock(e.x, e.y - 18, 6, 34, '#d890ff', 0.4, 3);
       const r = b.statusResist(e, 'control');
       if (Math.random() < r) { b.text(e.x, e.y - 84, '조종 저항', '#a8b0c4', 9); return; }
