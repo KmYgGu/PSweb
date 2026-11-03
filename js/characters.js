@@ -511,6 +511,7 @@ const CHARACTERS = [
       { id: 'positioning', name: '포지셔닝', cd: 9, delay: 3.0 },
       { id: 'accelerate', name: '액셀러레이트', cd: 7, spd: 900, spread: 0.75, bounces: 6, life: 3, mult: 0.35, confDur: 2, cdCut: 0.8, element: 'dark', delivery: 'ranged' },
     ],
+    // 근접 기본 공격 '손등으로 치기' (js/mystic.js BK): 상대가 가까울 때만 ATK×0.35 + 짧은 넉백
     // 패시브 (js/mystic.js): 리플레이스(피격 시 20%·내부 쿨 4초 위치 교환 + 해로운 상태 넘기기), 리스트레인트(적중 시 20% 봉인 2초)
     passives: { replace: { chance: 0.2, icd: 4 }, restraint: { chance: 0.2, dur: 2 } },
     sprite: { src: 'assets/mistic/front.png', back: 'assets/mistic/back.png', scale: 0.5, foot: 2, faces: { front: 'left', back: 'left' } },

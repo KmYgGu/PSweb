@@ -1,5 +1,5 @@
 /* =========================================================
- * 신비술사 스킬: 미스틱 볼, 포지셔닝 / 패시브: 리플레이스, 리스트레인트
+ * 신비술사 스킬: 미스틱 볼, 포지셔닝 / 패시브: 리플레이스, 리스트레인트 / 근접 기본 공격: 손등으로 치기 (상대가 가까울 때만)
  *  상태: 조종(control), 봉인(seal) → status.js
  *  구슬·표식·조종 이동은 전역 훅(STAGE_HOOKS, match=false → 썸네일 무관)에서 처리
  * ========================================================= */
@@ -72,6 +72,28 @@
     }
   }
 
+  // ---------- 손등으로 치기 (근접 기본 공격) ----------
+  // 신비술사는 원거리(사거리 115)라 엔진의 자동 기본 공격이 없음 → 상대가 근접 거리 안일 때만 손등으로 후려침.
+  //  간격 = 엔진 근접 기본 공격과 같음 (1/공격속도 × meleeRateMul, B타입은 사거리 BK.range 기준 bMeleeCdK 배율). 무음 (전용 소리 없음)
+  //  넉백은 상대가 행동(돌진·시전 동작) 중이 아닐 때만 (행동 끊기 부가효과 없음)
+  const BK = { range: 50, mult: 0.35, delay: 0.08, kbSpd: 200, kbDur: 0.12 };
+  function backhandStep(b, u) {
+    if (u.def.id !== 'mystic' || u.dead || b.over || b.freeze || u.action || u.stun || u.airborne || u.atkT > 0 || u.blocked('blocksAct')) return;
+    const e = b.enemy(u); if (!e || e.dead || e.hidden || e.airborne) return;
+    const reach = BK.range + 20 + u.pad; if (dist(u, e) > reach) return;
+    u.atkT = 1 / (u.atkRate * u.mult('meleeRateMul')); if (b.modeB) u.atkT *= B_MODE.cdBase + Math.max(0, BK.range - B_MODE.cdRefRange) * B_MODE.cdPerPx;
+    if (b.emit('attack', u, e)) { b.text(u.x, u.y - 50, '무효!', '#c8c0ff', 10); return; } // 미러 포스류 함정
+    u.facing = e.x >= u.x ? 1 : -1; u.swing = 0.2; b.stats.backhand = (b.stats.backhand || 0) + 1;
+    b.later(BK.delay, () => {
+      if (u.dead || u.stun || e.dead || b.over) return;
+      if (dist(u, e) > reach + 12) { b.slashFx(u.x + u.facing * 18, u.y - 18, u.facing, '#e0b0ff', 0.8); return; } // 헛침
+      const bd = b.damage(u, e, u.st.atk * BK.mult, { ...(u.def.attack || {}), delivery: 'melee', basic: true, color: '#f0d0ff' });
+      b.slashFx(e.x - u.facing * 4, e.y - 18, -u.facing, '#f0d0ff', 1); // 손등: 반대 방향으로 휘두른 호
+      if (bd > 0) { b.stats.backhandHit = (b.stats.backhandHit || 0) + 1; b.resEvent(u, 'basicHit');
+        if (!e.dead && !e.action) b.knockback(e, Math.atan2(e.y - u.y, e.x - u.x), BK.kbSpd, BK.kbDur); }
+    });
+  }
+
   // ---------- 포지셔닝 ----------
   SKILLS.positioning = {
     desc: '현재 위치에 표식을 남기고, 일정 시간(3초) 뒤 표식 위치로 순간이동합니다.',
@@ -135,6 +157,7 @@
     step(b, dt) {
       for (const u of b.u) {
         if (u.def.id !== 'mystic' && !u.orb && !u.mark && !b.u.some(o => o.team !== u.team && o.status('control') && o.status('control').src === u)) { u.mPrev = null; continue; } // 다른 캐릭터가 빌려 쓴 미스틱 볼/포지셔닝 (패스트푸드점 배달 스킬)도 처리
+        backhandStep(b, u);
         if (u.orb) orbStep(b, u, dt);
         if (u.mark) markStep(b, u, dt);
         controlStep(b, u, dt);
