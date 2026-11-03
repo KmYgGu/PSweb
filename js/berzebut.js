@@ -8,6 +8,7 @@
  *  4. 단계 분리      : 깃발 분신 돌진(논타겟)으로 띄우고 → 망토 분신이 가까운 벽으로 차버림
  *  5. 장미 재배      : (마력 없음) 이속 증가 + 지나간 자리에 장미 → 자라는 곳의 상대 띄움
  *  6. 장미 가시날 연사: 가시 연사. 상대의 어떤 공격에도 상쇄됨
+ *  AI 마력 비축: 슬러스터 홀이 1.5초 안에 준비되고 상대가 260 안이면, 다른 마력 스킬로 마력이 40 아래가 될 때 참음 (기존 마력 무시 예외·홀 못 쓰는 상황·6초 넘게 대기면 해제)
  *  7. 근성 (패시브)  : 마력이 남은 상태(탈진 아님)에서 치명상 → 마력 비율만큼 체력으로 부활 (1회). 이후 마력이 0이 되면 다시 차지 않음
  */
 (() => {
@@ -24,6 +25,18 @@
     if (Z.mana - cost >= 15) return true;
     return d > 230 || (e && (e.airborne || e.blocked('blocksAct'))) || (e && e.hp < e.maxHp * 0.2);
   }
+  // 슬러스터 홀 마력 비축: 홀이 곧(1.5초 안) 준비되고 상대가 260 안이면, 마력을 HOLD(40) 아래로 떨어뜨리는 다른 스킬은 참음
+  //  해제: 기존 '바닥까지 써도 되는' 상황(상대 공중·행동불가·체력 20% 미만), 홀을 못 쓰는 상황(공중·탈진·마력이 다시 안 차는 상태), 6초 넘게 참았는데 홀이 안 나감 → 다음 홀 시전까지 비축 끔
+  const HOLD = { soon: 1.5, range: 260, mana: 40, maxWait: 6 };
+  function holdForHole(u, e, d, cost, b) {
+    const i = u.skills.findIndex(s => s.id === 'bzHole'); if (i < 0) return false; const Z = B(u);
+    if (u.skillT[i] > HOLD.soon || d >= HOLD.range || Z.mana - cost >= HOLD.mana) { Z.holdT = null; return false; }
+    if (e && (e.airborne || e.blocked('blocksAct') || e.hp < e.maxHp * 0.2)) return false;
+    if (u.airborne || Z.tired || Z.dry || Z.holdOff) return false;
+    const now = b ? b.time : 0; if (Z.holdT == null) Z.holdT = now;
+    if (now - Z.holdT > HOLD.maxWait) { Z.holdOff = true; Z.holdT = null; return false; }
+    return true;
+  }
   function spend(b, u, cost) { const Z = B(u); Z.mana = Math.max(0, Z.mana - cost); if (Z.mana <= 0) Z.empty = true; b.text(u.x + 14, u.y - 74, '-' + cost, '#c89aff', 8); }
 
   STATUS_DEFS.bzTired = { name: '탈진', color: '#b8a8d0', tint: '#504060', tintA: 0.3, blocksAct: true, blocksMove: true, noResistScale: true };
@@ -31,7 +44,7 @@
   // ---------- 1. 깃발 낫 ----------
   SKILLS.bzScythe = {
     desc: '깃발에 마력을 불어넣어 낫으로 바꾸고 앞쪽 반원을 크게 벱니다. 6초 동안 기본 공격도 낫(피해 1.5배·사거리 증가)이 됩니다.',
-    canUse: (u, e, d) => d < 105 && affordable(u, e, d, u.skills.find(s => s.id === 'bzScythe').cost),
+    canUse: (u, e, d, b) => d < 105 && affordable(u, e, d, u.skills.find(s => s.id === 'bzScythe').cost) && !holdForHole(u, e, d, u.skills.find(s => s.id === 'bzScythe').cost, b),
     use(u, e0, b, slot) { const e = foeOf(b, u), a = angTo(u, e); spend(b, u, slot.cost); u.facing = Math.cos(a) >= 0 ? 1 : -1;
       b.glow(u.x, u.y - 20, 30, '#c89aff', 0.3);
       b.windup(u, slot.wind, () => { if (u.dead || b.over) return;
@@ -43,7 +56,7 @@
   // ---------- 2. 공중 내려치기 ----------
   SKILLS.bzSlam = {
     desc: '팬던트의 마력으로 떠올라, 정해 둔 지점(시전 순간 상대 위치)에 깃발을 내리꽂아 충격파를 일으킵니다. 지점이 보이니 피할 수 있습니다.',
-    canUse: (u, e, d) => d > 110 && d < 320 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzSlam').cost),
+    canUse: (u, e, d, b) => d > 110 && d < 320 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzSlam').cost) && !holdForHole(u, e, d, u.skills.find(s => s.id === 'bzSlam').cost, b),
     use(u, e0, b, slot) { const e = foeOf(b, u); spend(b, u, slot.cost); const p = b.clampPos(e.x, e.y, u.pad, u), S = slot;
       b.telegraphCircle(p.x, p.y, S.r, S.dur, '#c89aff');
       u.air = { t: 0, dur: S.dur, h: 70, noLand: true, fling: { x0: u.x, y0: u.y, x1: p.x, y1: p.y } };
@@ -62,7 +75,7 @@
   SKILLS.bzHole = {
     desc: '그 자리에 고정되어(상태이상 면역) 상대와 맵 밖의 물건들을 천천히 빨아들입니다. 상대가 공격하면 시전 시간이 줄어듭니다. 날아오는 물건에 맞은 상대는 기절(근접 공격이 준비돼 있으면 바로 부숨). 빨아들인 물건 수·시전 시간만큼 강한 내뱉기, 상대를 삼켰다면 마력을 회복하고 크게 뱉어냅니다.',
     canUse: (u, e, d) => d < 260 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzHole').cost),
-    use(u, e0, b, slot) { const S = slot; spend(b, u, S.cost); u.statuses = u.statuses.filter(s => (STATUS_DEFS[s.id] || {}).positive);
+    use(u, e0, b, slot) { const S = slot; spend(b, u, S.cost); B(u).holdOff = false; B(u).holdT = null; /* 홀 시전 → 비축 상태 초기화 */ u.statuses = u.statuses.filter(s => (STATUS_DEFS[s.id] || {}).positive);
       const H = u.bzHole = { t: 0, dur: S.dur, objs: [], got: 0, spawnT: 0.05, swallowed: null };
       u.action = { type: 'bzHole', step(dt) {
         const e = foeOf(b, u); H.t += dt; H.spawnT -= dt;
@@ -98,7 +111,7 @@
   // ---------- 4. 단계 분리 ----------
   SKILLS.bzSplit = {
     desc: '둘로 나뉩니다. 깃발을 든 쪽이 상대가 있던 방향으로 돌진(논타겟)해 띄우고, 망토를 두른 쪽이 날아가 띄워진 상대를 가까운 벽으로 차 버립니다(벽 충돌 피해). 띄우기에 실패하거나 끝나면 다시 합쳐집니다.',
-    canUse: (u, e, d) => d > 60 && d < 240 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzSplit').cost),
+    canUse: (u, e, d, b) => d > 60 && d < 240 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzSplit').cost) && !holdForHole(u, e, d, u.skills.find(s => s.id === 'bzSplit').cost, b),
     use(u, e0, b, slot) { const S = slot, e = foeOf(b, u), a = angTo(u, e); spend(b, u, S.cost);
       const C = u.bzClone = { x: u.x, y: u.y, z: 0, ph: 'wait', t: 0, tgt: null }; b.smoke(u.x, u.y - 16, '#c89aff', 6);
       b.telegraphLine(u.x, u.y, u.x + Math.cos(a) * S.len, u.y + Math.sin(a) * S.len, 18, 0.15, '#ffd0e0');
@@ -145,7 +158,7 @@
     ctx.fillStyle = '#3a8a4a'; ctx.fillRect(-5, -1, 6, 2); ctx.fillStyle = '#ff5a7a'; ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(0, -2.5); ctx.lineTo(0, 2.5); ctx.fill(); ctx.restore(); }
   SKILLS.bzThorns = {
     desc: '망토 속에서 장미 가시를 쉴 새 없이 쏘아냅니다(논타겟). 가시는 상대의 어떤 공격(투사체·근접·스킬)에도 상쇄됩니다.',
-    canUse: (u, e, d) => d > 70 && d < 300 && affordable(u, e, d, u.skills.find(s => s.id === 'bzThorns').cost),
+    canUse: (u, e, d, b) => d > 70 && d < 300 && affordable(u, e, d, u.skills.find(s => s.id === 'bzThorns').cost) && !holdForHole(u, e, d, u.skills.find(s => s.id === 'bzThorns').cost, b),
     use(u, e0, b, slot) { const S = slot; spend(b, u, S.cost); let t = 0, n = 0;
       u.action = { type: 'bzThorns', step(dt) { const e = foeOf(b, u); t -= dt; if (t > 0) return; t = S.gap;
         if (!e || n >= S.n) { u.action = null; return; } n++;
