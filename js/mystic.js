@@ -13,6 +13,8 @@
   // MB_RANGE: 구슬이 나아가는 고정 거리 (상대 거리와 무관). 끝까지 가거나 벽·장애물에 닿으면 시전자에게 돌아옴.
   //  적중: 갈 때 1회 + 올 때 1회 (올 때는 이미 이 신비술사에게 조종 중인 상대면 건너뜀 → 조종 시간 갱신 남용 없음)
   const MB_RANGE = 220;
+  // MB_SIZE: 구슬 크기 배율 (적중 반경 14 → 14×배율, 그림 반경 11·고리 6·잔상도 같은 배율로 함께 커짐)
+  const MB_SIZE = 2, MB_HIT = 14 * MB_SIZE;
   SKILLS.mysticBall = {
     desc: '상대의 현재 위치 방향으로 마법 구슬을 날립니다(유도 없음). 구슬은 상대 거리와 상관없이 항상 일정 거리를 나아간 뒤(벽에 닿으면 그 자리에서) 시전자에게 돌아옵니다. 갈 때와 올 때 모두 맞힐 수 있고, 구슬에 닿은 상대는 조종 상태: 신비술사가 움직이는 대로 끌려다니며, 벽에 부딪히면 큰 피해.',
     canUse: (u, e, d) => !u.orb && !e.dead && d < 280,
@@ -24,7 +26,7 @@
   };
   function orbStep(b, u, dt) {
     const O = u.orb, S = O.slot;
-    const e = b.foes(u).find(f => Math.hypot(f.x - O.x, (f.y - 18 - b.airZ(f)) - O.y) < 14 + f.pad) || b.enemy(u); // 다인 팀: 구슬에 닿은 상대
+    const e = b.foes(u).find(f => Math.hypot(f.x - O.x, (f.y - 18 - b.airZ(f)) - O.y) < MB_HIT + f.pad) || b.enemy(u); // 다인 팀: 구슬에 닿은 상대
     O.t += dt;
     if (O.phase === 'out') {
       const st = Math.min(S.spd * dt, MB_RANGE - O.go), nx = O.x + O.dx * st, ny = O.y + O.dy * st, q = b.clampPos(nx, ny + 18, 4);
@@ -38,7 +40,7 @@
     O.trail.push([O.x, O.y]); if (O.trail.length > 8) O.trail.shift();
     if (Math.random() < 0.5) b.parts.push({ x: O.x + rand(-3, 3), y: O.y + rand(-3, 3), vx: rand(-10, 10), vy: rand(-10, 10), life: 0.35, max: 0.35, color: '#e0b0ff', size: 2, glow: true });
     const back = O.phase === 'back', ctl = e.status && e.status('control');
-    if (!(back ? O.hitBack || (ctl && ctl.src === u) : O.hit) && !e.dead && !b.over && Math.hypot(e.x - O.x, (e.y - 18 - b.airZ(e)) - O.y) < 14 + e.pad) {
+    if (!(back ? O.hitBack || (ctl && ctl.src === u) : O.hit) && !e.dead && !b.over && Math.hypot(e.x - O.x, (e.y - 18 - b.airZ(e)) - O.y) < MB_HIT + e.pad) {
       if (back) O.hitBack = true; else O.hit = true; // 갈 때 1회, 올 때 1회
       b.stats.mbHitOut = (b.stats.mbHitOut || 0) + (back ? 0 : 1); b.stats.mbHitBack = (b.stats.mbHitBack || 0) + (back ? 1 : 0);
       b.shock(e.x, e.y - 18, 6, 34, '#d890ff', 0.4, 3);
@@ -155,10 +157,10 @@
         const O = u.orb;
         if (O) {
           ctx.save();
-          O.trail.forEach(([x, y], i) => { ctx.globalAlpha = 0.08 * i; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(x, y, 3 + i * 0.5, 0, TAU); ctx.fill(); });
-          const g = ctx.createRadialGradient(O.x, O.y, 1, O.x, O.y, 11); g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#e0b0ff'); g.addColorStop(1, 'rgba(150,60,220,0)');
-          ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(O.x, O.y, 11, 0, TAU); ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(O.x, O.y, 6, b.time * 5, b.time * 5 + 4); ctx.stroke();
+          O.trail.forEach(([x, y], i) => { ctx.globalAlpha = 0.08 * i; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(x, y, (3 + i * 0.5) * MB_SIZE, 0, TAU); ctx.fill(); });
+          const g = ctx.createRadialGradient(O.x, O.y, 1, O.x, O.y, 11 * MB_SIZE); g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#e0b0ff'); g.addColorStop(1, 'rgba(150,60,220,0)');
+          ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(O.x, O.y, 11 * MB_SIZE, 0, TAU); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(O.x, O.y, 6 * MB_SIZE, b.time * 5, b.time * 5 + 4); ctx.stroke();
           ctx.restore();
         }
         const s = u.status('seal');
