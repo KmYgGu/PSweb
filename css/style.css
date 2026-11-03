@@ -237,3 +237,8 @@ img { image-rendering: pixelated; }
 .modesel button { background: #252a38; color: #cfd6e6; border: 1px solid #4a5268; border-radius: 6px; padding: 3px 12px; cursor: pointer; font: inherit; }
 .modesel button.on { background: #ffd66b; color: #1b1e27; border-color: #ffd66b; font-weight: bold; }
 .modedesc { text-align: center; font-size: 11px; color: #9aa3b8; margin-bottom: 6px; }
+
+/* 첫 화면 보조 버튼 (리플레이 열기 · 탈출맵): 2열 큰 버튼 (터치 48px) */
+#select .extrabtns { display: flex; gap: 10px; width: 100%; margin-top: 8px; flex: none; }
+#select .extrabtns .rpload { flex: 1 1 0; min-width: 0; margin: 0; height: 48px; padding: 0 8px; border-radius: 8px; font-size: 14px; font-weight: bold; border: 1px solid #454b66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#select .extrabtns #escEnter { background: #2f4a3c; border-color: #4f8a6a; color: #d6ffe6; }

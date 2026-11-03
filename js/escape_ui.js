@@ -3,7 +3,7 @@
 (function () {
   if (typeof document === 'undefined') return;
   const $ = s => document.querySelector(s), LS = 'psEscapeMaps', LAST = 'psEscapeLast', T = ESCAPE.TILE;
-  let map = null, tool = 'wall', paint = null, sc = 1, search = null, draft = null; // draft: 그리는 중인 움직이는 벽 경로 [[c,r]..]
+  let map = null, tool = 'wall', paint = null, sc = 1, search = null, draft = null, brush = 1, lock = false, hover = null; // draft: 그리는 중인 움직이는 벽 경로 [[c,r]..]
   try { const s = localStorage.getItem(LAST); if (s) map = ESCAPE.normalize(s); } catch (e) { map = null; }
   if (!map) map = ESCAPE.sampleMap();
   try { const c = localStorage.getItem('psEscCam'); if (c) window.ESC_CAM = c; } catch (e) {}
@@ -26,7 +26,17 @@
 #escOpt{min-height:24px}
 #escOpt .o{display:none;gap:4px;align-items:center}
 #escOpt .o.on{display:flex}
-#escape button.sm{padding:0 5px}`;
+#escape button.sm{padding:0 5px}
+#escape button.dir{min-width:30px;font-size:14px}
+#escLock.on{background:#ff8a4a;color:#2a1408}
+/* 터치 화면·좁은 폭: 편집기 버튼을 손가락 크기로 (높이 36px, 도구 버튼 40px) */
+@media (pointer: coarse), (max-width: 480px) {
+ #escape button, #escape select, #escCam { height: 36px; font-size: 12px; }
+ #escape input { height: 32px; font-size: 13px; }
+ #escape .row { gap: 6px; }
+ #escTools button, #escTools2 button, #escBrushRow button, #escOpt button { height: 40px; min-width: 40px; }
+ #escape button.dir { min-width: 44px; font-size: 18px; }
+}`;
   document.head.appendChild(css);
 
   const P = document.createElement('div'); P.id = 'escape'; P.className = 'hidden';
@@ -36,8 +46,9 @@
 <div class="row" id="escTools"><button data-t="wall">■ 벽 칠하기</button><button data-t="erase">□ 지우개</button><button data-t="s0">P1 시작</button><button data-t="s1">P2 시작</button><button data-t="exit">🚪 출구</button>
  <select id="escExitSz" title="출구 크기(칸)"><option value="1x1">출구 1×1</option><option value="2x2">출구 2×2</option><option value="3x2">출구 3×2</option><option value="4x3">출구 4×3</option></select><button id="escClear" type="button">전부 비우기</button><button id="escSample" type="button">샘플</button></div>
 <div class="row" id="escTools2"><button data-t="water">💧 물</button><button data-t="oneway">⇧ 일방통행</button><button data-t="brk">🧱 파괴벽</button><button data-t="mvpath">① 움직일 경로</button><button data-t="mvwall">② 움직이는 벽</button></div>
+<div class="row" id="escBrushRow">브러시 <button type="button" data-b="1">1×1</button><button type="button" data-b="2">2×2</button><button type="button" data-b="3">3×3</button><button type="button" data-b="5">5×5</button> <button id="escLock" type="button" title="잠금 (L): 켜면 빈 칸에만 칠함">🔓 잠금 꺼짐</button></div>
 <div class="row" id="escOpt">
- <span class="o" data-for="oneway">방향 <select id="escDir"><option value="^">↑ 위</option><option value="v">↓ 아래</option><option value="<">← 왼쪽</option><option value=">">→ 오른쪽</option></select> 같은 방향 2배 속도, 다른 방향은 튕김</span>
+ <span class="o" data-for="oneway">방향 <select id="escDir" hidden><option value="^">↑ 위</option><option value="v">↓ 아래</option><option value="<">← 왼쪽</option><option value=">">→ 오른쪽</option></select><button type="button" class="dir" data-d="^">↑</button><button type="button" class="dir" data-d="v">↓</button><button type="button" class="dir" data-d="<">←</button><button type="button" class="dir" data-d=">">→</button> <span style="color:#8a90a8">키보드 방향키·WASD</span></span>
  <span class="o" data-for="brk"><select id="escBrkM"><option value="hits">부딪힌 횟수</option><option value="hp">내구도(체력)</option></select><input type="number" id="escBrkN" min="1" max="9999" value="3"><button id="escBrk1" class="sm" type="button">즉시 파괴(1회)</button></span>
  <span class="o" data-for="water">물: 느려짐(×${ESCAPE.WATER.spd}) · 산소 ${ESCAPE.WATER.o2}초 뒤 익사 피해 (피해 0이어도 적용)</span>
  <span class="o" data-for="mvpath">칸을 끌어 경로를 그리세요 (되돌아가면 지워짐) <button id="escMvNew" class="sm" type="button">새 경로</button></span>
@@ -85,6 +96,17 @@
     if (map.movers) { map.movers = map.movers.filter(mv => !mv.path.some(p => p[0] === c && p[1] === r) && !inRect(mvRect(mv), x, y)); if (!map.movers.length) delete map.movers; }
     if (draft && draft.some(p => p[0] === c && p[1] === r)) draft = null;
   }
+  // 잠금: 비어 있지 않은 칸 = 벽·물·일방통행(grid ≠ '.'), 파괴벽, 움직이는 벽의 경로 칸과 처음 위치 칸
+  function occupied(c, r) {
+    if (map.grid[r][c] !== '.' || brkAt(c, r) >= 0) return true; const x = c * T + T / 2, y = r * T + T / 2;
+    return (map.movers || []).some(mv => mv.path.some(p => p[0] === c && p[1] === r) || inRect(mvRect(mv), x, y));
+  }
+  // 브러시: n×n 칸, 왼쪽 위 = (c - ⌊(n-1)/2⌋, r - ⌊(n-1)/2⌋) → 홀수는 누른 칸이 가운데, 짝수(2)는 누른 칸이 왼쪽 위. 맵 밖 칸은 무시
+  const BRUSH_TOOLS = ['wall', 'erase', 'water', 'oneway', 'brk'];
+  function brushCells(c, r) { const n = BRUSH_TOOLS.includes(tool) ? brush : 1, o = Math.floor((n - 1) / 2), out = []; for (let y = r - o; y < r - o + n; y++) for (let x = c - o; x < c - o + n; x++) if (x >= 0 && y >= 0 && x < cols() && y < rows()) out.push([x, y]); return out; }
+  function setBrush(n) { brush = n; document.querySelectorAll('#escBrushRow [data-b]').forEach(b => b.classList.toggle('on', +b.dataset.b === n)); }
+  function setLock(v) { lock = v; const b = $('#escLock'); b.classList.toggle('on', v); b.textContent = v ? '🔒 잠금 켜짐' : '🔓 잠금 꺼짐'; }
+  function setDir(d) { $('#escDir').value = d; document.querySelectorAll('#escOpt [data-d]').forEach(b => b.classList.toggle('on', b.dataset.d === d)); }
   function pathAdd(c, r) { // 상하좌우로만 이어 붙임 (대각선은 가로→세로로 채움), 바로 전 칸으로 되돌아가면 마지막 칸 지움
     if (!draft) draft = [];
     const step = (cc, rr) => { const L = draft[draft.length - 1], P = draft[draft.length - 2]; if (L && L[0] === cc && L[1] === rr) return; if (P && P[0] === cc && P[1] === rr) { draft.pop(); return; } if (draft.length >= ESCAPE.LIM.path) return; draft.push([cc, rr]); };
@@ -124,6 +146,8 @@
     const drawPath = (P, col) => { if (!P || !P.length) return; cx.strokeStyle = col; cx.lineWidth = 3; cx.setLineDash([8, 6]); cx.beginPath(); P.forEach((p, i) => { const x = p[0] * T + T / 2, y = p[1] * T + T / 2; i ? cx.lineTo(x, y) : cx.moveTo(x, y); }); cx.stroke(); cx.setLineDash([]); cx.fillStyle = col; for (const p of P) { cx.beginPath(); cx.arc(p[0] * T + T / 2, p[1] * T + T / 2, 4, 0, Math.PI * 2); cx.fill(); } };
     for (const mv of map.movers || []) { drawPath(mv.path, 'rgba(255,196,40,.75)'); const R = mvRect(mv); cx.fillStyle = 'rgba(255,196,40,.55)'; cx.fillRect(R.x, R.y, R.w, R.h); cx.strokeStyle = '#ffc428'; cx.lineWidth = 3; cx.strokeRect(R.x + 1.5, R.y + 1.5, R.w - 3, R.h - 3); cx.fillStyle = '#2a2010'; cx.fillText(mv.mode === 'loop' ? '⟳' : '⇄', R.x + R.w / 2, R.y + R.h / 2 + 1); }
     drawPath(draft, 'rgba(120,255,255,.9)');
+    if (hover && BRUSH_TOOLS.includes(tool)) { const C = brushCells(hover[0], hover[1]); if (C.length) { let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (const [x, y] of C) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+      cx.fillStyle = tool === 'erase' ? 'rgba(255,90,90,.18)' : 'rgba(255,255,255,.14)'; cx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); cx.strokeStyle = tool === 'erase' ? '#ff7a7a' : (lock ? '#ff8a4a' : '#ffe27a'); cx.lineWidth = 2 / sc; cx.strokeRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); } }
     cx.textAlign = 'left'; cx.textBaseline = 'alphabetic';
     cx.strokeStyle = 'rgba(255,255,255,0.07)'; cx.lineWidth = 1 / sc; cx.beginPath();
     for (let x = 0; x <= map.w; x += T) { cx.moveTo(x, 0); cx.lineTo(x, map.h); } for (let y = 0; y <= map.h; y += T) { cx.moveTo(0, y); cx.lineTo(map.w, y); } cx.stroke();
@@ -136,11 +160,16 @@
   const tileAt = e => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * map.w / T), Math.floor((e.clientY - r.top) / r.height * map.h / T)]; };
   function applyTool(c, r) {
     if (c < 0 || r < 0 || c >= cols() || r >= rows()) return;
+    if (BRUSH_TOOLS.includes(tool)) { for (const [x, y] of brushCells(c, r)) applyCell(x, y, true); return; }
+    applyCell(c, r, false);
+  }
+  function applyCell(c, r, quiet) {
+    if (lock && tool !== 'erase' && BRUSH_TOOLS.includes(tool) && occupied(c, r)) return; // 잠금: 이미 무언가 있는 칸은 그대로
     if (tool === 'wall') return setTile(c, r, true);
     if (tool === 'erase') return eraseAt(c, r);
     if (tool === 'water' || tool === 'oneway') { setCh(c, r, tool === 'water' ? '~' : $('#escDir').value); delBrk(c, r); return; }
     if (tool === 'brk') { const m2 = $('#escBrkM').value, lim = m2 === 'hp' ? ESCAPE.LIM.brkHp : ESCAPE.LIM.brkHits, n = Math.min(lim, Math.max(1, Math.round(+$('#escBrkN').value || 1)));
-      if (map.starts.some(s => Math.floor(s.x / T) === c && Math.floor(s.y / T) === r)) return msg('⚠ 시작 지점 칸에는 파괴벽을 놓을 수 없어요');
+      if (map.starts.some(s => Math.floor(s.x / T) === c && Math.floor(s.y / T) === r)) return quiet && brush > 1 ? undefined : msg('⚠ 시작 지점 칸에는 파괴벽을 놓을 수 없어요');
       setCh(c, r, '.'); delBrk(c, r); (map.breakables || (map.breakables = [])).push({ c, r, n, m: m2 }); return; }
     if (tool === 'mvpath') return pathAdd(c, r);
     if (tool === 'mvwall') return placeMover(c, r);
@@ -163,7 +192,9 @@
     e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (er) {}
     const t = tileAt(e); paint = ['wall', 'erase', 'water', 'oneway', 'brk', 'mvpath'].includes(tool) ? t : null; applyTool(t[0], t[1]); map = ESCAPE.normalize(map); draw();
   });
+  cv.addEventListener('pointerleave', () => { if (hover) { hover = null; draw(); } });
   cv.addEventListener('pointermove', e => {
+    const h = tileAt(e); if (!hover || hover[0] !== h[0] || hover[1] !== h[1]) { hover = h; if (!paint) draw(); }
     if (!paint) return; const t = tileAt(e), [c0, r0] = paint, n = Math.max(Math.abs(t[0] - c0), Math.abs(t[1] - r0));
     if (tool === 'mvpath') applyTool(t[0], t[1]); // 경로는 pathAdd 가 상하좌우로 채움
     else for (let k = 1; k <= n; k++) applyTool(Math.round(c0 + (t[0] - c0) * k / n), Math.round(r0 + (t[1] - r0) * k / n)); // 빠르게 끌어도 칸이 빠지지 않게 보간
@@ -172,6 +203,20 @@
   const endPaint = () => { const was = paint && tool === 'mvpath'; if (paint) { paint = null; fromUI(); draw(); } else fromUI(); if (was && draft && draft.length >= 2) msg(`경로 ${draft.length}칸. 이제 ② 움직이는 벽을 누르고, 경로 위 칸을 눌러 벽을 놓으세요`); };
   cv.addEventListener('pointerup', endPaint); cv.addEventListener('pointercancel', endPaint);
   document.querySelectorAll('#escTools [data-t],#escTools2 [data-t]').forEach(b => b.onclick = () => { tool = b.dataset.t; draw(); });
+  document.querySelectorAll('#escBrushRow [data-b]').forEach(b => b.onclick = () => { setBrush(+b.dataset.b); draw(); });
+  $('#escLock').onclick = () => { setLock(!lock); draw(); };
+  document.querySelectorAll('#escOpt [data-d]').forEach(b => b.onclick = () => { setDir(b.dataset.d); });
+  setBrush(1); setLock(false); setDir('^');
+  // 키보드: 방향키·WASD → 일방통행 도구로 바꾸고 그 방향 선택, L → 잠금 토글. 편집기가 열려 있고 입력칸에 포커스가 없을 때만
+  const KEYDIR = { ArrowUp: '^', ArrowDown: 'v', ArrowLeft: '<', ArrowRight: '>', w: '^', s: 'v', a: '<', d: '>' };
+  document.addEventListener('keydown', e => {
+    if (P.classList.contains('hidden') || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target, tag = t && t.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+    const net = document.querySelector('#escNet'); if (net && !net.classList.contains('hidden')) return; // 목록·올리기 화면 위에서는 무시
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, d = KEYDIR[k];
+    if (d) { e.preventDefault(); tool = 'oneway'; setDir(d); draw(); return; }
+    if (k === 'l') { e.preventDefault(); setLock(!lock); draw(); }
+  });
   $('#escMvNew').onclick = () => { draft = null; draw(); msg('새 경로: 칸을 끌어 그리세요'); };
   $('#escBrk1').onclick = () => { $('#escBrkM').value = 'hits'; $('#escBrkN').value = 1; msg('즉시 파괴: 한 번 부딪히면 부서지는 벽'); };
   $('#escClear').onclick = () => { map.grid = ESCAPE.emptyGrid(cols(), rows()); delete map.breakables; delete map.movers; draft = null; map = ESCAPE.normalize(map); fromUI(); draw(); };

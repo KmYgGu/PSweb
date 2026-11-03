@@ -16,6 +16,7 @@
 #escNet button{height:24px;padding:0 8px;border-radius:5px;font-size:11px;background:#2e3346;color:#c9cee0;box-shadow:0 2px 0 #14151f;border:0;cursor:pointer}
 #escNet button.go{background:#3bbf7a;color:#08200f;font-weight:bold}
 #escNet button.warn{background:#8a3a3a;color:#ffe0e0}
+@media (pointer: coarse), (max-width: 480px) { #escNet button { height: 36px; font-size: 12px; } #escNet .escPvBox button { height: 96px; } }
 #escNet input,#escNet textarea{font-size:12px;background:#262a3c;color:#e0e4f0;border:1px solid #3a4058;border-radius:4px;padding:3px 5px;width:100%;box-sizing:border-box}
 #escNet label{display:block;color:#a9afc6;margin-top:2px}
 #escNetMsg{white-space:pre-wrap;color:#ffe08a;font-size:11px;line-height:1.4;min-height:16px;padding:4px 6px;border-radius:4px;background:rgba(255,207,74,.08)}
