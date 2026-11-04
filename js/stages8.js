@@ -48,6 +48,8 @@
     if (!p) p = C.meats.find(q => gapTo(q.x, q.y) >= 1.02) || { x: m.x, y: m.y }; // 최후: 비어 있는 기존 고정 구역 → 그래도 없으면 제자리
     m.x = p.x; m.y = p.y; D.stats.respawns++; const g = gapTo(p.x, p.y); D.stats.minGap = Math.min(D.stats.minGap, g); D.stats.spots.push([Math.round(p.x), Math.round(p.y), +g.toFixed(2)]);
   }
+  // 스테이지 기믹이 새로 건 상태이상에 출처 태그(s.stg) — 스테이지 변경 시 이것만 정리 (이미 있던 같은 상태이상에 합쳐지면 캐릭터가 건 것이므로 태그 안 함)
+  function stgStatus(b, u, id, dur) { const had = u.status(id), s = b.applyStatus(u, id, dur, null, { noResistScale: true }); if (s && !had) s.stg = b.stageId; return s; }
   const BQ = {
     match: st => !!st.bbq,
     init(b) {
@@ -71,7 +73,7 @@
           for (const u of on) {
             u.action = null; u.push = null;
             u.air = { t: 0, dur: C.flip.dur, h: C.flip.h };
-            b.applyStatus(u, 'stun', rand(C.flip.stun[0], C.flip.stun[1]), null, { noResistScale: true });
+            stgStatus(b, u, 'stun', rand(C.flip.stun[0], C.flip.stun[1]));
             b.text(u.x, u.y - 70, '뒤집기!', '#ffd08a', 11);
           }
           m.down = 1 - m.down; m.state = 'flipped'; m.t = 0; D.stats.flips++; b.dust(m.x, m.y); b.shock(m.x, m.y, 10, 46, '#ffcf8a', 0.35, 3);
@@ -99,7 +101,7 @@
         if (u.bbqHeat >= 100) {
           D.stats.bursts++; u.bbqHeat = C.heat.reset; u.bbqCd = C.heat.cd;
           b.damage(u, b.enemy(u) || u, u.maxHp * rand(C.heat.dmg[0], C.heat.dmg[1]), { dot: true, element: 'fire' });
-          if (!u.dead) { b.applyStatus(u, 'confusion', C.heat.conf, null, { noResistScale: true }); u.bbqHop = Math.round(rand(C.heat.hops[0], C.heat.hops[1] + 0.49)); }
+          if (!u.dead) { stgStatus(b, u, 'confusion', C.heat.conf); u.bbqHop = Math.round(rand(C.heat.hops[0], C.heat.hops[1] + 0.49)); }
           b.text(u.x, u.y - 84, '앗뜨거!', '#ff8a3a', 12); b.shock(u.x, u.y - 10, 8, 34, '#ff7a2a', 0.35, 3);
         }
         // AI: 집기 예고 고기에서 도망, 뜨거우면 가까운 안전한 고기로
@@ -111,6 +113,10 @@
           if (best) steer(u, Math.atan2(best.y - u.y, best.x - u.x), 5, dt);
         }
       }
+    },
+    leave(b) { // 스테이지 변경: 열기 게이지·쿨다운·남은 깡충·바베큐가 건 기절/혼란 제거 (공중 띄움은 그대로 착지)
+      if (!b.bbq) return;
+      for (const u of b.u) { delete u.bbqHeat; delete u.bbqCd; delete u.bbqHop; u.statuses = u.statuses.filter(s => s.stg !== 'bbq'); }
     },
     floor(x, st) {
       if (!st.bbq) return;
@@ -207,6 +213,12 @@
     const L = y => ({ x: lx, y, row: 'L' }), Rr = y => ({ x: rx, y, row: 'R' }), B = x => ({ x, y: by, row: 'B' });
     return [L(282), Rr(282), B(180), L(392), Rr(392), B(96), B(264), L(232), Rr(232)];
   }
+  // 쿨타임 정지: u.skillT(모든 스킬 쿨타임 공통 배열)가 줄어들지 않게 직전 값으로 되돌림 (늘어나는 건 허용). 스킬 수가 바뀌면(슈르프 흡수 등) 새로 기억
+  function holdCd(u) {
+    const T = u.skillT; if (!T) return;
+    const H = u.clsCd; if (!H || H.length !== T.length) { u.clsCd = T.slice(); return; }
+    for (let i = 0; i < T.length; i++) { if (T[i] < H[i]) T[i] = H[i]; else H[i] = T[i]; }
+  }
   const CL = {
     match: st => !!st.classroom,
     init(b) {
@@ -224,6 +236,10 @@
       for (const u of b.u) { u.clsSpot = null; }
     },
     noClamp(b, u) { return !!(b.cls && u.clsDrag); },
+    leave(b) { // 스테이지 변경: 얼음·들킴·끌려감/복귀 이동·쿨타임 정지 모두 해제 (위치는 switchStage 가 새 스테이지 안으로 옮김)
+      if (!b.cls) return;
+      for (const u of b.u) { u.statuses = u.statuses.filter(s => s.id !== 'clsFreeze' && s.id !== 'clsCaught'); u.clsDrag = null; u.clsCd = null; delete u.clsSpot; }
+    },
     step(b, dt) {
       const D = b.cls; if (!D || b.over) return; const C = D.C;
       D.t += dt;
@@ -240,6 +256,7 @@
       for (const u of b.u) {
         if (u.dead) continue;
         const G = u.clsDrag;
+        if (G && !G.back) holdCd(u); else u.clsCd = null; // 들킨 동안(교탁 옆으로 끌려가 서 있는 동안) 스킬 쿨타임 회복 정지 — 선생님이 칠판으로 돌면 재개
         if (G) { // 끌려감 / 복귀 (걸어가듯 보간)
           G.t += dt; const p = clamp(G.t / (G.back ? C.back : C.drag), 0, 1), e = p * p * (3 - 2 * p);
           u.x = G.x0 + (G.x1 - G.x0) * e; u.y = G.y0 + (G.y1 - G.y0) * e - Math.abs(Math.sin(p * Math.PI * 4)) * 3; u.push = null; u.pull = null; u.action = null;

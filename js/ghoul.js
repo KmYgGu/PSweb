@@ -181,6 +181,7 @@
   function teamDefs(b) { return [0, 1].map(t => { const m = b.u.filter(o => o.team === t && !o.summon); return (m.find(o => o.def.partner) || m[m.length - 1]).def; }); }
   function switchStage(b, id) {
     if (!STAGE_DEFS[id] || b.over) return false;
+    for (const h of STAGE_HOOKS) h.leave && h.leave(b); // 이전 스테이지 기믹이 건 상태이상·유닛 상태 정리 (js/stages8.js 교실/바베큐)
     const [dA, dB] = teamDefs(b), T = new Battle(dA, dB, {}, id), T0 = new Battle(dA, dB, {}, b.stageId);
     const fresh = new Set(Object.keys(new Unit(dA, 0)));
     const pairs = T.u.map(tu => [tu, b.u.find(o => o.team === tu.team && o.slot === tu.slot && !o.summon)]);
@@ -198,6 +199,7 @@
       for (const k of oldKeys) if (!(T.u[0] && k in T.u[0])) delete u[k];
       const tu = pairs.find(p => p[1] === u)?.[0] || (u.summon && pairs.find(p => p[1] === u.summon.owner)?.[0]);
       if (tu) for (const k of Object.keys(tu)) if (!fresh.has(k) && !UNIT_SKIP.has(k)) u[k] = remap(tu[k] && typeof tu[k] === 'object' && u.summon ? JSON.parse(JSON.stringify(tu[k])) : tu[k], 0);
+      if (!b.escape) u.terrainMul = 1; /* 레이싱 잔디 감속 등 스테이지가 매 프레임 쓰던 이동 배율 초기화 (탈출맵은 자체 갱신) */
       u.climb = null; u.inTrain = false; u.beyLap = null; u.beyRush = null; u.beyBusy = false; u.wiggle = 0; u.push = null; u.pull = null;
       u.statuses = u.statuses.filter(s => s.id !== 'clawed' && s.id !== 'pin');
       if (u.air && (u.air.claw || u.air.noLand)) u.air = null;
