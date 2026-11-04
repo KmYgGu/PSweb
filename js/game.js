@@ -738,15 +738,8 @@ class Battle {
     if (u.y < T) { u.y = T; vy = Math.abs(vy); hit = true; if (u.v) u.v[1] = Math.abs(u.v[1]); }
     if (u.y > B) { u.y = B; vy = -Math.abs(vy); hit = true; if (u.v) u.v[1] = -Math.abs(u.v[1]); }
     if (hit) {
-      // 핀볼 느낌: 반사각을 상대 쪽으로 살짝 꺾음 (최대 0.8rad) → 충돌 빈도 증가
-      let ang = Math.atan2(vy, vx) + rand(-0.25, 0.25);
-      const e = this.enemy(u);
-      if (e && !e.dead && !u.ghostChain) { // 고스트 온 무작위 이동 중엔 적 방향 보정 없음
-        const toE = Math.atan2(e.y - u.y, e.x - u.x);
-        let diff = Math.atan2(Math.sin(toE - ang), Math.cos(toE - ang));
-        const tx = Math.cos(toE), ty = Math.sin(toE);
-        if (tx * vx >= -0.05 && ty * vy >= -0.05 || Math.abs(diff) < 1.2) ang += clamp(diff, -0.8, 0.8);
-      }
+      // 순수 반사: 법선 기준 반사각 + ±0.25rad 무작위 흔들림 (상대 방향 보정 없음 — 전투·탈출맵 공통)
+      const ang = Math.atan2(vy, vx) + rand(-0.25, 0.25);
       u.dir = fixAngle(ang); this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); }
   }
 

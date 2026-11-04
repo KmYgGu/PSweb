@@ -8,6 +8,8 @@ const startServer = () => new Promise(r => { child = spawn(process.execPath, [pa
 const stopServer = () => new Promise(r => { child.on('exit', r); child.kill(); });
 const call = async (method, p, body, { ip = '1.1.1.1', origin = 'null', key } = {}) => { const h = { 'X-Forwarded-For': ip, Origin: origin }; if (body !== undefined) h['Content-Type'] = 'application/json'; if (key) h['X-Admin-Key'] = key; const r = await fetch(S + p, { method, headers: h, body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body) }); return { s: r.status, j: await r.json().catch(() => null), h: r.headers }; };
 const mapWith = o => { const m = game.ESCAPE.sampleMap(); m.chars = ['swordsman', 'assassin']; Object.assign(m, o); return game.ESCAPE.normalize(m); };
+// 클리어 불가 맵: 출구(위쪽 1~3행)와 시작 지점(아래쪽) 사이 5행을 벽으로 완전히 막음 → 어떤 시드로도 구조적으로 도착 불가 (시드 의존 X). 서버 형식 검사는 통과, 재검증 시뮬에서 not_clear 로 거부되는 경로
+const sealedWith = o => { const m = mapWith(o); m.grid = m.grid.map((row, i) => i === 5 ? '#'.repeat(row.length) : row); return m; };
 const results = []; const ok = (name, cond, info) => { if (process.env.V) console.log('..', name, cond); results.push([cond ? 'PASS' : 'FAIL', name, cond ? '' : JSON.stringify(info).slice(0, 300)]); };
 (async () => {
   const M = await mock.start(MP, { delay: 20 }); await startServer();
@@ -29,9 +31,9 @@ const results = []; const ok = (name, cond, info) => { if (process.env.V) consol
   r = await call('POST', '/maps', JSON.stringify({ map: good, title: 'big', pad: 'x'.repeat(250000) }), { ip: '2.2.2.2' }); ok('너무 큼 거부(413)', r.s === 413, r.s);
   const empty = mapWith({ grid: game.ESCAPE.emptyGrid(18, 32), seed: 1 });
   r = await call('POST', '/maps', { map: empty, title: '빈 맵' }, { ip: '2.2.2.2' }); ok('대충 만든 맵(벽 부족) 거부', r.s === 400 && r.j.code === 'too_simple', r.j);
-  r = await call('POST', '/maps', { map: mapWith({ seed: 2 }), title: '클리어 불가' }, { ip: '2.2.2.2' }); ok('클리어 불가 거부', r.s === 422 && r.j.code === 'not_clear', r.j);
+  r = await call('POST', '/maps', { map: sealedWith({ seed: 2 }), title: '클리어 불가' }, { ip: '2.2.2.2' }); ok('클리어 불가 거부', r.s === 422 && r.j.code === 'not_clear', r.j);
   // 횟수 제한: 3.3.3.3 에서 6번 (시간당 5) — 형식 통과 후 계산
-  const codes = []; for (let i = 0; i < 6; i++) { const q = await call('POST', '/maps', { map: mapWith({ seed: 2 }), title: '제한' + i }, { ip: '3.3.3.3' }); codes.push(q.s); }
+  const codes = []; for (let i = 0; i < 6; i++) { const q = await call('POST', '/maps', { map: sealedWith({ seed: 2 }), title: '제한' + i }, { ip: '3.3.3.3' }); codes.push(q.s); }
   ok('횟수 제한(시간당 5) → 6번째 429', codes[5] === 429 && codes.slice(0, 5).every(c => c !== 429), codes);
   // 동시 올리기 직렬화: 다른 주소에서 두 맵 동시에
   const [a, b] = await Promise.all([call('POST', '/maps', { map: mapWith({ seed: 3 }), title: '동시 A' }, { ip: '4.4.4.4' }), call('POST', '/maps', { map: mapWith({ seed: 4 }), title: '동시 B' }, { ip: '5.5.5.5' })]);
