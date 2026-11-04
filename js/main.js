@@ -288,6 +288,12 @@
     const cmd = RP.on ? (RP.playing ? 'play' : 'pause') : !$('#result').classList.contains('hidden') ? 'fade' : 'play'; // 리플레이: 재생 중만, 실전: 결과 화면에서 페이드아웃
     Sfx.bgm(bgmTok.get(b), cmd);
   }
+  // 쓰러진 슈르프가 내던 캐릭터 소리(용변신·드래곤불뿜기 등 긴 소리 포함) 즉시 정지 — 소리 전용(전투 상태·난수 무관), 리플레이도 같은 프레임 처리
+  const charDeadDone = new WeakSet();
+  function charDeathSync() {
+    if (!battle) return;
+    for (const u of battle.u) if (u.dead && u.def && u.def.id === 'schurf' && !charDeadDone.has(u)) { charDeadDone.add(u); Sfx.stopCharOf(u); }
+  }
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (RP.on) RP.frame(dt);
@@ -303,7 +309,7 @@
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0);
     if (VID.active) VID.frame();
-    bgmSync();
+    bgmSync(); charDeathSync();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

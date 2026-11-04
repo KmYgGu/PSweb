@@ -71,14 +71,16 @@ const Sfx = (() => {
   const C_VOL = 0.8, C_GAP = 90, C_MAX = 6; // 캐릭터 소리 전체 음량, 같은 소리 최소 간격(ms), 동시 재생 상한
   const cTurn = new Map(); let cVoices = 0;
   const cSrc = new Set(); // 재생 중인 캐릭터 소리 노드 (판/화면 전환 시 stopChar로 정지 — 드래곤불뿜기 12초 등 긴 소리)
+  // 특정 유닛이 낸 재생 중 캐릭터 소리만 정지 (쓰러짐 시: js/main.js charDeathSync). 상대 소리·일반 효과음·이후 새로 나는 소리는 그대로
+  function stopCharOf(owner) { if (!owner) return 0; let n = 0; for (const s of cSrc) if (s._owner === owner) { try { s.onended = null; s.stop(); } catch (e) { /* 이미 끝남 */ } cSrc.delete(s); n++; } return n; }
   function stopChar() { for (const s of cSrc) { try { s.onended = null; s.stop(); } catch (e) { /* 이미 끝남 */ } } cSrc.clear(); cVoices = 0; }
-  function playChar(list, key) {
+  function playChar(list, key, owner) {
     if (hold || !(on || rec) || !list || !list.length) return;
     const c = ac(); if (!c) return;
     const now = performance.now(); if (now - (last.get(key) || 0) < C_GAP || cVoices >= C_MAX) return;
     const i = cTurn.get(key) || 0, n = list[i % list.length], b = bufs.get(n); if (!b) return;
     last.set(key, now); cTurn.set(key, i + 1);
-    try { const G = window.SFX_CHAR_GAIN || {}; const s = sample(n, C_VOL * (G[n] || 1), 1, 0, 0); if (s) { cSrc.add(s); s.onended = () => cSrc.delete(s); cVoices++; setTimeout(() => { cVoices = Math.max(0, cVoices - 1); }, Math.min(1200, b.duration * 1000)); } } catch (e) { /* 소리 실패 무시 */ }
+    try { const G = window.SFX_CHAR_GAIN || {}; const s = sample(n, C_VOL * (G[n] || 1), 1, 0, 0); if (s) { s._owner = owner || null; cSrc.add(s); s.onended = () => cSrc.delete(s); cVoices++; setTimeout(() => { cVoices = Math.max(0, cVoices - 1); }, Math.min(1200, b.duration * 1000)); } } catch (e) { /* 소리 실패 무시 */ }
   }
   const bufs = new Map();
   let loading = false;
@@ -184,7 +186,7 @@ const Sfx = (() => {
   }
   function play(name, o) {
     if (name === 'char') { if (!o) return; let id = o.id; if (!(CHAR[id] && CHAR[id][o.ev]) && o.alt && CHAR[o.alt] && CHAR[o.alt][o.ev]) id = o.alt; // 자기 소리 없으면 흡수 원본 캐릭터 소리
-      return CHAR[id] ? playChar(CHAR[id][o.ev], id + ':' + o.ev) : undefined; }
+      return CHAR[id] ? playChar(CHAR[id][o.ev], id + ':' + o.ev, o.owner) : undefined; } // owner: 소리를 낸 유닛 (흡수 원본 소리도 낸 유닛 소유)
     if (name === 'cstat') return o ? playChar(CSTAT[o.id], 'st:' + o.id) : undefined;
     if (hold || !(on || rec) || !SYN[name] || !ENABLED.has(name)) return;
     const c = ac(); if (!c) return;
@@ -239,6 +241,7 @@ const Sfx = (() => {
     play,
     toggle(v) { on = typeof v === 'boolean' ? v : !on; if (!on) stopChar(); return on; },
     bgm, bgmStop: () => bgm(null, 'stop'), bgmState: () => ({ playing: !!bg.src, fading: !!bg.fade, done: bg.done, pos: bg.src ? bgmPos() : bg.off, loop: bg.src ? [bg.src.buffer.loopA, bg.src.buffer.loopB, bg.src.loop] : null, ctx: ctx && ctx.state }), // 배경음악 (테스트용 상태)
+    stopCharOf, charOwners: () => [...cSrc].map(s => s._owner && s._owner.def ? s._owner.def.id : null), // 테스트용: 재생 중 캐릭터 소리 소유자
     stopChar, // 캐릭터 효과음만 즉시 정지 (일반 효과음·합성음은 그대로). 호출: js/main.js 판 시작·리플레이 탐색/닫기·나가기
     charPlaying: () => cSrc.size, // 테스트용
     get enabled() { return on; },
