@@ -233,7 +233,7 @@
           if (!r.done) { ctx.fillStyle = '#6a4a2a'; ctx.fillRect(x - 1, y - 1, 3, 2); ctx.globalAlpha = 0.35 * fade; ctx.strokeStyle = '#ff7a9a'; ctx.beginPath(); ctx.ellipse(x, y, r.S.r, r.S.r * 0.6, 0, 0, TAU); ctx.stroke(); }
           else { const h = 6 + 4 * Math.min(1, (r.t - r.grow) * 8); ctx.fillStyle = '#3a8a4a'; ctx.fillRect(x, y - h, 1, h); ctx.fillRect(x - 2, y - h + 4, 2, 1); ctx.fillStyle = '#e8304a'; ctx.fillRect(x - 2, y - h - 3, 5, 4); ctx.fillStyle = '#ff7a8a'; ctx.fillRect(x - 1, y - h - 3, 2, 2); }
           ctx.restore(); }
-        const H = u.bzHole; if (H) { ctx.save(); const R = 26 + 6 * Math.sin(b.time * 10); const g = ctx.createRadialGradient(u.x, u.y - 18, 2, u.x, u.y - 18, R + 20); g.addColorStop(0, 'rgba(20,0,30,0.9)'); g.addColorStop(0.5, 'rgba(90,40,140,0.45)'); g.addColorStop(1, 'rgba(90,40,140,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(u.x, u.y - 18, R + 20, 0, TAU); ctx.fill();
+        const H = u.bzHole; if(H&&window.BattleVFX&&BattleVFX.vortex(ctx,H,u.x,u.y-18,34+6*Math.sin(b.time*10),b.time,'#9860dc'))continue; if (H) { ctx.save(); const R = 26 + 6 * Math.sin(b.time * 10); const g = ctx.createRadialGradient(u.x, u.y - 18, 2, u.x, u.y - 18, R + 20); g.addColorStop(0, 'rgba(20,0,30,0.9)'); g.addColorStop(0.5, 'rgba(90,40,140,0.45)'); g.addColorStop(1, 'rgba(90,40,140,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(u.x, u.y - 18, R + 20, 0, TAU); ctx.fill();
           ctx.strokeStyle = '#c89aff'; ctx.globalAlpha = 0.5; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(u.x, u.y - 18, ((b.time * 50 + i * 20) % 60) + 6, 0, TAU); ctx.stroke(); } ctx.restore(); }
       }
     },

@@ -239,6 +239,7 @@
   function drawBreath(ctx, b, u) {
     const F = u.schForm; if (!F || F.L == null) return; const D = u.def.sch.fin;
     ctx.save(); ctx.translate(u.x, u.y - 30); ctx.rotate(F.aim);
+    if (window.BattleVFX && BattleVFX.breath(ctx, F, F.L, D.half, b.time, '#ffa03a')) { ctx.restore(); return; }
     const g = ctx.createLinearGradient(0, 0, F.L, 0); g.addColorStop(0, 'rgba(255,240,170,0.9)'); g.addColorStop(0.4, 'rgba(255,120,30,0.7)'); g.addColorStop(1, 'rgba(200,30,10,0.15)');
     ctx.fillStyle = g; const w = F.L * Math.tan(D.half), fl = 1 + 0.12 * Math.sin(b.time * 40);
     ctx.beginPath(); ctx.moveTo(14, -5); ctx.lineTo(F.L, -w * fl - 10); ctx.lineTo(F.L, w * fl + 10); ctx.lineTo(14, 5); ctx.fill();

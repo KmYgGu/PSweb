@@ -122,8 +122,10 @@
     b.telegraphCircle(q.x, q.y, s.r || D.gren.r, s.dur || D.gren.dur, '#ffb070'); u.swing = 0.14;
   }
   function explodeGren(b, G, x, y) {
+    const vfi=b.fx.length,vpi=b.parts.length;
     const u = G.u, R = G.r, atk = { element: 'fire', delivery: 'ranged', color: '#ffb070' };
     b.shock(x, y, 4, R * 1.3, '#ffcf8a', 0.4, 6); b.glow(x, y - 8, R * 1.2, '#ff9a4a', 0.4); b.smoke(x, y - 6, '#8a8078', 8); b.burst(x, y - 6, '#ffd090', 10); b.shake(1.5);
+    if(window.BattleVFX)BattleVFX.blast(b,x,y,R,vfi,vpi);
     playSfx('bumpHard');
     for (const g of gearsIn(b, x, y, R)) removeGear(b, g, '군장 파괴');
     b.areaBuildings(x, y, R, u.st.atk * G.mult * 0.6, false);

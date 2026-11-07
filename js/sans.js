@@ -146,7 +146,7 @@
           ctx.restore(); }
         else { const open = O.t >= O.tele, k = clamp(O.t / O.tele, 0, 1); ctx.save();
           if (!open) { ctx.globalAlpha = 0.25 + 0.3 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); ctx.setLineDash([]); }
-          else { const f = 1 - clamp((O.t - O.tele) / O.fire, 0, 1); ctx.globalAlpha = 0.9 * f + 0.1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 22 * f + 4; ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); }
+          else { const f = 1 - clamp((O.t - O.tele) / O.fire, 0, 1); if (!(window.BattleVFX && BattleVFX.beam(ctx, O.x, O.y - 14, O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520, 22 * f + 4, '#a8e8ff', 0.9 * f + 0.1, b.time))) { ctx.globalAlpha = 0.9 * f + 0.1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 22 * f + 4; ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); } }
           ctx.globalAlpha = 1; ctx.translate(Math.round(O.x), Math.round(O.y - 14)); ctx.rotate(O.ang);
           ctx.fillStyle = '#f4f4f8'; ctx.fillRect(-12, -8, 14, 16); ctx.fillRect(2, -7, 6, open ? 4 : 6); ctx.fillRect(2, open ? 3 : 1, 6, open ? 4 : 6);
           ctx.fillStyle = '#20202a'; ctx.fillRect(-6, -6, 4, 4); ctx.fillRect(-6, 2, 4, 4); ctx.fillStyle = open ? '#7af0ff' : '#ffffff'; ctx.fillRect(-5, -5, 2, 2); ctx.restore(); } }

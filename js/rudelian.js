@@ -45,6 +45,7 @@
     return F.t < S.dur;
   }
   function drawFlame(ctx, b, F) {
+    if(window.BattleVFX&&BattleVFX.flame(ctx,F,F.x,F.y,b.time,'#ff8a2a',Math.round(F.size*1.8),Math.round(F.size*.75),.9))return;
     const s = F.size, x = Math.round(F.x), y = Math.round(F.y), fl = 0.85 + 0.15 * Math.sin(b.time * 30 + F.a * 5);
     ctx.save(); ctx.translate(x, y);
     const g = ctx.createRadialGradient(0, -s * 0.5, 1, 0, -s * 0.5, s * 1.5); g.addColorStop(0, 'rgba(255,240,170,0.95)'); g.addColorStop(0.35, 'rgba(255,120,30,0.85)'); g.addColorStop(0.75, 'rgba(180,20,10,0.55)'); g.addColorStop(1, 'rgba(80,0,0,0)');
@@ -138,6 +139,7 @@
   }
   function drawAura(ctx, b, u) {
     const A = u.rdAura, q = Math.min(1, A.t / A.dur), x = Math.round(u.x), y = Math.round(u.y);
+    if(window.BattleVFX&&BattleVFX.flame(ctx,A,x,y,b.time,'#ff315a',Math.max(8,Math.round(56*q)),Math.round(8+6*q),.65))return;
     ctx.save(); ctx.globalAlpha = 0.25 + 0.45 * q; ctx.fillStyle = '#c0101e';
     ctx.beginPath(); ctx.ellipse(x, y, 10 + 10 * q, 4 + 4 * q, 0, 0, TAU); ctx.fill();
     const g = ctx.createLinearGradient(0, y - 56, 0, y); g.addColorStop(0, 'rgba(255,40,60,0)'); g.addColorStop(1, 'rgba(255,40,60,0.75)');
@@ -190,6 +192,7 @@
     const c = Math.cos(E.a), s = Math.sin(E.a), px = -s, py = c, fl = 0.8 + 0.2 * Math.sin(b.time * 60);
     ctx.save(); ctx.lineCap = 'round';
     for (const k of [-3, 3]) { const x0 = u.x + px * k, y0 = u.y - 40 + py * k * 0.5, x1 = x0 + c * E.L, y1 = y0 + s * E.L;
+      if (window.BattleVFX && BattleVFX.beam(ctx, x0, y0, x1, y1, 7, '#ff315a', fl, b.time)) continue;
       ctx.globalAlpha = 0.35 * fl; ctx.strokeStyle = '#ff1a2a'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
       ctx.globalAlpha = 0.9; ctx.strokeStyle = '#d0102a'; ctx.lineWidth = 3; ctx.stroke();
       ctx.strokeStyle = '#ffc0c8'; ctx.lineWidth = 1; ctx.stroke();

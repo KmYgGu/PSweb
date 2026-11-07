@@ -160,12 +160,12 @@
     drawOver(ctx, b) {
       for (const u of b.u) { if (!isGenji(u) || u.dead || u.hidden || !u.gj) continue; const G = u.gj, x = u.x + u.kx, y = u.y + u.ky - b.airZ(u) - 20;
         if (G.def > 0) { ctx.save(); const r = 15 + u.pad; ctx.strokeStyle = '#e8ffd0'; ctx.lineWidth = 2; ctx.globalAlpha = 0.75;
-          for (let i = 0; i < 3; i++) { const a = b.time * 14 + i * TAU / 3; ctx.beginPath(); ctx.arc(x, y, r, a, a + 0.9); ctx.stroke(); }
-          ctx.globalAlpha = 0.25; ctx.strokeStyle = GREEN; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, TAU); ctx.stroke(); ctx.restore(); }
+          for (let i = 0; i < 3; i++) { const a = b.time * 14 + i * TAU / 3; if(window.BattleVFX&&BattleVFX.enabled){const pts=[];for(let j=0;j<=24;j++){const q=a+j/24*.9;pts.push([x+Math.cos(q)*r,y+Math.sin(q)*r]);}BattleVFX.pixelPath(ctx,pts,'#c8ffd0',.85,3);}else{ctx.beginPath(); ctx.arc(x, y, r, a, a + 0.9); ctx.stroke();} }
+          if(window.BattleVFX&&BattleVFX.enabled){const pts=[];for(let j=0;j<=60;j++){const q=j/60*TAU;pts.push([x+Math.cos(q)*(r+3),y+Math.sin(q)*(r+3)]);}BattleVFX.pixelPath(ctx,pts,GREEN,.35,1);}else{ctx.globalAlpha = 0.25; ctx.strokeStyle = GREEN; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(x, y, r + 3, 0, TAU); ctx.stroke();} ctx.restore(); }
         if (G.blade > 0) { ctx.save(); // 초록 용 잔상: 몸을 감아 도는 마디 꼬리
           const n = 14, k = clamp((G.dragonT || 0) / 0.6, 0, 1), fade = Math.min(1, G.blade / 0.5);
           for (let i = 0; i < n; i++) { const t = b.time * 3.2 - i * 0.16, rr = (20 + u.pad) * (0.6 + 0.4 * k), px = x + Math.cos(t) * rr, py = y + 4 + Math.sin(t) * rr * 0.45 - i * 0.6;
-            ctx.globalAlpha = fade * (0.7 - i * 0.045); ctx.fillStyle = i === 0 ? '#e8ffd0' : GREEN; const sz = i === 0 ? 4 : Math.max(1, 3 - i * 0.15); ctx.fillRect(Math.round(px - sz / 2), Math.round(py - sz / 2), Math.ceil(sz), Math.ceil(sz)); }
+            ctx.globalAlpha = fade * (0.7 - i * 0.045); ctx.fillStyle = window.BattleVFX&&BattleVFX.enabled ? BattleVFX.palette(GREEN)[i===0?7:Math.max(3,6-Math.floor(i/4))] : i === 0 ? '#e8ffd0' : GREEN; const sz = i === 0 ? 4 : Math.max(1, 3 - i * 0.15); ctx.fillRect(Math.round(px - sz / 2), Math.round(py - sz / 2), Math.ceil(sz), Math.ceil(sz)); }
           ctx.restore(); } }
     },
   });

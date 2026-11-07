@@ -135,6 +135,7 @@
       ctx.save();
       for (const f of O.fx) {
         const p = f.t / f.dur;
+        if((f.type==='tpOut'||f.type==='tpIn')&&window.BattleVFX&&BattleVFX.live(ctx,f,'spawn/poof',p*1.5,f.x,f.y-18,{color:'#b89cff',scale:.4,alpha:1-p},1))continue;
         if (f.type === 'step') { // 백스텝: 바닥 화살표 잔상
           ctx.globalAlpha = 0.7 * (1 - p); ctx.fillStyle = '#bff0a8';
           for (let i = 0; i < 4; i++) { const d = 8 + i * 10 + p * 20; px(ctx, f.x + Math.cos(f.ang) * d, f.y + Math.sin(f.ang) * d * 0.6, 3, i % 2 ? '#e8ffd8' : '#8fd47a'); }
@@ -148,6 +149,7 @@
       }
       for (const u of b.u) if (u.action && u.action.type === 'pray' && !u.dead) { // 기도: 머리 위 후광 + 발밑 빛 원
         const z = b.airZ(u), y = u.y - z;
+        if(window.BattleVFX&&BattleVFX.enabled){BattleVFX.live(ctx,u,'holy/blessing',b.time,u.x,y,{color:'#ffe9a0',scale:.75,alpha:.6},0);BattleVFX.live(ctx,u,'holy/blessing',b.time,u.x,y,{color:'#ffe9a0',scale:.75,alpha:.6},1);}
         ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 8); ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.ellipse(u.x, u.y, 20, 7, 0, 0, TAU); ctx.stroke();
         ctx.globalAlpha = 0.9; ctx.strokeStyle = '#fff4b8'; ctx.lineWidth = 2;
@@ -155,6 +157,7 @@
         for (let i = 0; i < 6; i++) { const an = i * TAU / 6 + b.time * 2; px(ctx, u.x + Math.cos(an) * 22, u.y + Math.sin(an) * 8, 2, '#fff8d0'); }
       }
       for (const o of O.orbs) { // 마법구: 꼬리 + 픽셀 구슬
+        if(window.BattleVFX&&BattleVFX.orb(ctx,o,o.x,o.y-14,b.time,'#d890ff',.32))continue;
         for (let i = 0; i < o.trail.length; i++) { ctx.globalAlpha = (i + 1) / o.trail.length * 0.5; px(ctx, o.trail[i][0], o.trail[i][1] - 14, 2 + Math.floor(i / 2), '#b070e0'); }
         ctx.globalAlpha = 0.35; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(o.x, o.y - 14, 8, 0, TAU); ctx.fill();
         ctx.globalAlpha = 1; px(ctx, o.x, o.y - 14, 7, '#9a4ad8'); px(ctx, o.x, o.y - 14, 5, '#e0b0ff'); px(ctx, o.x - 1, o.y - 15, 2, '#ffffff');
