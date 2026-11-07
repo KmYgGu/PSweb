@@ -225,8 +225,10 @@
       const c = Math.cos(F.aim), s = Math.sin(F.aim); let L = 0;
       for (; L < D.len; L += 6) { const x = u.x + c * L, y = u.y + s * L; if (x < AR.x || x > AR.x + AR.w || y < AR.y || y > AR.y + AR.h || (L > 20 && b.blockAt(x, y - 4))) break; }
       F.L = L;
+      const breathPi = b.parts.length;
       for (let i = 0; i < 3; i++) { const r = rand(20, L), w = (r / D.len) * D.half * 2 * (Math.random() - 0.5);
         b.parts.push({ x: u.x + Math.cos(F.aim + w) * r, y: u.y - 30 + Math.sin(F.aim + w) * r, vx: c * 80, vy: s * 80 - 20, life: 0.35, max: 0.35, color: ['#ff4a1a', '#ff9a2a', '#ffe07a'][i], size: 3, glow: true }); }
+      if (window.BattleVFX) BattleVFX.hideBreathEmbers(b, breathPi);
       if ((F.tick -= dt) <= 0) { F.tick = D.tick;
         for (const o of b.foes(u)) { const dx = o.x - u.x, dy = o.y - u.y, t = dx * c + dy * s; if (t < 0 || t > L + o.pad) continue;
           if (Math.abs(-dx * s + dy * c) > 10 + t * Math.tan(D.half) + o.pad) continue;

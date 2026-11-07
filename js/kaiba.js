@@ -47,14 +47,20 @@
     });
   }
   // 부채꼴 근접/근거리: 시전 순간 방향 고정, delay 뒤 판정
+  function keepTwilight(b, fn) { return window.BattleVFX ? BattleVFX.keep(b, fn) : fn(); }
   function kfan(ctx, amt, o = {}) {
     const { b, u } = ctx, t = ctx.e; if (!t) return;
     const R = o.range || 105, sp = o.spread || 0.6, a = angTo(u, t), col = o.color || '#ffe0b0', dl = o.delay ?? 0.28, O = { x: u.x, y: u.y }; // 위치·방향 모두 시전 순간 고정
     b.telegraphFan(O.x, O.y - 14, a, sp, R, dl, col);
     b.later(dl, () => {
       if (u.dead || b.over) return;
+      const drawHit = () => {
+      const crescentStart=b.fx.length;
       for (let i = -1; i <= 1; i++) b.crescent(O.x + Math.cos(a + i * sp * 0.6) * R * 0.55, O.y - 16 + Math.sin(a + i * sp * 0.6) * R * 0.55, R * 0.35, a - 0.7, col, 0.25);
+      if (!o.vfxTwilight && window.BattleVFX) BattleVFX.originalFan(b,crescentStart);
       for (const f of b.foes(u)) { const d = Math.hypot(f.x - O.x, f.y - O.y), fa = Math.atan2(f.y - O.y, f.x - O.x), df = Math.abs(Math.atan2(Math.sin(fa - a), Math.cos(fa - a))); if (d <= R + f.pad && df <= sp + 0.15) ctx.damage(f, amt, { element: o.element || 'slash', delivery: o.delivery || 'melee', pierce: o.pierce, applies: o.applies, big: o.big }); }
+      };
+      if (o.vfxTwilight) keepTwilight(b, drawHit); else drawHit();
       if (o.after) o.after(a);
     });
   }
@@ -277,8 +283,8 @@
         const { b, u } = ctx;
         for (let i = 0; i < 3; i++) b.later(0.15 + i * 0.8, () => {
           if (u.dead || b.over) return; const e = ctx.e; if (!e) return;
-          const p = randomSpot(b, u, e); if (p && !u.airborne && !u.climb && !u.inTrain && !u.status('pin')) { b.smoke(u.x, u.y - 18, '#9a6ad8', 8); b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.3, a: 0.5 }); u.x = p.x; u.y = p.y; u.action = null; b.smoke(u.x, u.y - 18, '#c890ff', 8); }
-          b.later(0.12, () => { if (!u.dead && !b.over) kfan(ctx, ctx.atk(0.45), { range: 130, spread: 0.7, color: '#c890ff', delay: 0.18, element: 'dark', delivery: 'ranged' }); });
+          const p = randomSpot(b, u, e); if (p && !u.airborne && !u.climb && !u.inTrain && !u.status('pin')) { keepTwilight(b, () => b.smoke(u.x, u.y - 18, '#9a6ad8', 8)); b.fx.push({ type: 'after', x: u.x, y: u.y, def: u.fdef, back: !!u.lookUp, facing: u.facing, t: 0, dur: 0.3, a: 0.5 }); u.x = p.x; u.y = p.y; u.action = null; keepTwilight(b, () => b.smoke(u.x, u.y - 18, '#c890ff', 8)); }
+          b.later(0.12, () => { if (!u.dead && !b.over) kfan(ctx, ctx.atk(0.45), { range: 130, spread: 0.7, color: '#c890ff', delay: 0.18, element: 'dark', delivery: 'ranged', vfxTwilight: true }); });
         });
       },
       ai: { tags: ['damage'], range: 300, dmg: 1.0, score: S => (S.oppMelee && S.d < 100 ? 8 : 0) } },
@@ -576,7 +582,6 @@
   function drawSpr(ctx, id, x, y, face, k = 1, a = 1) { const sp = DuelSprites.get(id); if (!sp) return; const sc = sp.s * k, w = sp.w * sc, h = sp.h * sc; ctx.save(); ctx.globalAlpha *= a; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(face < 0 ? -1 : 1, 1); ctx.imageSmoothingEnabled = false; ctx.drawImage(sp.c, Math.round(-w / 2), Math.round(-h), w, h); ctx.restore(); }
   // 픽셀 광선: 바깥 빛 → 중간 → 흰 심 + 가장자리 픽셀 조각
   function drawBeam(ctx, x, y, ca, sa, L, w, col, col2, a, t) {
-    if (window.BattleVFX && BattleVFX.beam(ctx, x, y, x + ca * L, y + sa * L, w, col, Math.max(0, a), t)) return;
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(Math.atan2(sa, ca)); ctx.globalAlpha = Math.max(0, a);
     ctx.fillStyle = col; ctx.globalAlpha = 0.35 * a; ctx.fillRect(0, -w / 2 - 3, L, w + 6);
     ctx.globalAlpha = 0.85 * a; ctx.fillRect(0, -w / 2, L, w);
@@ -590,7 +595,6 @@
   // 백룡 강화 광선 (도트풍: 사각형만 사용)
   const hsh = n => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
   function drawCharge(ctx, f, t) { // 입 앞 충전: 빨려드는 입자 + 맥동 구체 + 십자 섬광
-    if (window.BattleVFX && BattleVFX.orb(ctx, f, f.x, f.y, t, f.col, Math.min(0.55, 0.18 + f.t / f.dur * 0.3))) return;
     const k = Math.min(1, f.t / f.dur), x = Math.round(f.x), y = Math.round(f.y), r = Math.round(3 + k * f.w * 0.35 + (Math.floor(t * 30) % 2));
     ctx.save();
     ctx.globalAlpha = 0.3 + 0.3 * k; ctx.fillStyle = f.col; ctx.fillRect(x - r - 4, y - r - 4, (r + 4) * 2, (r + 4) * 2);
@@ -604,7 +608,6 @@
   function drawEpicBeam(ctx, f, t) { // 섬광(0~0.1) → 굵은 코어 → 잔광(얇아지며 사라짐)
     const p = f.t / f.dur, flash = f.t < 0.1, fire = Math.max(0, 1 - p / 0.5), glow = 1 - p;
     const w = f.w * (flash ? 1.7 : 0.35 + 0.95 * fire), L = f.L, fr = Math.floor(t * 30);
-    if (window.BattleVFX && BattleVFX.beam(ctx, f.x, f.y, f.x + f.ca * L, f.y + f.sa * L, w, f.col, glow, t)) return;
     ctx.save(); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.rotate(Math.atan2(f.sa, f.ca));
     ctx.fillStyle = f.col; ctx.globalAlpha = 0.25 * glow; ctx.fillRect(0, -w / 2 - 8, L, w + 16);   // 외곽 광륜 (잔광)
     ctx.globalAlpha = 0.75 * glow; ctx.fillRect(0, -w / 2, L, w);
@@ -619,7 +622,6 @@
     ctx.restore();
   }
   function drawImpact(ctx, f) { // 끝점 폭발: 퍼지는 사각 고리 + 방사 광선
-    if (window.BattleVFX && BattleVFX.live(ctx, f, 'explosions/plasma-explosion', f.t / f.dur * 1.65, f.x, f.y, { color: f.col, scale: Math.min(0.6, f.w / 90), priority: true }, 1)) return;
     const p = f.t / f.dur, x = Math.round(f.x), y = Math.round(f.y), r = Math.round(6 + p * (f.w * 1.6 + 20));
     ctx.save(); ctx.globalAlpha = 1 - p;
     ctx.fillStyle = '#ffffff'; if (p < 0.35) { const c = Math.round(f.w * 0.8 * (1 - p)); ctx.fillRect(x - c, y - c, c * 2, c * 2); }

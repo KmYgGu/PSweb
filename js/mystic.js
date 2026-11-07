@@ -178,7 +178,7 @@
     drawOver(ctx, b) {
       for (const u of b.u) {
         const O = u.orb;
-        if (O && !(window.BattleVFX && BattleVFX.orb(ctx, O, O.x, O.y, b.time, '#d890ff', 0.25 * MB_SIZE))) {
+        if (O) {
           ctx.save();
           O.trail.forEach(([x, y], i) => { ctx.globalAlpha = 0.08 * i; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(x, y, (3 + i * 0.5) * MB_SIZE, 0, TAU); ctx.fill(); });
           const g = ctx.createRadialGradient(O.x, O.y, 1, O.x, O.y, 11 * MB_SIZE); g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#e0b0ff'); g.addColorStop(1, 'rgba(150,60,220,0)');

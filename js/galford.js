@@ -49,7 +49,6 @@
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(face > 0 ? -s : s, s);
     ctx.drawImage(c, -7, -12); ctx.restore();
     if (elec > 0) {
-      if(window.BattleVFX&&BattleVFX.enabled){for(let i=0;i<3;i++){const pts=[];for(let j=0;j<=7;j++)pts.push([x-19+j*5,y-14+i*5+Math.sin(t*35+j*5+i*2)*3]);BattleVFX.pixelPath(ctx,pts,ELEC,.65,2);}BattleVFX.glow(ctx,x,y-14,22,ELEC,.5);return;}
       ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 40); ctx.strokeStyle = ELEC; ctx.lineWidth = 1.5;
       for (let i = 0; i < 3; i++) { ctx.beginPath(); let px = x - 16, py = y - 14 + i * 6; ctx.moveTo(px, py); for (let n = 0; n < 5; n++) { px += 7; py += rand(-5, 5); ctx.lineTo(px, py); } ctx.stroke(); }
       ctx.globalAlpha = 0.25; ctx.fillStyle = ELEC; ctx.beginPath(); ctx.ellipse(x, y - 14, 22, 15, 0, 0, TAU); ctx.fill();
@@ -57,7 +56,6 @@
     }
   }
   function drawOrb(ctx, p) {
-    if(window.BattleVFX&&BattleVFX.orb(ctx,p,p.x,p.y,Math.max(0,4-p.life),ELEC,.26)){BattleVFX.live(ctx,p,'lightning/zap-hit',.06+((4-p.life)%.45),p.x,p.y,{color:ELEC,scale:.27},1);return;}
     ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = ELEC; ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, TAU); ctx.fill();
     ctx.strokeStyle = ELEC2; ctx.lineWidth = 1.5;

@@ -1,7 +1,54 @@
-# 전투 VFX — PixelFX + Codixel
+# 전투 VFX — 지정 연출만 유지
 
-Visual-only integration, based on PC commit `7bcf3a0`. No sprite assets, combat stats, damage,
-collisions, knockback, bounce rules, targeting rules or skill delays were edited. A/B rules remain separate.
+2026-11-07 KST: `fe56488`의 광범위한 PixelFX/Codixel 교체를 원복하고 아래 일곱 연출만 유지합니다.
+원본 기준은 `7bcf3a0`. 판정·데미지·타이밍·넉백·튕김·기존 RNG 호출은 바꾸지 않습니다.
+
+## 유지 목록 / 실제 경로
+
+| 연출 | 코드 경로 | 유지한 렌더러 |
+|---|---|---|
+| 근접 피격 | `game.js` impact(delivery=melee), 공유 slashFx/crescent → `BattleVFX.drawFx` | melee/sword-slash, melee/double-slash, impacts/hit-spark, blunt-hit, crit-hit. 원거리 impact/총구/일반 sparks/debris는 원복 |
+| 슈르프 드래곤 브레스 | `schurf.js` dragon / drawBreath → `BattleVFX.breath` | 기존 업그레이드 Codixel Breath 그대로. dragon이 생성한 사각 ember 파티클만 WeakSet으로 숨김; 생성·수명·RNG는 그대로 |
+| 샌즈 가스터 블래스터 | `sans.js` drawOver 블래스터 분기 → `BattleVFX.gasterBeam` | 기존 Codixel 밴드 빔, 동일 끝점/폭/시간. 해골·뼈·경고선은 원래 그림 |
+| 육군보병 슈류탄 폭발 | `army.js` explodeGren → `BattleVFX.blast` | explosions/small-explosion, 실제 폭발점만. 던지는 수류탄은 원본; 라이브러리 투척 동작 없음 |
+| 브로리 슈퍼사이어인 오라 | `broly.js` BROLY.drawUnder → `BattleVFX.ssjAura` | 기존 연두/금색 Codixel Flame. 기탄·바위·포즈·하트는 원복 |
+| 유희 오시리스의 천공룡 (Y14) | `cards.js` effect → `duel.js` makeCtx.thunderForce / keepOsiris | 그 스킬의 낙뢰만 PixelFX lightning/zap-hit + 기존 Codixel 경로; 실제 적중도 명시적 scope로 유지. drawSpirit / osiris 스프라이트는 이전에도 교체되지 않았으므로 그대로 |
+| 카이바 트와이라이트존 드래곤 (K31) | `kaiba.js` K31.effect / keepTwilight / kfan(vfxTwilight) | 순간이동 Codixel Smoke, 3갈래 PixelFX double-slash 돌풍, 해당 적중. twilight 스프라이트/캐릭터 잔상 그대로. 다른 kfan 장식은 originalFan으로 명시적 원복 |
+
+공유 slashFx/crescent는 근접 스윙/피격 호출에 같이 쓰이므로 그 공유 경로는 유지합니다.
+일반 무기 스윙 자체(drawWeaponSwing), bladeRibbon, thrust trail은 원본입니다.
+오시리스는 skills2.js가 아니라 duel.js의 thunderForce이며, 트와이라이트존은 백룡 광선이 아니라 K31의 순간이동/부채꼴 돌풍입니다.
+
+## 원복 목록
+
+- heal/기도/blessing/shield, stun/confusion/sleep/slow/charm, 독·빙결·불·분노·BBQ 상태 오라
+- ripple/splash, 일반 bolt/zap, meteor/pillar, 일반 explosion/충격파/ring/glow/particles/debris/wallDust
+- Mystic/일반 마법/성스러운 구체, Galford 오브/전기 장식, army/Michuhen 탄환 궤적
+- KO/텔레포트 poof (K31의 자체 순간이동 연기만 예외), wire/garrote/crack/hexagram
+- Genji 방어/용 장식, Okuyasu 충전, Lamia 빔, Rudelian 불/눈빔, Berzebut vortex, stages8 숯불
+- 카이바의 charge/백룡 epic beam/plasma 끝점 폭발/일반 빔/XYZ/포탄과 다른 카드·몬스터 연출
+- 기타 캐릭터의 고유 props/sprites 및 afterimages는 원래 모습 유지
+
+위 캐릭터 전용 원복 파일들은 `7bcf3a0`의 drawing 코드로 복구했습니다.
+`game.js`는 공용 drawFx 진입, 허용된 extra 폭발/연기, 숨겨야 할 파티클 검사와 기존 delivery 시각 메타데이터만 남겼습니다.
+전역 glow/status/projectile/weapon 후킹 및 광범위한 spawn helper 교체는 제거했습니다.
+
+## Runtime / 안전성
+
+`index.html`의 classic IIFE vendor bundle → 기존 게임 스크립트 → vfx.js → main.js 순서 유지.
+ES modules/fetch/CDN/외부 폰트를 추가하지 않습니다. 일반 `file://`로 실행 가능합니다.
+Node/no ImageData에서는 원래 drawing fallback, `BattleVFX.enabled=false`로 비교 가능합니다.
+
+`BattleVFX.drawFx`는 shared melee 또는 명시적으로 keep-tag된 Osiris/Twilight FX만 허용합니다.
+`keep(b, fn)`은 기존 콜백을 그대로 실행하고 그 콜백이 만든 시각 객체만 WeakSet에 표시합니다.
+지연 콜백은 실제 생성 시점에서 각각 scope를 엽니다. 객체/스킬/투사체에 별도 게임 상태를 넣지 않습니다.
+원래 helper와 모든 rand/Math.random 호출은 실행되며, VFX 자체는 좌표 해시/분리된 RNG만 사용합니다.
+슈르프 사각형 파티클도 삭제하거나 RNG 호출을 건너뛰지 않고 렌더링만 숨깁니다.
+시뮬레이션 숫자는 변경하지 않습니다. PixelFX createAct/가짜 캐릭터/타깃은 사용하지 않습니다.
+
+기존 유지 효과의 scale/팔레트/타이밍/geometry는 그대로입니다. 라이브러리 렌더러는 30fps 절대시간,
+32-draw soft budget, 최대 48 supplemental 항목과 재사용 offscreen buffers를 유지합니다.
+미사용 vendor 모듈은 안전하게 디스크에 남겼습니다. Patch Pixel font 및 cinematic moves/*는 없습니다.
 
 ## Sources / licenses
 
@@ -19,136 +66,19 @@ collisions, knockback, bounce rules, targeting rules or skill delays were edited
   Its quality guide informs limited, hue-shifted palettes, nearest-neighbor blits, and thin dither only
   where color bands meet. No character sprites were redrawn.
 
-## Runtime
-
-`index.html` loads `pixelfx.bundle.js` as a **classic IIFE**, before game.js; `vfx.js` loads after all
-character/stage extensions and before main.js. No runtime dependencies, modules, fetch, external fonts
-or CDN requests are added. `file://` works, including without Chrome's allow-file-access flag.
-
-PixelFX has separate color/light buffers. The adapter composites transparent ImageData into reused
-small offscreen canvases; smoothing is disabled on blit. The normal back/front layers are retained;
-water's two halves are deliberately drawn together on the ground **after water terrain**, before units.
-Most effects use 0.35–0.55 scale, not catalog-size screen-filling art. Light is conservative.
-
-Live state, muted old primitives and supplementary burst lifetimes are held in WeakMaps/WeakSets,
-never attached to serialized units/projectiles. Hash seeds use type and coordinates, independent of
-battle `rand()` / `Math.random()`. Original spawn helpers still run, including **every existing RNG draw**,
-then only their rendering is replaced. The grenade-specific blast hook likewise keeps its original
-shock, damage and RNG calls; it adds no second grenade or damage event. Impact `delivery` is visual metadata.
-
-Effect clocks are quantized to 30 fps, seek safely from absolute time and reset on rewind. No timers
-or asynchronous callbacks mutate battle state. A 32-draw soft budget drops low-priority decoration;
-important impacts/status cues have priority. Supplemental lists are capped at 48. The selected bundle
-is 167,783 bytes (about 66.5 KiB gzip). Node/no ImageData disables the bridge and retains original drawing.
-`BattleVFX.enabled = false` can also be used for comparison. A library draw failure disables the bridge
-and restores original shared effects (`BattleVFX.errors` records the error).
-
-## Mapping / inventory
-
-Colors below mean the game's existing supplied color, converted into a limited dark-to-bright hue ramp,
-unless a particular palette is listed. `p` is normalized original visual life; original skill timings stay intact.
-
-| Game FX / context | PixelFX id or Codixel replacement | Palette / scale / clock / transform |
-|---|---|---|
-| `slashFx` (`slash`) | `melee/sword-slash` | passed color; .25–.65 (normally .45); catalog 0–.48s over original .18s; `dir` mirrors |
-| `crescent`, including delayed casts | `melee/double-slash` | passed color; r/75 clamped .3–.7; 0–.65s; same angle; actual local center (34,-23) corrected |
-| normal `impact`, slash element | `melee/sword-slash` | .42; same impact angle; .48s compressed into original life |
-| normal generic `impact` | `impacts/hit-spark` | .42; same angle; early bright frames preserved, then fast tail |
-| normal blunt `impact` | `impacts/blunt-hit` | .42; same angle; height offset corrected |
-| ranged blunt/bullet `impact` | `impacts/bullet-impact` | .42; same angle; actual blast/hit point, not muzzle |
-| crit, tier 1/2, finisher tier 3 | `impacts/crit-hit` | original gold/element ramp; .48 (.7 finisher); fast tail; actual hit angle |
-| `sparks` batches / muzzle flashes | `impacts/hit-spark` | passed color; .16–.4; original particles are muted, not removed from sim |
-| single `spark`, `embers`, `burst`, `puff`, `dust` particles | Codixel shaded pixels / pixel-perfect streaks | original positions/velocities/life; 3–4 shade chips; no added RNG |
-| `shock`, `ring` | Codixel banded+dithered expanding elliptical waves | original r0/r1/easing and color; visual radius capped 125; split behind/in front |
-| `streak`, thrust weapon trail | Codixel pixel beam | original endpoints/width/life; no new flight or hitboxes |
-| `bolt` / `zap`, elec/lightning impact | `lightning/zap-hit` + Codixel lightning path | .42; original already-generated bolt points; catalog endpoint flash only; angle PI/2 for bolt |
-| `pillar` | `fire/flame-pillar` | .5; start at .55s eruption, then 4.4s catalog time over original 1s; no new warning |
-| `meteor` | `fire/meteor`, **inbound portion only** | .52; horizontal flip; catalog 0–.615s over original life; never detonates early |
-| `explosion`, Kaiba cannon shell detonation | `explosions/small-explosion` | orange; radius/90 clamped .32–.65; .72s tail, fast cooling; actual detonation position |
-| army grenade detonation | `explosions/small-explosion` | .4–.7; only at `explodeGren`; original shock/smoke primitives hidden; no library grenade throw |
-| Kaiba epic beam terminal impact | `explosions/plasma-explosion` | beam's original color; width/90, max .6; catalog 0–1.65s over .6s |
-| `debris`, `wallDust`, wall destruction | `impacts/heavy-landing` | stone/dust ramp; .4/.45; fast dust tail; existing map rubble remains |
-| `debrisIce` / small debris particles | Codixel shaded crystal chips | original physics/path/life; pale/cyan highlights; no snowstorm |
-| `ripple` | `water/ripples` | blue #66bde9; .5; catalog 0–1.6s over original life; ground-only |
-| big ripple / water splash tile | `water/splash` | blue; .55; fast 2.45s catalog over original life; ground-only |
-| `smoke` | Codixel Smoke | existing smoke color; short .65s clusters; original particles muted |
-| ordinary `glow` and shared `glowAt` | Codixel banded light + sparse colored motes | original color/radius/life; no unrelated holy prop/cinematic |
-| healing | `holy/heal` | green #80e88a; .7; .55s; empty actor mask so no stock-body recolor |
-| blessing / prayer | `holy/blessing` | original gold; .75; loop while praying; existing identifying halo retained |
-| shield buff | `holy/divine-shield` | ice-blue; .85, alpha .6; attached while buff exists; replaces old flat ellipse |
-| stun, flinch, army halt | `status/stunned` | status color; .72; attached to unit; old 3-square stun orbit hidden |
-| confusion | `status/confused` | status color; .72; attached for status duration |
-| sleep / fatigue | `status/sleep` | status color; .72; attached while asleep |
-| slow / stopped | `status/slowed` | status color; .72; attached while active |
-| charm / Broly hearts' closing beat | `status/charmed` | pink; .65 closing beat, .72 attached status; preserves original converging hearts beforehand |
-| burning / BBQ heat / rage | Codixel Flame | orange/red; short 10–38px flames; BBQ above heat 35; discreet foot highlights in front |
-| frozen / petrified statuses | Codixel edge crystals / stone shards | existing status color; 5 small crystals; existing tint/pose untouched; no stock `status/frozen` body |
-| poison / bleed / KR / weakness / curse-like debuffs | Codixel Smoke + small shaded orbit | existing status color; attached, low opacity; no stock-body repaint |
-| paralysis / mcShock | `lightning/zap-hit` | status color; .3; short repeated electric flickers |
-| remaining active lock/bind/seal/control/mark debuffs | Codixel small orbit | existing color; attached; distinctive lock/string/mark shapes retained |
-| KO / death | `spawn/poof` | pale lilac; .52, alpha .6; .45s; existing 1.2s death pose remains readable |
-| `tpIn` / `tpOut` | `spawn/poof` | violet; .4; fits original .45/.5s teleport visual life |
-| Mystic Ball, generic magic/holy projectile, skills2 orbs | `arcane/arcane-orb` | original purple/gold; .25–.5; true local center -52 corrected; original travel/collisions untouched; glow/trail presentation replaced |
-| Galford electric projectile | `arcane/arcane-orb` + `lightning/zap-hit` | original blue; .26 orb/.27 electric flash; original trajectory |
-| army/Michuhen bullets | `projectiles/bullet-tracer` | pale gold; .35, length52 (18px displayed); follows current velocity angle, including reflection |
-| weapon swing generic arc | `melee/sword-slash` | weapon's original trail; reach-scaled .35–1.05; same facing/angle; weapon sprite retained |
-| blade ribbons / hammer trail | Codixel sampled shaded pixel path | exact original radius/start/sweep; existing hammer/weapon silhouette retained |
-| `wire`, wire projectile, `garrote`, `crack`, `chargeCue` | Codixel sampled pixel paths | original attachment/geometry/lifetimes; original line colors and bright rim |
-| hex-curse sigil | Codixel sampled triangles + ring | same rotating six-point star; red shade bands, thin highlight |
-| `after` | intentionally unchanged character sprite ghosts | original sprites/alpha/positions; not a library dummy |
-
-### Distinctive character / stage renderers
-
-The shared replacements also apply to unedited callers: skills.js, status.js, all stage hooks, cards/duel,
-Blade, Kidomusha, Duck and other character bursts. Their combat implementations are unchanged.
-
-- Genji: deflect arcs use Codixel paths; dragon ribbon uses a green hue ramp; sword/dash hits use shared PixelFX.
-  Shuriken, sword silhouette, dragon trail layout and sprite afterimages stay recognizable.
-- Sans: Codixel banded beam replaces the flat blaster line. Blaster skull and bones, exact warning and beam geometry remain.
-- Army: tracer/muzzle/impact upgraded; grenade detonation explicitly replaced. The thrown grenade and gear silhouettes remain.
-- Kaiba: charge orb, pixel beams and plasma terminal blast upgraded. Cards, monsters, cannon shell, XYZ/YZ/bat sprites remain.
-- Broly: Codixel lime/gold transformation flames and PixelFX hearts' closing beat. Ki-ball/rock silhouettes and character poses remain.
-- Mystic: PixelFX orb at its original coordinates; ball gameplay is untouched. Lock silhouette and controlling strings remain.
-- Okuyasu: PixelFX charge orb accompanies The Hand. Hand silhouette, void tiles, erase marks and warning rectangle remain.
-- Lamia: Codixel exact-endpoint laser beams; arms/Stand, circling setup and warning geometry remain.
-- Schurf: Codixel Breath replaces gradient fire cone, retaining original cone angle and endpoint. Animal/dragon forms remain.
-- Rudelian: Codixel flame patches/aura and twin eye beams; unique fireball shape remains, with upgraded shared glow/particles.
-- Galford: PixelFX electric orb; Codixel electric dog overlay; Poppy/clone sprites remain untouched.
-- Berzebut: Codixel banded dark vortex/swirl. Roses, thorns, clone, scythe and thrown object silhouettes remain.
-- BBQ: Codixel banded coal glow + attached heat flames. Meat, giant hand and heat gauge remain.
-- Other stage props (train, audience, sky/terrain, crane/dolls, basketball, food/orders, escape map), UI/damage text,
-  exact targeting telegraphs, dialogue, card/monster/summon sprites, frozen tint and death poses are intentionally preserved,
-  not replaced by generic VFX. This is an FX upgrade, not a sprite/environment/UI redraw.
-
-## Rebuild / checks
-
-The checked-in bundle is sufficient for browser/PC play. Rebuild only when editing vendored source:
+## 검증 / 재실행
 
 ```sh
-bash tools/build-vfx.sh  # esbuild@0.25.12, pinned; no runtime dependency
-node tools/vfx_check.js # one fixed Genji/army seed in A and B, no sweep
-# Optional: compare an old checkout containing index.html + js/
-node tools/vfx_check.js /path/to/baseline
-npm test               # server escape verification
+node tools/vfx_check.js /path/to/7bcf3a0-baseline
+PLAYWRIGHT_MODULE=/path/to/playwright CHROME_BIN=/path/to/chrome node tools/vfx_browser_replay.cjs
+PLAYWRIGHT_MODULE=/path/to/playwright CHROME_BIN=/path/to/chrome node tools/vfx_visual_check.cjs /tmp/vfx-shots
+npm test
 ```
 
-Optional developer screenshot/browser checks use Playwright installed **outside the game**:
-
-```sh
-PLAYWRIGHT_MODULE=/path/to/playwright CHROME_BIN=/path/to/chrome \
-  node tools/vfx_visual_check.cjs /tmp/vfx-shots
-PLAYWRIGHT_MODULE=/path/to/playwright CHROME_BIN=/path/to/chrome \
-  node tools/vfx_browser_replay.cjs
-```
-
-Verified in headless Chrome through ordinary `file://` at 360x640: melee slash, crit, explosion + smoke tail,
-bolt, frozen + burning/heat, ripple/splash, pillar, inbound meteor, stun/poison, KO, Mystic orb, Broly aura,
-Sans/Kaiba beams, Codixel breath, vortex, fire patch and hearts; PNGs/contact sheet were opened and reviewed.
-All 25 selected modules also passed a back/front, multi-time draw smoke test. A live 360x640 match screenshot
-was reviewed with HUD visible; effects stay inside the fight area rather than covering the HUD.
-
-Replay sanity against baseline 7bcf3a0: seed `0x4bca71`, Genji vs army. A and B each matched winner,
-HP, positions, simulation time, stats and exact RNG call count (A 7727, B 6458). Browser rendering enabled
-versus disabled also matched all of those fields (A); no PixelFX errors. Server tests: **63/63 PASS**.
-Typical desktop Chrome render cost in this short check was about 4.3–4.6ms/frame (not a phone benchmark).
-No balance sweeps were performed. These are client-only effects: no Render server redeploy is required.
+- 고정 seed `0x4bca71`, Genji vs army A/B: 원본 대비 winner/HP/위치/시간/stats/RNG 완전 일치. A 7727, B 6458 호출.
+- browser 실제 drawing FX off/on: 동일 combat/RNG 및 VFX errors 없음. 일반 file://, 별도 file-access flag 없음.
+- visual_check: 실제 일곱 유지 연출은 off/on PNG가 다름; 열 가지 원복 연출은 off/on PNG 해시 일치.
+  모든 fixture의 RNG/HP/위치/stats/파티클 수는 off/on 동일. 스크린샷 360×640.
+- 동일 Chrome에서 pre-upgrade baseline과도 A/B 완전 일치. browser A RNG 7727, browser B 9181 (Node B 6458과 구분).
+- PC 서버 suite: **63/63 PASS**. PC headless deterministic A/B도 7727/6458, fallback OK.
+- 밸런스 sweep 및 실물폰 benchmark는 하지 않습니다. 클라이언트 그림 변경이므로 Render 재배포 불필요.

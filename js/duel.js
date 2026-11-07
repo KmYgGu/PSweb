@@ -72,6 +72,7 @@
   }
   const updateLoad = u => { u.duel.load.spdMul = Math.pow(CFG.TRAP_SPD, u.duel.traps.length); if (!u.buffs.includes(u.duel.load)) u.buffs.push(u.duel.load); };
 
+  function keepOsiris(b, fn) { return window.BattleVFX ? BattleVFX.keep(b, fn) : fn(); }
   function draw(b, u, n = 1, o = {}) {
     const S = u.duel; if (!S || S.lost) return 0;
     let got = 0;
@@ -465,10 +466,10 @@
       thunderForce(pct) {
         b.shake(3); b.hitstop(0.1);
         for (const f of b.foes(u)) {
-          for (let i = 0; i < 3; i++) b.later(i * 0.12, () => { b.bolt(f.x + rand(-14, 14), f.y - 18, 90, '#ffe860'); });
-          b.later(0.3, () => { if (f.dead || b.over) return; b.damage(u, f, pct * effMax(f) * mul, hitO({ element: 'elec', sure: true, pierce: 1, piercesBarrier: true, big: true })); f.duelWeak = b.time + 10; b.text(f.x, f.y - 66, '공격력 저하', '#ffe860', 9); });
+          for (let i = 0; i < 3; i++) b.later(i * 0.12, () => { keepOsiris(b, () => b.bolt(f.x + rand(-14, 14), f.y - 18, 90, '#ffe860')); });
+          b.later(0.3, () => { if (f.dead || b.over) return; keepOsiris(b, () => b.damage(u, f, pct * effMax(f) * mul, hitO({ element: 'elec', sure: true, pierce: 1, piercesBarrier: true, big: true }))); f.duelWeak = b.time + 10; b.text(f.x, f.y - 66, '공격력 저하', '#ffe860', 9); });
         }
-        for (let i = 0; i < 10; i++) b.later(i * 0.05, () => b.bolt(rand(20, 340), rand(120, 600), 70, '#fff4a0'));
+        for (let i = 0; i < 10; i++) b.later(i * 0.05, () => keepOsiris(b, () => b.bolt(rand(20, 340), rand(120, 600), 70, '#fff4a0')));
       },
       godHand(direct, wave, stun) {
         const t = E(); if (!t) return;

@@ -127,7 +127,7 @@
   BROLY.drawUnder = (ctx, u, b, s) => {
     if (!u.form) return;
     const w = s.dw * 0.62, h = s.dh * 1.02;
-    if (window.BattleVFX && BattleVFX.flame(ctx, u, 0, 0, b.time, '#b8ef52', Math.round(h), Math.round(w * 0.65), 0.5)) return;
+    if (window.BattleVFX && BattleVFX.ssjAura(ctx, u, 0, 0, b.time, '#b8ef52', Math.round(h), Math.round(w * 0.65), 0.5)) return;
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 9; i++) {
       const k = (i / 8) * 2 - 1, ph = b.time * 9 + i * 1.7, fh = h * (0.75 + 0.18 * Math.sin(ph) + 0.08 * Math.sin(ph * 2.3)) * (1 - Math.abs(k) * 0.35);
@@ -485,7 +485,6 @@
         ctx.save();
         if (f.type === 'hearts') { // 화면 밖에서 모여들며 작아지고 진해짐 (blur 대신 크기+알파로 표현)
           const img = heartImg(), D = f.dur * 0.7;
-          if(f.t>D&&window.BattleVFX&&BattleVFX.live(ctx,f,'status/charmed',f.t-D,mx,my,{cy:-50,color:'#ff88b8',scale:.65,alpha:Math.min(1,(f.dur-f.t)*5)},1)){ctx.restore();continue;}
           ctx.imageSmoothingEnabled = false;
           for (let i = 0; i < f.items.length; i++) {
             const h = f.items[i], p = clamp((f.t - h.delay) / D, 0, 1); if (p <= 0) continue;

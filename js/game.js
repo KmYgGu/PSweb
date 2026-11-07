@@ -1641,7 +1641,6 @@ const Render = (() => {
   }
   // 부드러운 발광 (가산 혼합)
   function glowAt(ctx, x, y, r, color, a) {
-    if (window.BattleVFX && BattleVFX.glow(ctx, x, y, r, color, a)) return;
     if (a <= 0 || r <= 0) return;
     ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(1, a);
     ctx.drawImage(glowSprite(color), x - r, y - r * 0.85, r * 2, r * 1.7); ctx.restore();
@@ -1699,7 +1698,7 @@ const Render = (() => {
     const bob = stone ? 0 : u.moving ? Math.abs(Math.sin(u.walk)) * -2 : Math.sin(b.time * 3 + u.team) * 0.6;
     const jx = u.status('paralysis') && u.blocked('blocksAct') ? rand(-1, 1) : 0; // 마비 경련
     const rage = u.buff('rage');
-    if (rage && !u.dead && !b._topPass && !(window.BattleVFX && BattleVFX.enabled)) glowAt(ctx, u.x, u.y - 20, 30 + Math.sin(b.time * 8) * 3, '#ff6a4a', 0.35);
+    if (rage && !u.dead && !b._topPass) glowAt(ctx, u.x, u.y - 20, 30 + Math.sin(b.time * 8) * 3, '#ff6a4a', 0.35);
     const x = u.x + u.kx + fox, y = u.y + u.ky + foy;
     // 그림자 & 팀 링 (공중이면 그림자가 작아지고 분리됨)
     if (!F && !b._topPass) {
@@ -1754,7 +1753,7 @@ const Render = (() => {
     if (!u.dead && u.buff('hexCurse')) drawHexagram(ctx, x, y - z, b.time);
     if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx + LG.x, y + bob - z - 20 * zk + LG.y);
     if (u.dead) return;
-    if (u.buff('shield') && !(window.BattleVFX && BattleVFX.enabled)) {
+    if (u.buff('shield')) {
       const sh = u.buff('shield'), a = Math.min(1, sh.t * 2);
       ctx.globalAlpha = 0.18 * a; ctx.fillStyle = '#bfe3ff';
       ctx.beginPath(); ctx.ellipse(x, y - 20, 24, 28, 0, 0, 6.28); ctx.fill();
@@ -1763,7 +1762,7 @@ const Render = (() => {
     }
     if (u.buff('slow')) { ctx.fillStyle = '#9fd0ff'; ctx.globalAlpha = 0.6; ctx.fillRect(x - 10, y - 1, 20, 2); ctx.globalAlpha = 1; }
     drawStatusIcons(ctx, u, b, x, y);
-    if (u.status('stun') && !(window.BattleVFX && BattleVFX.enabled)) {
+    if (u.status('stun')) {
       for (let i = 0; i < 3; i++) {
         const a = b.time * 5 + i * 2.09;
         ctx.fillStyle = '#ffe27a'; ctx.fillRect(Math.round(x + Math.cos(a) * 10) - 1, Math.round(y - 54 + Math.sin(a) * 3) - 1, 3, 3);
@@ -1896,7 +1895,6 @@ const Render = (() => {
   // 끝이 가늘어지는 칼날 리본. 절차적 도형으로 무기 궤적을 선명하게 그린다.
   function bladeRibbon(ctx, r, start, sweep, width, color, alpha) {
     const steps = 18, end = start + sweep;
-    if(window.BattleVFX&&BattleVFX.enabled){const pts=[];for(let i=0;i<=48;i++){const a=start+sweep*i/48,rr=r-width*.3*Math.sin(Math.PI*i/48);pts.push([Math.cos(a)*rr,Math.sin(a)*rr]);}BattleVFX.pixelPath(ctx,pts,color,alpha,Math.max(1,width*.6));return;}
     ctx.save(); ctx.globalAlpha = alpha; ctx.fillStyle = color;
     ctx.beginPath();
     for (let i = 0; i <= steps; i++) {
@@ -2111,18 +2109,14 @@ const Render = (() => {
       th = S.ang + side * (a0 + (a1 - a0) * e);
       // 호 궤적 (무기 끝 반경)
       const r = off + len, aS = S.ang + side * a0, aE = th;
-      if (!(window.BattleVFX && BattleVFX.live(ctx, S, 'melee/sword-slash', p * 0.48, 0, 0, { color: W.trail, cy: -26, cx: 6, scale: clamp((off + len) / 65, 0.35, 1.05), angle: S.ang, flip: side < 0, priority: true }, 1))) {
       ctx.globalAlpha = 0.55 * fade; ctx.strokeStyle = W.trail; ctx.lineWidth = W.heavy ? 6 : 4; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.arc(0, 0, r - 2, Math.min(aS, aE), Math.max(aS, aE)); ctx.stroke();
       ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(0, 0, r, Math.min(aS, aE), Math.max(aS, aE)); ctx.stroke();
-      }
     }
     if (W.style === 'thrust' && p < 0.8) { // 찌르기 잔상 선
-      if (!(window.BattleVFX && BattleVFX.beam(ctx, Math.cos(th) * 4, Math.sin(th) * 4, Math.cos(th) * (off + len * 0.9), Math.sin(th) * (off + len * 0.9), W.fist ? 4 : 3, W.trail, 0.65 * fade))) {
       ctx.globalAlpha = 0.5 * fade; ctx.strokeStyle = W.trail; ctx.lineWidth = W.fist ? 4 : 3;
       ctx.beginPath(); ctx.moveTo(Math.cos(th) * 4, Math.sin(th) * 4); ctx.lineTo(Math.cos(th) * (off + len * 0.9), Math.sin(th) * (off + len * 0.9)); ctx.stroke();
-      }
     }
     if (W.wire) { // 힐 끝(뒤꿈치) 위치를 기록 → 와이어가 그 궤적을 따라 끌려옴
       const hx = off + ((W.heelX || 25) + 1) * sc, hy = (side < 0 ? -1 : 1) * (W.heelY || 5) * sc, c = Math.cos(th), s2 = Math.sin(th);
@@ -2147,7 +2141,6 @@ const Render = (() => {
   // 육망성의 저주: 발밑에 회전하는 붉은 육망성
   function drawHexagram(ctx, x, y, t) {
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.scale(1, 0.45); ctx.rotate(t * 1.2);
-    if(window.BattleVFX&&BattleVFX.enabled){for(const off of [0,Math.PI]){const pts=[];for(let i=0;i<=3;i++){const a=off+i*Math.PI*2/3-Math.PI/2;pts.push([Math.cos(a)*20,Math.sin(a)*20]);}BattleVFX.pixelPath(ctx,pts,'#ff4a7a',.55+.2*Math.sin(t*6),2);}const ring=[];for(let i=0;i<=60;i++){const a=i*Math.PI*2/60;ring.push([Math.cos(a)*22,Math.sin(a)*22]);}BattleVFX.pixelPath(ctx,ring,'#ff4a7a',.55,1);ctx.restore();return;}
     ctx.globalAlpha = 0.55 + 0.2 * Math.sin(t * 6); ctx.strokeStyle = '#ff4a7a'; ctx.lineWidth = 2;
     for (const o of [0, Math.PI]) { ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = o + i * (Math.PI * 2) / 3 - Math.PI / 2; i ? ctx.lineTo(Math.cos(a) * 20, Math.sin(a) * 20) : ctx.moveTo(Math.cos(a) * 20, Math.sin(a) * 20); } ctx.closePath(); ctx.stroke(); }
     ctx.beginPath(); ctx.arc(0, 0, 22, 0, (Math.PI * 2)); ctx.lineWidth = 1; ctx.stroke();
@@ -2222,14 +2215,6 @@ const Render = (() => {
   }
   // 와이어 연결 (u 손 → 대상), n 가닥
   function drawWireFx(ctx, f, b) {
-    if (window.BattleVFX && BattleVFX.enabled) {
-      const a = Math.min(1, (1 - f.t / f.dur) * 3);
-      for (let i = 0; i < f.n; i++) {
-        const sx = f.u.x + f.u.facing * 6, sy = f.u.y - 22, ex = f.tgt.x, ey = f.tgt.y - 18 - b.airZ(f.tgt), pts = [];
-        for (let k = 0; k <= 24; k++) { const q = k / 24; pts.push([sx + (ex - sx) * q, sy + (ey - sy) * q + Math.sin(q * Math.PI) * ((i - (f.n - 1) / 2) * 12 + Math.sin(b.time * 16 + i) * 2)]); }
-        BattleVFX.pixelPath(ctx, pts, '#ffbf78', a, 2);
-      } return;
-    }
     const p = f.t / f.dur, u = f.u, t = f.tgt, a = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
     ctx.save(); ctx.lineCap = 'round';
     for (let i = 0; i < f.n; i++) {
@@ -2244,13 +2229,6 @@ const Render = (() => {
   }
   // 교살: 대상 주위를 조여드는 와이어 고리
   function drawGarrote(ctx, f, b) {
-    if (window.BattleVFX && BattleVFX.enabled) {
-      const p = f.t / f.dur, n = f.big ? 4 : 2, x = f.tgt.x, y = f.tgt.y - 18 - b.airZ(f.tgt);
-      for (let i = 0; i < n; i++) { const r = (f.big ? 34 : 24) * (1 - 0.55 * easeOut(Math.min(1, p * 1.6))) + i * 3, pts = [];
-        for (let j = 0; j <= 60; j++) { const a = j / 60 * Math.PI * 2; pts.push([x + Math.cos(a) * r, y + (i - n / 2) * 5 + Math.sin(a) * r * 0.45]); }
-        BattleVFX.pixelPath(ctx, pts, '#ffb86b', Math.min(1, (1 - p) * 5), 2);
-      } return;
-    }
     const p = f.t / f.dur, t = f.tgt, x = t.x, y = t.y - 18 - b.airZ(t), n = f.big ? 4 : 2;
     const a = p < 0.8 ? 1 : 1 - (p - 0.8) / 0.2;
     ctx.save();
@@ -2284,7 +2262,6 @@ const Render = (() => {
     }
   }
   function drawCrack(ctx, f) {
-    if (window.BattleVFX && BattleVFX.enabled) { BattleVFX.pixelPath(ctx, f.pts.slice(0, Math.max(2, Math.ceil(f.pts.length * Math.min(1, f.t / 0.2)))), '#a36a42', Math.min(1, (1 - f.t / f.dur) * 4), 3); return; }
     const p = f.t / f.dur, n = f.pts.length, show = Math.max(2, Math.ceil(n * Math.min(1, f.t / 0.2)));
     ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     const a = p < 0.7 ? 1 : 1 - (p - 0.7) / 0.3;
@@ -2305,12 +2282,10 @@ const Render = (() => {
   }
   function drawProj(ctx, p) {
     ctx.save();
-    if (window.BattleVFX && BattleVFX.projectile(ctx, p)) { ctx.restore(); return; }
     if (p.draw) { p.draw(ctx, p, glowAt); ctx.restore(); return; } // 커스텀 투사체 (브로리 기탄 등)
     if (p.kind === 'wire') { // 와이어: 손에서 끝까지 이어진 실
       const f = p.from || p.src; ctx.restore(); ctx.save();
-      if (f && window.BattleVFX && BattleVFX.pixelPath(ctx,[[f.x+f.facing*6,f.y-22],[p.x,p.y]],'#ffb070',.9,2)) {}
-      else if (f) { ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ffb070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke();
+      if (f) { ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ffb070'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke();
         ctx.globalAlpha = 1; ctx.strokeStyle = '#fff0d0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(f.x + f.facing * 6, f.y - 22); ctx.lineTo(p.x, p.y); ctx.stroke(); }
       glowAt(ctx, p.x, p.y, 8, '#ffb070', 0.5);
       ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.vy, p.vx));
@@ -2425,17 +2400,16 @@ const Render = (() => {
     if (b.cam) { ctx.scale(b.cam.k, b.cam.k); ctx.translate(-b.cam.x, -b.cam.y); } // 탈출맵 카메라 (js/escape.js, 일반 전투엔 없음)
     if (!b.cam) ctx.drawImage(floors[sid], 0, 0);
     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
-    for (const f of b.fx) if(f.type!=='ripple'||!(window.BattleVFX&&BattleVFX.enabled)) drawFx(ctx, f, 0);
+    for (const f of b.fx) drawFx(ctx, f, 0);
     for (const f of b.visualFx) drawFx(ctx, f, 0);
     drawWater(ctx, b);
-    if(window.BattleVFX&&BattleVFX.enabled)for(const f of b.fx)if(f.type==='ripple'){BattleVFX.drawFx(ctx,f,0);BattleVFX.drawFx(ctx,f,1);}
     if (b.stage.circle && !b.stage.circle.hidden) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
     if (b.balls.length) drawBalls(ctx, b.balls);
     if (b.iceSegs.length) drawIceWalls(ctx, b);
     if (b.stage.pads) drawPads(ctx, b, b.time);
     for (const bl of b.buildings) if (bl.dead) drawRubble(ctx, bl);
     for (const f of b.fx) if (f.type === 'crack') drawCrack(ctx, f);
-    for (const f of b.fx) if (f.type === 'ripple' && !(window.BattleVFX && BattleVFX.enabled)) {
+    for (const f of b.fx) if (f.type === 'ripple') {
       const p = clamp(f.t / f.dur, 0, 1), start = f.big ? 6 : 4, reach = f.big ? 22 : 12;
       ctx.save(); ctx.translate(f.x, f.y); ctx.scale(1, 0.4);
       ctx.strokeStyle = '#b5e9ff'; ctx.lineWidth = 1;
@@ -2472,7 +2446,7 @@ const Render = (() => {
     for (const f of b.fx) { if (f.type === 'wire') drawWireFx(ctx, f, b); else if (f.type === 'garrote') drawGarrote(ctx, f, b); }
     for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
     for (const p of b.proj) drawProj(ctx, p);
-    for (const f of b.fx) if(f.type!=='ripple'||!(window.BattleVFX&&BattleVFX.enabled)) drawFx(ctx, f, 1);
+    for (const f of b.fx) drawFx(ctx, f, 1);
     for (const f of b.visualFx) drawFx(ctx, f, 1);
     if (window.BattleVFX) BattleVFX.drawExtras(ctx, b, 1);
     for (const p of b.parts) {

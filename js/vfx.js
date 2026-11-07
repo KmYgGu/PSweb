@@ -11,6 +11,7 @@
   const emptyMask = { w: 24, h: 40, data: new Uint8Array(960) };
   // Geometry ONLY. Empty mask/pixels/eyes means stock status modules cannot paint a dummy body/face.
   const actor = { x: -12, y: -40, w: 24, h: 40, mask: emptyMask, pixels: new Uint32Array(960), eyes: [] };
+  const originalOnly = new WeakSet(), kept = new WeakSet(), breathEmbers = new WeakSet(), scopes = new WeakMap();
   let draws = 0;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   function hash(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return h >>> 0; }
@@ -69,6 +70,9 @@
   function drawFx(ctx, f, layer) {
     if (!API.enabled || !available) return false;
     if (muted.has(f)) return true;
+    if (originalOnly.has(f)) return false;
+    // Shared melee contact path; everything else must be explicitly tagged by Osiris/Twilight.
+    if (!kept.has(f) && !['slash','crescent'].includes(f.type) && !(f.type === 'impact' && f.delivery === 'melee')) return false;
     if (f.t < 0) return ['slash','crescent','glow','shock','ring','bolt','pillar','meteor','impact','wallDust','streak','ripple'].includes(f.type);
     const d = Math.max(0.01, f.dur - (f.delay || 0)), p = clamp(f.t / d, 0, 1), c = f.color || '#ffae64';
     const at = (id, opt = {}, time) => live(ctx, f, id, time ?? p * X.effects[id].meta.duration * 0.98, f.x, f.y, { color: c, ...opt }, layer);
@@ -79,7 +83,7 @@
       case 'slash': return at('melee/sword-slash', { cx: 6, cy: -26, scale: clamp(0.45 * (f.s || 1), 0.25, 0.65), flip: f.dir < 0 }, p * 0.48);
       case 'crescent': return at('melee/double-slash', { cx:34, cy: -23, angle: f.ang || 0, scale: clamp((f.r || 24) / 75, 0.3, 0.7) }, p * 0.65);
       case 'impact': {
-        const id = f.tier >= 1 ? 'impacts/crit-hit' : f.element === 'slash' ? 'melee/sword-slash' : f.element === 'elec' || f.element === 'electric' || f.element === 'lightning' ? 'lightning/zap-hit' : f.delivery === 'ranged' && f.element === 'blunt' ? 'impacts/bullet-impact' : f.element === 'blunt' ? 'impacts/blunt-hit' : 'impacts/hit-spark';
+        const id = f.tier >= 1 ? 'impacts/crit-hit' : f.element === 'slash' ? 'melee/sword-slash' : kept.has(f) && ['elec','electric','lightning'].includes(f.element) ? 'lightning/zap-hit' : f.delivery === 'ranged' && f.element === 'blunt' ? 'impacts/bullet-impact' : f.element === 'blunt' ? 'impacts/blunt-hit' : 'impacts/hit-spark';
         return at(id, { cy: id.startsWith('lightning') ? 0 : -(X.effects[id].meta.options.height || 26), cx: id.startsWith('melee') ? 6 : 0, angle: f.ang || 0, scale: f.tier >= 3 ? 0.7 : f.tier >= 1 ? 0.48 : 0.42, priority: true }, id.startsWith('melee') ? p*0.48 : f.t < 0.07 ? f.t : 0.07+(f.t-0.07)*3.5);
       }
       case 'shock': case 'ring': return wave(ctx, f, layer);
@@ -154,7 +158,9 @@
     ctx.save();ctx.imageSmoothingEnabled=false;ctx.globalAlpha*=Math.min(1,a);ctx.globalCompositeOperation='lighter';ctx.drawImage(c,Math.round(x-r),Math.round(y-r*.85),Math.round(r*2),Math.round(r*1.7));ctx.restore();return true;
   }
   function particle(ctx,p) {
-    if(!available || !API.enabled)return false;if(muted.has(p))return true;
+    if(!available || !API.enabled)return false;
+    if(muted.has(p)||breathEmbers.has(p))return true;
+    if(!kept.has(p))return false;
     const a=clamp(p.life/p.max,0,1),r=Math.max(1,Math.ceil(p.size)),ramp=palette(p.color);
     if(p.soft){
       ctx.save();ctx.globalAlpha*=a*0.34;ctx.fillStyle=ramp[3];
@@ -175,12 +181,8 @@
     if(!API.enabled)return;
     for(const f of extras.get(b)||[]){f.t=Math.max(0,(b.visualTime||0)-f.start);const p=f.t/f.dur;
       if(f.type==='smoke'){if(layer===0)smoke(ctx,f,f.x,f.y,p*f.dur,f.color,22,16,1-p);continue;}
-      const id={explosion:'explosions/small-explosion',debris:'impacts/heavy-landing',sparks:'impacts/hit-spark',heal:'holy/heal'}[f.type];
+      const id={explosion:'explosions/small-explosion',sparks:'impacts/hit-spark'}[f.type];
       if(id)live(ctx,f,id,f.type==='explosion' ? (f.t<.15?f.t*2:.3+(f.t-.15)*7) : p*X.effects[id].meta.duration*.98,f.x,f.y,{color:f.color,scale:f.scale,cy:f.type==='sparks'?-20:0,alpha:Math.min(1,(1-p)*4)},layer);
-    }
-    for(const u of b.u){if(u.hidden)continue;const x=u.x+u.kx,y=u.y+u.ky-b.airZ(u);
-      if(u.dead){if(u.deadT<0.45)live(ctx,u,'spawn/poof',u.deadT/0.45*1.58,x,y-14,{scale:.52,cy:-17,color:'#d8d0ea',alpha:.6,slot:'death'},layer);continue;}
-      statuses(ctx,u,b,x,y,layer);
     }
   }
   function smoke(ctx,key,x,y,t,color,height=28,width=5,alpha=1) {
@@ -195,44 +197,7 @@
     const name='flame:'+height+':'+width;let s=bank.get(name);if(!s){s=new P.Flame({height,width,cols:palette(color).slice(2).map(rgb),bits:0,seed:hash(color),swayAmp:4,dither:.2});bank.set(name,s);}
     const w=Math.ceil(width*4+24),h=Math.ceil(height*1.5+12),b=new P.Buf(w,h);s.draw(b,w/2,h-4,t);blit(ctx,b,x-w/2,y-h+4,alpha);return true;
   }
-  const statusMap={stun:'stunned',flinch:'stunned',arHalt:'stunned',confusion:'confused',gSleep:'sleep',snSleep:'sleep',bzTired:'sleep',slow:'slowed',snStill:'slowed',gStop:'slowed',charm:'charmed',charmed:'charmed'};
-  function statuses(ctx,u,b,x,y,layer){
-    for(const st of u.statuses){const d=typeof STATUS_DEFS!=='undefined'&&STATUS_DEFS[st.id],color=d&&d.color||'#b8a0e8',t=Math.max(0,(st.dur??st.t)-st.t),mapped=statusMap[st.id];
-      if(mapped)live(ctx,st,'status/'+mapped,t,x,y-10,{scale:.72,color,priority:true},layer);
-      else if(/Frozen|freeze|frozen|petrify|clsFreeze/i.test(st.id)){
-        // No stock status/frozen: it redraws its entire dummy. Custom edge crystals leave the sprite intact.
-        if(layer===1)crystals(ctx,st,x,y,t,color,st.id==='petrify');
-      }else if(/burn|fire/i.test(st.id)){if(layer===0)flame(ctx,st,x,y,t,color,32,12,.65);}
-      else if(st.id==='paralysis'||st.id==='mcShock'){live(ctx,st,'lightning/zap-hit',.06+(t%.45),x,y-20,{scale:.3,color,slot:'status'},layer);}
-      else if(st.id==='poison'||/curse|snKR|bleed|weaken|resistDown|kiDown/.test(st.id)){
-        if(layer===0)smoke(ctx,st,x,y,t,color,32,3,.65);
-        if(layer===1)orbit(ctx,x,y-14,t,color,3,16);
-      }else{ // All other active debuffs get a small, colour-matched orbit; lock/rope/sword silhouettes remain.
-        if(layer===0)orbit(ctx,x,y-12,t,color,3,18);
-      }
-    }
-    if(u.bbqHeat>35){if(layer===0)flame(ctx,u,x,y,b.time,'#ff982a',32,16,Math.min(.75,u.bbqHeat/140));else flame(ctx,u,x,y,b.time,'#ff982a',10,12,.42);}
-    if(u.buff('shield'))live(ctx,u,'holy/divine-shield',b.time,x,y,{scale:.85,color:'#bfe3ff',slot:'shield',alpha:.6},layer);
-    if(layer===0&&u.buff('rage'))flame(ctx,u,x,y,b.time,'#ff6a4a',38,14,.45);
-    if(u.buff('hexCurse')&&layer===0)smoke(ctx,u.buff('hexCurse'),x,y,b.time,'#ff4a7a',24,3,.5);
-  }
   function orbit(ctx,x,y,t,color,n=5,r=14){const pal=palette(color);ctx.save();for(let i=0;i<n;i++){const a=t*2+i*Math.PI*2/n,xx=Math.round(x+Math.cos(a)*r),yy=Math.round(y+Math.sin(a)*r*.35);ctx.globalAlpha*=.85;ctx.fillStyle=pal[3];ctx.fillRect(xx-1,yy,3,2);ctx.fillStyle=pal[6];ctx.fillRect(xx,yy,1,1);}ctx.restore();}
-  function crystals(ctx,key,x,y,t,color,stone=false){const pal=palette(color);ctx.save();ctx.globalAlpha*=.75;for(let i=0;i<5;i++){
-    const xx=Math.round(x+(i-2)*7),yy=Math.round(y-2+(i%2)*3),h=stone?5:7+i%3*3;
-    for(let q=0;q<h;q++){const w=Math.max(1,Math.round((1-q/h)*3));ctx.fillStyle=pal[2];ctx.fillRect(xx-w,yy-q,w*2,1);ctx.fillStyle=pal[5];ctx.fillRect(xx-w,yy-q,w,1);}
-    if(!stone&&Math.sin(t*5+i)>0.5){ctx.fillStyle=pal[7];ctx.fillRect(xx-1,yy-h-2,3,1);ctx.fillRect(xx,yy-h-3,1,3);}
-  }ctx.restore();}
-  function vortex(ctx,key,x,y,r,t,color='#9a60d8'){
-    if(!API.enabled||!available)return false;const R=Math.ceil(Math.min(75,r)),b=new P.Buf(R*2+4,R*2+4),pal=palette(color).map(c=>P.col(rgb(c)));
-    for(let yy=0;yy<b.h;yy++)for(let xx=0;xx<b.w;xx++){const d=Math.hypot(xx-b.w/2,yy-b.h/2)/R;if(d>1)continue;const k=P.band(Math.max(0,d*.8),8,xx,yy,.15);b.pset(xx,yy,pal[Math.min(4,k)]);}
-    blit(ctx,b,x-b.w/2,y-b.h/2,.7);
-    for(let i=0;i<3;i++){const pts=[];for(let j=0;j<70;j++){const q=j/69,ang=-t*3+i*Math.PI*2/3+q*4,rr=R*(1-q*.85);pts.push([x+Math.cos(ang)*rr,y+Math.sin(ang)*rr]);}pixelPath(ctx,pts,color,.6,2);}return true;
-  }
-  function orb(ctx,key,x,y,t,color='#d890ff',scale=.32){
-    if(!API.enabled)return false;
-    const a=live(ctx,key,'arcane/arcane-orb',t,x,y,{color,scale,cy:-52,priority:true},0);
-    return live(ctx,key,'arcane/arcane-orb',t,x,y,{color,scale,cy:-52,priority:true},1)&&a;
-  }
   function breath(ctx,key,L,half,t,color='#ff992a') {
     if(!available||!API.enabled)return false;
     let bank=states.get(key);if(!bank)states.set(key,bank=new Map());
@@ -242,39 +207,37 @@
     const h=Math.ceil(Math.min(380,L*Math.tan(half)*2+40)),buf=new P.Buf(length+30,h);buf.oy=-Math.floor(h/2);
     s.fx.draw(buf,14,0,-half,half,t,1,buf.oy+buf.h);blit(ctx,buf,0,buf.oy,.85);return true;
   }
-  function projectile(ctx,p){
-    if(!API.enabled||!available)return false;
-    if(p.kind==='arBullet'||p.kind==='mcBullet'||p.kind==='bullet')return live(ctx,p,'projectiles/bullet-tracer',Math.max(0,1.4-p.life),p.x,p.y,{scale:.35,length:52,color:p.reflected?'#ffe27a':'#ffe8a0',angle:Math.atan2(p.vy,p.vx)},1);
-    if(!p.draw && (p.kind==='magic'||p.kind==='holy'))return orb(ctx,p,p.x,p.y,Math.max(0,4-p.life),p.color || (p.kind==='holy'?'#ffe7a0':'#d8a0ff'),.25);
-    return false;
-  }
   function blast(b,x,y,r,fi,pi,color='#ff9a4a'){
     if(!available||!API.enabled)return;
     for(let i=fi;i<b.fx.length;i++)muted.add(b.fx[i]);for(let i=pi;i<b.parts.length;i++)muted.add(b.parts[i]);
     const list=extras.get(b)||[];extras.set(b,list.filter(f=>Math.abs(f.x-x)>1||Math.abs(f.y-y)>20||f.start!==(b.visualTime||0)));
     overlay(b,'explosion',x,y,color,clamp(r/90,.4,.7),.72);
   }
-  const API=root.BattleVFX={enabled:available,errors:[],palette,begin,drawFx,drawExtras,glow,particle,pixelPath,beam,flame,smoke,orb,projectile,live,crystals,breath,blast,vortex};
+  // Scope exists only during original synchronous calls; delayed callbacks opt in at the call site.
+  // All tags live in WeakSets, not serialized combat objects. The callback always runs (even headless/off).
+  function keep(b, fn) {
+    const fi=b.fx.length, vi=b.visualFx.length, pi=b.parts.length;
+    scopes.set(b,(scopes.get(b)||0)+1);
+    try { return fn(); } finally {
+      scopes.set(b,scopes.get(b)-1);
+      for(const list of [b.fx.slice(fi),b.visualFx.slice(vi),b.parts.slice(pi)]) for(const f of list)kept.add(f);
+    }
+  }
+  function originalFan(b, start) { for(let i=start;i<b.fx.length;i++)originalOnly.add(b.fx[i]); }
+  function hideBreathEmbers(b, start) { for(let i=start;i<b.parts.length;i++)breathEmbers.add(b.parts[i]); }
+  const API=root.BattleVFX={enabled:available,errors:[],begin,drawFx,drawExtras,particle,breath,blast,keep,originalFan,hideBreathEmbers,
+    gasterBeam:beam,ssjAura:flame};
   if(!available || typeof Battle==='undefined')return;
-  // Preserve every original call and RNG draw. Only the renderer's WeakSets hide the replaced primitives.
-  for(const name of ['explosion','debris','sparks','smoke','heal']){
+  // Only explicitly scoped Twilight/Osiris primitives get their former library overlays.
+  for(const name of ['sparks','smoke']){
     const original=Battle.prototype[name];if(!original)continue;
     Battle.prototype[name]=function(...args){
       const fi=this.fx.length,pi=this.parts.length,result=original.apply(this,args);
-      if(!API.enabled)return result;
-      let x=args[0],y=args[1],color=args[2],scale=.4,dur=.6;
-      if(name==='heal'){const u=args[0];if(args[2])return result;x=u.x;y=u.y;color='#80e88a';scale=.7;dur=.55;}
-      if(name==='explosion'){color='#ff9a4a';scale=clamp(args[2]/90,.32,.65);dur=.72;}
-      if(name==='debris'){color='#c8b898';scale=.4;dur=.55;}
-      if(name==='sparks'){scale=clamp((args[3]||4)/55,.16,.4);dur=.28;}
-      if(name==='smoke'){dur=.65;}
-      overlay(this,name,x,y,color,scale,dur);
-      if(name!=='heal'||!args[2]){
-        for(let i=fi;i<this.fx.length;i++)muted.add(this.fx[i]);
-        for(let i=pi;i<this.parts.length;i++)muted.add(this.parts[i]);
-      }
-      // An explosion already has its own fire/sparks/smoke: remove nested decoration overlays only.
-      if(name==='explosion'){const list=extras.get(this);extras.set(this,list.filter(f=>f.type==='explosion'||Math.abs(f.x-x)>1||Math.abs(f.y-y)>20||f.start!==(this.visualTime||0)));}
+      if(!API.enabled||!scopes.get(this))return result;
+      const [x,y,color]=args;
+      overlay(this,name,x,y,color,name==='sparks'?clamp((args[3]||4)/55,.16,.4):.4,name==='sparks'?.28:.65);
+      for(let i=fi;i<this.fx.length;i++)muted.add(this.fx[i]);
+      for(let i=pi;i<this.parts.length;i++)muted.add(this.parts[i]);
       return result;
     };
   }

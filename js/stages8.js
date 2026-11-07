@@ -137,7 +137,6 @@
       // 숯불 깜빡임
       for (let i = 0; i < 9; i++) {
         const gx = AR.x + 30 + (i * 97) % (AR.w - 60), gy = AR.y + 40 + (i * 151) % (AR.h - 80), a = 0.1 + 0.07 * Math.sin(T * (2 + i % 3) + i);
-        if(window.BattleVFX&&BattleVFX.glow(ctx,gx,gy,46,'#ff6e1e',a*3))continue;
         const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, 46); g.addColorStop(0, `rgba(255,110,30,${a})`); g.addColorStop(1, 'rgba(255,80,20,0)');
         ctx.fillStyle = g; ctx.fillRect(gx - 46, gy - 46, 92, 92);
       }

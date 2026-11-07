@@ -158,9 +158,8 @@
       if (phase === 'lock') { ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * Math.min(1, t / lock); ctx.strokeStyle = '#fff4c0'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(A.x + Math.cos(A.a) * len, A.y + Math.sin(A.a) * len); ctx.stroke(); ctx.restore(); }
       if (phase === 'fire' && A.L != null) { const k = fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3); ctx.save(); ctx.lineCap = 'round'; const x1 = A.x + Math.cos(A.a) * A.L, y1 = A.y + Math.sin(A.a) * A.L;
-        if (!(window.BattleVFX && BattleVFX.beam(ctx, A.x, A.y, x1, y1, 20, '#ffe5a0', k, t))) {
         ctx.globalAlpha = 0.4 * k; ctx.strokeStyle = '#fff0a0'; ctx.lineWidth = 20; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(x1, y1); ctx.stroke();
-        ctx.globalAlpha = 0.95 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.stroke(); } ctx.restore(); }
+        ctx.globalAlpha = 0.95 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6; ctx.stroke(); ctx.restore(); }
       drawArm(ctx, A, phase === 'fire' ? (fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3)) : 0.9);
     }
   }
