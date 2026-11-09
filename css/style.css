@@ -242,3 +242,45 @@ img { image-rendering: pixelated; }
 #select .extrabtns { display: flex; gap: 10px; width: 100%; margin-top: 8px; flex: none; }
 #select .extrabtns .rpload { flex: 1 1 0; min-width: 0; margin: 0; height: 48px; padding: 0 8px; border-radius: 8px; font-size: 14px; font-weight: bold; border: 1px solid #454b66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #select .extrabtns #escEnter { background: #2f4a3c; border-color: #4f8a6a; color: #d6ffe6; }
+
+/* ===== PC 넓은 화면 (폭 900px 이상, 전투 중): 왼쪽 전투 맵 + 오른쪽 세로 패널 =====
+   body.wb 는 main.js fit() 이 켬. 무대 680×496 (논리 px): x 0~360 = 맵 (캔버스 y 64~560 구간), x 360~680 = 패널.
+   폭 900px 미만(폰)에는 적용되지 않음 — 위의 기존 규칙이 그대로 쓰임. */
+@media (min-width: 900px) {
+  body.wb #stage { width: 680px; height: 496px; background: linear-gradient(90deg, #1e2130 0 360px, #0b0c12 360px 362px, #1b1e2c 362px); }
+  body.wb #cv, body.wb #cvTop { top: -64px; }
+
+  /* 패널 위: 양쪽 유닛 정보 (위아래 두 줄) */
+  body.wb #hud { left: 362px; top: 0; width: 318px; height: 196px; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; padding: 10px 10px 8px; border-bottom: 1px solid #0b0c12; }
+  body.wb .frame { width: 100%; gap: 8px; min-height: 62px; }
+  body.wb .vs { width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0; height: 18px; }
+  body.wb .vs b { display: inline; font-size: 15px; }
+  body.wb .vs span { font-size: 12px; }
+
+  /* 패널 가운데: 전투 로그 (더 많은 줄), 아래: 배속·소리 버튼 */
+  body.wb #bottom { left: 362px; top: 196px; width: 318px; height: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; background: linear-gradient(#1b1e2c, #222638); }
+  body.wb #log { flex: 1 1 auto; height: auto; min-height: 0; }
+  body.wb #speed { flex: none; flex-wrap: wrap; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
+  body.wb #speed .stg { flex: 1 0 100%; margin: 0 0 2px; font-size: 12px; }
+  body.wb #speed .lbl { margin-right: 2px; }
+  body.wb #speed button, body.wb #speed button[data-s="0.5"] { flex: 1; width: auto; height: 30px; font-size: 13px; }
+
+  /* 리플레이: 진행 막대·조작 버튼도 패널 아래쪽, 로그는 그만큼 짧게 */
+  body.wb #stage:has(#rpCtl:not(.hidden)) #bottom { height: 216px; }
+  body.wb #rpBar { left: 362px; top: 412px; width: 318px; height: 40px; padding: 0 10px; background: none; border-top: 1px solid rgba(255,255,255,.06); }
+  body.wb #rpTime { top: 4px; }
+  body.wb #rpScrub { top: 18px; }
+  body.wb #rpCtl { left: 362px; top: 452px; width: 318px; height: 44px; padding: 0 8px 8px; }
+  body.wb #rpCtl button { height: 32px; font-size: 13px; }
+  body.wb #rpSave { right: 10px; bottom: 50px; }
+
+  /* 맵 위에 겹치는 것들: 폰 배치와 같은 맵 위치 (캔버스 y - 64), 가로 가운데는 맵 기준 */
+  body.wb #rpTop { top: 50px; }
+  body.wb #rpBanner { top: 166px; }
+  body.wb #rpToast { left: 180px; top: 406px; }
+  body.wb #escCam { right: 326px; bottom: 10px; }
+  body.wb #escNotice { left: 180px; }
+
+  /* 전체 로그 창: 낮아진 무대 높이에 맞춤 */
+  body.wb #fullLog .flbox { width: 420px; height: calc(100% - 20px); }
+}

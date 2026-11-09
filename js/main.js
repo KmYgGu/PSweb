@@ -4,10 +4,21 @@
   const stage = $('#stage'), cv = $('#cv'), ctx = cv.getContext('2d'), cvTop = $('#cvTop'), ctxTop = cvTop.getContext('2d'), hudEl = $('#hud');
   const RES = 2; // 내부 해상도 배율 (글자 선명도)
 
+  // PC 넓은 화면 (폭 900px 이상, 전투 중): 왼쪽 전투 맵(캔버스 y 64~560 구간) + 오른쪽 세로 패널(HUD·로그·버튼). 폰 화면은 그대로
+  // 넓은 배치로 맵이 더 크게 보일 때만 켬 (세로로 긴 태블릿은 기존 세로 화면). 동영상 녹화 중에는 기존 배치로 돌려 녹화 화면이 바뀌지 않게 함
+  const WB = { w: 680, h: 496, cy: 64, hudH: 110, botTop: 540 }; // 무대 크기(논리 px), 캔버스 위쪽 자르기, 폰 배치의 HUD 높이·하단 UI 위치
+  let wideOn = false, recHold = () => false;
+  function wideWant() {
+    const w = innerWidth, h = innerHeight;
+    if (w < 900 || recHold() || hudEl.classList.contains('hidden')) return false;
+    return Math.min(w / WB.w, h / WB.h) > Math.min(w / W, h / H);
+  }
   function fit() {
     const r = document.getElementById('wrap').getBoundingClientRect(); // 100dvh 기준 (모바일 주소창 제외한 실제 보이는 높이)
-    const s = Math.min((r.width || innerWidth) / W, (r.height || innerHeight) / H);
-    stage.style.transform = `scale(${s}) translate(${-W / 2}px, ${-H / 2}px)`;
+    const on = wideWant(); if (on !== wideOn) { wideOn = on; document.body.classList.toggle('wb', on); }
+    const sw = on ? WB.w : W, sh = on ? WB.h : H;
+    const s = Math.min((r.width || innerWidth) / sw, (r.height || innerHeight) / sh);
+    stage.style.transform = `scale(${s}) translate(${-sw / 2}px, ${-sh / 2}px)`;
   }
   addEventListener('resize', fit); window.visualViewport && visualViewport.addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 200)); fit();
 
@@ -151,7 +162,7 @@
   function label(u) { return pick[0] === pick[1] ? `${u.def.name}(P${u.team + 1})` : u.def.name; }
   function teamLabel(t) { const m = battle.u.filter(u => u.team === t && !u.summon); return m.length > 1 ? m.map(u => u.def.name).join(' & ') + (pick[0] === pick[1] ? `(P${t + 1})` : '') : label(m[0]); }
   // 로그: 새 줄이 아래에서 들어오며 기존 줄을 위로 밀어 올림 (최대 3줄 표시, 위쪽은 잘림)
-  const LOG_LINE = 20, LOG_KEEP = 4;
+  const LOG_LINE = 20, logKeep = () => wideOn ? 14 : 4; // PC 넓은 화면: 오른쪽 패널에 더 많은 줄
   // 전체 전투 로그: 표시되는 모든 로그 줄을 전투 시간과 함께 기록 (최대 5000줄)
   const FULL_LOG_MAX = 5000; let fullLog = [];
   const fmtT = t => { const m = Math.floor(t / 60), s = t - m * 60; return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`; };
@@ -161,7 +172,7 @@
     const log = $('#log'), el = document.createElement('div');
     el.className = 'logl' + cls; el.innerHTML = html;
     log.appendChild(el);
-    while (log.children.length > LOG_KEEP) log.firstChild.remove();
+    while (log.children.length > logKeep()) log.firstChild.remove();
     const rows = [...log.children];
     rows.forEach(c => { c.style.transition = 'none'; c.style.transform = `translateY(${LOG_LINE}px)`; });
     void log.offsetHeight; // reflow 후 애니메이션
@@ -304,10 +315,12 @@
       seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
       updateHud(dt);
     }
-    if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, { x: 0, y: hudEl.offsetHeight + 4, w: W, h: Math.max(120, ($('#bottom').offsetTop || 560) - hudEl.offsetHeight - 8) });
+    if (wideWant() !== wideOn) fit();
+    const hudH = wideOn ? WB.hudH : hudEl.offsetHeight, botTop = wideOn ? WB.botTop : $('#bottom').offsetTop; // 넓은 화면: 카메라 영역은 폰 배치와 같게
+    if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) });
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     Render.draw(ctx, battle);
-    Render.drawTopUnits(ctxTop, battle, RES, battle && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0);
+    Render.drawTopUnits(ctxTop, battle, RES, battle && !wideOn && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0); // 넓은 화면: HUD가 맵 위에 없음
     if (VID.active) VID.frame();
     bgmSync(); charDeathSync();
     requestAnimationFrame(loop);
@@ -410,7 +423,7 @@
       if (T < battle.time - 1e-6) this.restart();
       RPQ.quiet = true; Sfx.hold(true); let g = 0;
       try { while (battle.time < T - 1e-9 && g++ < 200000) { this.step1(); battle.updateVisual(STEP); } } finally { RPQ.quiet = false; Sfx.hold(false); }
-      const log = $('#log'); log.innerHTML = fullLog.slice(-LOG_KEEP).map(r => `<div class="logl${r.cls}">${r.html}</div>`).join('');
+      const log = $('#log'); log.innerHTML = fullLog.slice(-logKeep()).map(r => `<div class="logl${r.cls}">${r.html}</div>`).join('');
       updateHud(9); updateHud(9); this.ui();
     },
     play(v) { if (v && battle.time >= (this.stopAt || this.range[1]) - 0.01) this.seek(this.range[0]); this.playing = v; $('#rpPlay').textContent = v ? '❚❚' : '▶'; },
@@ -574,13 +587,13 @@
       for (const im of document.querySelectorAll('#hud img, #rpBanner img')) this.img(im.src);
       let mr;
       try {
-        this.active = A; RP.seek(range[0]); this.frame(); A.x.getImageData(0, 0, 1, 1); // 오염 검사
+        this.active = A; fit(); RP.seek(range[0]); this.frame(); A.x.getImageData(0, 0, 1, 1); // 오염 검사
         const stream = c.captureStream(30);
         const au = this.wantAudio() ? Sfx.recStart() : null; A.audio = !!(au && au.getAudioTracks().length);
         if (A.audio) au.getAudioTracks().forEach(tr => stream.addTrack(tr));
         const F = this.format(A.audio); A.ext = F.ext;
         mr = new MediaRecorder(stream, { mimeType: F.mime, videoBitsPerSecond: 6e6, audioBitsPerSecond: 128000 });
-      } catch (e) { this.active = null; restore(); Sfx.recStop(); console.warn('[video]', e); toast('녹화 실패: 그림 사본 문제 (tools\\에셋갱신.bat 실행 후 새로고침)', 3500); return; }
+      } catch (e) { this.active = null; fit(); restore(); Sfx.recStop(); console.warn('[video]', e); toast('녹화 실패: 그림 사본 문제 (tools\\에셋갱신.bat 실행 후 새로고침)', 3500); return; }
       A.mr = mr; mr.ondataavailable = ev => { if (ev.data && ev.data.size) A.chunks.push(ev.data); };
       mr.onstop = () => this.finish(A);
       $('#vidRec').classList.remove('hidden'); ['#rpBar', '#rpCtl'].forEach(s => $(s).classList.add('hidden'));
@@ -600,7 +613,7 @@
     fmtUI() { const el = $('#vidFmt'); if (!el || !window.MediaRecorder) return; el.textContent = '형식: ' + this.format(this.wantAudio()).ext.toUpperCase(); },
     stop(cancel) { const A = this.active; if (!A || A.stopping) return; A.stopping = true; A.cancel = cancel; RP.pause(); RP.stopAt = null; try { A.mr.stop(); } catch (e) { this.finish(A); } },
     finish(A) {
-      if (this.active !== A) return; this.active = null; A.restore(); Sfx.recStop();
+      if (this.active !== A) return; this.active = null; fit(); A.restore(); Sfx.recStop();
       $('#vidRec').classList.add('hidden'); ['#rpBar', '#rpCtl'].forEach(s => $(s).classList.remove('hidden')); RP.banner = 0; $('#rpBanner').classList.add('hidden');
       if (A.cancel) { toast('녹화 취소'); return; }
       if (A.ext === 'mp4') this.save(A, new Blob(A.chunks, { type: 'video/mp4' }));
@@ -638,6 +651,7 @@
     },
   };
   window.Replay.VID = VID;
+  recHold = () => !!VID.active; // 녹화 중: 넓은 화면 배치 끔 (DOM → 녹화 합성 좌표가 폰 배치 기준)
   $('#vidHl').onclick = () => VID.start('hl'); $('#vidSeg').onclick = () => VID.start('seg'); $('#vidFull').onclick = () => VID.start('full');
   $('#vidCancel').onclick = () => VID.stop(true);
   if ($('#vidAudio')) $('#vidAudio').onchange = () => VID.fmtUI(); VID.fmtUI();
