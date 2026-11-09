@@ -243,6 +243,36 @@ img { image-rendering: pixelated; }
 #select .extrabtns .rpload { flex: 1 1 0; min-width: 0; margin: 0; height: 48px; padding: 0 8px; border-radius: 8px; font-size: 14px; font-weight: bold; border: 1px solid #454b66; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #select .extrabtns #escEnter { background: #2f4a3c; border-color: #4f8a6a; color: #d6ffe6; }
 
+/* ===== 스킬 아이콘 줄 (각 캐릭터 HP 바 아래, js/skillicons.js) =====
+   폰: 프레임(초상화+이름/HP) 아래 한 줄 18px 아이콘 (8개 이상 16px, HUD 110px 안의 빈 공간 사용), 2인 팀은 멤버별 작은 HP 바 아래 14px
+   쿨타임: 위에서부터 어두운 덮개(남은 비율) + 오른쪽 아래 남은 초, 준비되면 밝게 반짝, 쓰면 커지며 번쩍 */
+.frame { flex-wrap: wrap; row-gap: 4px; }
+.skrow { flex: 0 0 100%; display: flex; gap: 2px; height: 18px; }
+.right .skrow { justify-content: flex-end; }
+.skrow.sm { height: 14px; margin-top: 2px; gap: 2px; }
+.ski { position: relative; flex: none; width: 18px; height: 18px; cursor: help; }
+.skrow.sm .ski { width: 14px; height: 14px; }
+.skrow.many { height: 16px; }
+.skrow.many .ski { width: 16px; height: 16px; }
+.ski img { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+.ski .ov { position: absolute; left: 1px; right: 1px; top: 1px; height: 0; max-height: calc(100% - 2px); background: rgba(6,7,12,.56); pointer-events: none; }
+.ski[data-s="cd"] .ov { border-bottom: 1px solid rgba(255,255,255,.7); }
+.ski[data-s="off"] .ov { height: calc(100% - 2px) !important; background: rgba(6,7,12,.8); border: none; }
+.ski[data-s="low"] .ov { height: calc(100% - 2px) !important; background: rgba(70,10,30,.5); border: none; }
+.ski .cn { position: absolute; right: -1px; bottom: -1px; padding: 1px 1px 0; border-radius: 2px; background: rgba(8,9,14,.82); font-size: 8px; line-height: 8px; font-weight: bold; color: #fff; pointer-events: none; font-variant-numeric: tabular-nums; }
+.ski .cn:empty { display: none; }
+.skrow.sm .cn { font-size: 7px; line-height: 7px; }
+.ski s { position: absolute; right: 0; top: 0; width: 5px; height: 5px; border: 1px solid #0b0c12; border-radius: 1px; pointer-events: none; }
+.ski.use { animation: skUse .5s ease-out; z-index: 1; }
+.ski.rdy { animation: skRdy .4s ease-out; }
+@keyframes skUse { 0% { transform: scale(1.45); filter: brightness(2.4); box-shadow: 0 0 0 1px #fff, 0 0 6px 2px rgba(255,240,180,.9); } 60% { transform: scale(1.1); filter: brightness(1.4); box-shadow: 0 0 0 1px rgba(255,255,255,.6); } 100% { transform: none; filter: none; box-shadow: none; } }
+@keyframes skRdy { 0% { filter: brightness(2); } 100% { filter: none; } }
+.skrow.down { opacity: .35; }
+/* 듀얼리스트 4칸 (드로우/몬스터/마법/함정): 숫자 = 덱 장수 / 패의 해당 카드 수 (오른쪽 아래) */
+.ski[data-s="rdy0"] img { opacity: .8; }
+.skrow.duel .cn { color: #ffe9a8; }
+#skTip { position: absolute; z-index: 30; padding: 3px 6px; border-radius: 4px; border: 1px solid #ffd75e; background: rgba(14,15,24,.95); color: #fff3d0; font-size: 11px; white-space: nowrap; pointer-events: none; }
+
 /* ===== PC 넓은 화면 (폭 900px 이상, 전투 중): 왼쪽 전투 맵 + 오른쪽 세로 패널 =====
    body.wb 는 main.js fit() 이 켬. 무대 680×496 (논리 px): x 0~360 = 맵 (캔버스 y 64~560 구간), x 360~680 = 패널.
    폭 900px 미만(폰)에는 적용되지 않음 — 위의 기존 규칙이 그대로 쓰임. */
@@ -251,14 +281,14 @@ img { image-rendering: pixelated; }
   body.wb #cv, body.wb #cvTop { top: -64px; }
 
   /* 패널 위: 양쪽 유닛 정보 (위아래 두 줄) */
-  body.wb #hud { left: 362px; top: 0; width: 318px; height: 196px; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; padding: 10px 10px 8px; border-bottom: 1px solid #0b0c12; }
+  body.wb #hud { left: 362px; top: 0; width: 318px; height: 238px; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 6px; padding: 10px 10px 8px; border-bottom: 1px solid #0b0c12; }
   body.wb .frame { width: 100%; gap: 8px; min-height: 62px; }
   body.wb .vs { width: 100%; display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0; height: 18px; }
   body.wb .vs b { display: inline; font-size: 15px; }
   body.wb .vs span { font-size: 12px; }
 
   /* 패널 가운데: 전투 로그 (더 많은 줄), 아래: 배속·소리 버튼 */
-  body.wb #bottom { left: 362px; top: 196px; width: 318px; height: 300px; padding: 8px 10px 10px; display: flex; flex-direction: column; background: linear-gradient(#1b1e2c, #222638); }
+  body.wb #bottom { left: 362px; top: 238px; width: 318px; height: 258px; padding: 8px 10px 10px; display: flex; flex-direction: column; background: linear-gradient(#1b1e2c, #222638); }
   body.wb #log { flex: 1 1 auto; height: auto; min-height: 0; }
   body.wb #speed { flex: none; flex-wrap: wrap; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.06); }
   body.wb #speed .stg { flex: 1 0 100%; margin: 0 0 2px; font-size: 12px; }
@@ -266,7 +296,7 @@ img { image-rendering: pixelated; }
   body.wb #speed button, body.wb #speed button[data-s="0.5"] { flex: 1; width: auto; height: 30px; font-size: 13px; }
 
   /* 리플레이: 진행 막대·조작 버튼도 패널 아래쪽, 로그는 그만큼 짧게 */
-  body.wb #stage:has(#rpCtl:not(.hidden)) #bottom { height: 216px; }
+  body.wb #stage:has(#rpCtl:not(.hidden)) #bottom { height: 174px; }
   body.wb #rpBar { left: 362px; top: 412px; width: 318px; height: 40px; padding: 0 10px; background: none; border-top: 1px solid rgba(255,255,255,.06); }
   body.wb #rpTime { top: 4px; }
   body.wb #rpScrub { top: 18px; }
@@ -280,6 +310,16 @@ img { image-rendering: pixelated; }
   body.wb #rpToast { left: 180px; top: 406px; }
   body.wb #escCam { right: 326px; bottom: 10px; }
   body.wb #escNotice { left: 180px; }
+
+  /* 스킬 아이콘 줄: 오른쪽 패널 유닛 정보의 HP 바(정보 칸) 아래에 맞춤, 아이콘 22px */
+  body.wb .frame { row-gap: 5px; }
+  body.wb .frame > .skrow { flex: 0 0 calc(100% - 60px); margin-left: 60px; height: 22px; gap: 3px; }
+  body.wb .frame.right > .skrow { margin-left: 0; margin-right: 60px; }
+  body.wb .ski, body.wb .skrow.many .ski { width: 22px; height: 22px; }
+  body.wb .skrow.sm { height: 18px; margin-top: 3px; }
+  body.wb .skrow.sm .ski { width: 18px; height: 18px; }
+  body.wb .ski .cn { font-size: 10px; line-height: 10px; }
+  body.wb .skrow.sm .cn { font-size: 9px; line-height: 9px; }
 
   /* 전체 로그 창: 낮아진 무대 높이에 맞춤 */
   body.wb #fullLog .flbox { width: 420px; height: calc(100% - 20px); }

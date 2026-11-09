@@ -180,6 +180,7 @@
   }
   const who = u => `<span style="color:${u.team ? '#ffb0b0' : '#b0d0ff'}">${label(u)}</span>`;
   function addLog(u, sk, line) { // 대사가 있으면 대사 + 작은 스킬 태그, 없으면 '캐릭터명: 스킬명'
+    if (window.SkillHud && !RPQ.quiet) SkillHud.used(u, sk); // HP 바 아래 스킬 아이콘 강조 (화면 전용)
     if (line) pushLog(' l' + u.team, `${who(u)}: <span class="vl">"${line}"</span> <span class="stag">${sk}</span>`);
     else pushLog(' l' + u.team, `${who(u)}: <span class="sk">${sk}</span>`);
   }
@@ -216,14 +217,14 @@
     window.__battle = battle;
   }
   function buildHud() {
-    hud = [];
+    hud = []; if (window.SkillHud) SkillHud.reset(); // 스킬 아이콘 줄 (js/skillicons.js, 화면 전용 — 전투 값은 읽기만)
     [0, 1].forEach(i => {
       const mem = battle.u.filter(u => u.team === i), f = frames[i], face = mem[mem.length - 1];
       f.innerHTML = frameHTML[i]; f.classList.toggle('duo', mem.length > 1); f.dataset.form = '';
       f.querySelector('img').src = Sprites.get(face.def).portrait;
       if (mem.length > 1) { // 2인 팀: 한 프레임 안에 작은 체력 바 2줄
         f.querySelector('.info').innerHTML = mem.map((u, k) => `<div class="drow" data-k="${k}"><div class="dl"><span class="dn">${label(u)}</span><span class="dh"></span></div><div class="hpbar sm"><div class="lag"></div><div class="fill"></div></div></div>`).join('');
-        mem.forEach((u, k) => { const row = f.querySelectorAll('.drow')[k]; hud.push({ u, f, face, row, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: row.querySelector('.fill'), lagEl: row.querySelector('.lag'), num: row.querySelector('.dh') }); });
+        mem.forEach((u, k) => { const row = f.querySelectorAll('.drow')[k]; if (window.SkillHud) SkillHud.attach(u, row, true); hud.push({ u, f, face, row, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: row.querySelector('.fill'), lagEl: row.querySelector('.lag'), num: row.querySelector('.dh') }); });
         return;
       }
       const u = mem[0];
@@ -232,6 +233,7 @@
       if (battle.race) rb.insertAdjacentHTML('beforeend', `<div class="resb lap" data-k="__lap" title="랩 진행" style="color:#f0f0f0"><div class="rf" style="background:repeating-linear-gradient(90deg,#f4f4f4 0 4px,#9aa0a8 4px 8px)"></div></div>`);
       for (const [k, R] of Object.entries(u.def.resources || {})) if (R.display === 'bar') rb.insertAdjacentHTML('beforeend', `<div class="resb" data-k="${k}" title="${R.name}" style="color:${R.color}"><div class="rf" style="background:${R.color}"></div></div>`);
       for (const X of (window.HUD_EXT || [])) X.init && X.init(u, f, battle); // 캐릭터 확장 HUD (듀얼리스트 패/덱/묘지/함정)
+      if (window.SkillHud) SkillHud.attach(u, f); // HP 바 아래 스킬 아이콘 줄 (프레임 맨 아래 한 줄)
       hud.push({ u, f, face: u, single: true, disp: u.maxHp, lag: u.maxHp, hold: 0, fill: f.querySelector('.fill'), lagEl: f.querySelector('.lag'), num: f.querySelector('.hpnum') });
     });
   }
@@ -284,8 +286,10 @@
       if (H.single) for (const X of (window.HUD_EXT || [])) X.update && X.update(u, f);
       if (H.single) f.querySelectorAll('.resb').forEach(el => { if (el.dataset.k === '__lap') { el.firstChild.style.width = ((u.lap ? u.lap.prog : 0) * 100) + '%'; return; } const R = u.def.resources[el.dataset.k], v = u.res[el.dataset.k] || 0; el.firstChild.style.width = (v / R.max * 100) + '%'; el.classList.toggle('full', v >= R.max); });
     }
+    if (window.SkillHud) SkillHud.update(dt); // 스킬 아이콘 쿨타임·사용 표시 (읽기만)
     $('#timer').textContent = battle.time.toFixed(1) + 's';
   }
+  if (window.SkillHud) hudEl.addEventListener('click', e => SkillHud.tip(e)); // 아이콘 누르면 스킬 이름
 
   // ---------- 루프 (고정 스텝) ----------
   const STEP = 1 / 120;
