@@ -1675,6 +1675,7 @@ const Render = (() => {
     let fdef = u.fdef; // 오니화/변신 스프라이트
     const PZ = u.form ? u.form.poses : u.def.poses; // 상황별 스프라이트 (오리 등)
     if (PZ && !u.dead) { const k = u.air && u.air.fly ? 'fly' : u.poseT > 0 ? u.pose : u.flash > 0.05 ? 'hurt' : (u.zone && u.zone.splash && !u.air) ? 'swim' : null; if (k && PZ[k]) fdef = PZ[k]; }
+    if (u.def.pickPose && PZ) { const k = u.def.pickPose(u, b); if (k && PZ[k]) fdef = PZ[k]; } // 캐릭터별 그림 고르기 (아오오니: 보는 방향·추적·내리치기, 화면 전용)
     let s = Sprites.get(fdef);
     const TB = u.air && u.air.tumble; // 공중에서 굴러감: 앞/뒷모습 번갈아
     const SPF = b.bey && !u.dead ? [[0, 1], [1, 1], [1, -1], [0, -1]][(Math.floor(b.time * 10) + u.team * 2 + (u.slot || 0)) % 4] : null; // 메탈 팽이: 앞·오른쪽 → 뒤·오른쪽 → 뒤·왼쪽 → 앞·왼쪽 프레임 순환 (10fps)
@@ -1735,7 +1736,7 @@ const Render = (() => {
     if (TB) rot = 1.25 + Math.sin(u.air.t * 18) * 0.35; // 눕혀진 채 빙글빙글
     const kn = !u.dead && u.statuses.find(s => s.knock); // 넘어짐 (충격파 기절)
     if (kn) { const el = kn.dur - kn.t, up = kn.t; rot = (u.knockSide || 1) * sx * Math.PI / 2 * Math.min(1, el * 8, up * 6); ctx.translate(0, -2); }
-    ctx.scale(sx, 1);
+    ctx.scale(u.def.drawXform ? u.def.drawXform(ctx, u, b, sx) : sx, 1); // 캐릭터별 위치·변형 애니메이션 (화면 전용)
     ctx.rotate(rot);
     const fr = u.moving && !stone ? Math.floor(u.walk * s.fps / 6) : 0;
     if (u.def.drawUnder && !u.dead) u.def.drawUnder(ctx, u, b, s); // 캐릭터별 몸 뒤 장식 (브로리 오라 등)
@@ -1927,8 +1928,9 @@ const Render = (() => {
       ctx.restore();
     }
     if (layer === 0 && f.type === 'after') {
-      let s = Sprites.get(f.def); if (f.back && s.back) s = s.back;
-      ctx.save(); ctx.globalAlpha = (f.a || 0.3) * (1 - p); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.scale(spriteSX(f.def, !!(f.back && s.back === undefined), f.facing), 1);
+      const AP = f.def.afterPose && f.def.afterPose(f); // 캐릭터별 잔상 그림 (아오오니: 남길 때 보던 방향)
+      let s = Sprites.get(AP ? AP.def : f.def); if (!AP && f.back && s.back) s = s.back;
+      ctx.save(); ctx.globalAlpha = (f.a || 0.3) * (1 - p); ctx.translate(Math.round(f.x), Math.round(f.y)); ctx.scale(AP && AP.sx ? AP.sx : spriteSX(f.def, !!(!AP && f.back && s.back === undefined), f.facing), 1);
       Sprites.draw(ctx, s, 0, true); ctx.restore();
     }
     if (layer !== 1) return;

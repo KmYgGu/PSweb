@@ -137,7 +137,7 @@
     dlSpell: '............/..vvvvvvvv../..vGGGGGGv../..vGwwwwGv../..vGwccwGv../..vGwccwGv../..vGwwwwGv../..vGGGGGGv../..vGG.GGGv../..vGG.GGGv../..vvvvvvvv../............',
     dlTrap: '............/..MMMMMMMM../..MmmmmmmM../..MmwwwwmM../..Mmw..wmM../..Mmw..wmM../..MmwwwwmM../..MmmmmmmM../..MmmkmmmM../..MmmmmmmM../..MMMMMMMM../............',
     // 아오오니 (js/aooni.js)
-    aoChase: '............/......xxxx../.....xzzzzx./l...xzwwzwwx/....xzwkzwkx/ll..xxxxxxxx/....xxxmmxx./l...xxxxxxx./.....xx..xx./..l..xx..xx./............/............',
+    aoChase: '...XXXXXX.../..XzzwwzzX../..xzzzwzzx../l.XkkxxkkX../..kwkwxkwk../ll.xxwxxx.../..Xxxzzxx.../l..XkkkkX.../...XXxxXX.../....xxxx..../...xX..Xx.../...XX..XX...', // 원본 얼굴 (큰 머리·이마 반사광·그늘진 눈·콧등 줄) + 달려오는 몸, 속도선
     aoSlam: '.nnnn......./.nNNn..nnnn./.nnnn..nNNn./.......nnnn./..k........./.......k..../...nnnn...../...nNNn...../...nnnn...../.g.......g../gggggggggggg/dddddddddddd',
     aoCloset: '.NNNNNNNNNN./.NnnnnNnnnN./.Nn..nNn..N./.Nn..nkn..N./.NnnnwkwnnnN/.Nn..nkn..N./.Nn..yky..N./.Nn..nkn..N./.NnnnnknnnnN/.NNNNNNNNNN./.N........N./............',
     aoDoor: '.....yy...../....yyyy..../...yy..yy.../..NNNNNNNN../..NnnnnnnN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnyN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnnN../dddddddddddd',

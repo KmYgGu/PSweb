@@ -1,5 +1,5 @@
 /**
- * 아오오니 (귀여운 버전) — 느리지만 가까이 붙으면 아주 빠른 도트 피해. 근접 평타(맨손)
+ * 아오오니 — 느리지만 가까이 붙으면 아주 빠른 도트 피해. 근접 평타(맨손)
  *  패시브 냉기 : 몸에 닿는(튕기는) 거리보다 조금(14px) 넓은 범위 안의 상대에게 0.1초마다 도트 피해 (방어·속성 무시)
  *  1. 추적        : 일정 시간 일반 이동 대신 물리 이동으로 상대를 실시간 추격 (가속·관성, 벽/상대에 부딪히면 반동으로 잠깐 밀려남)
  *  2. 지면 내리치기: 피해 없음. 위에서 상자 여러 개가 떨어짐(그림자 예고). 상자에 상대가 부딪히면(깔리면) 기절.
@@ -14,9 +14,12 @@
  *  탈출맵(목적지 경주): 추적·옷장·문은 쓰지 않음 (출구 대신 상대를 쫓거나 숨어 경주가 끝나지 않음) — 지면 내리치기는 상대 근처 2개만, 6초 뒤 사라짐 (넓은 맵 통로를 막지 않게)
  *  난수는 전부 Math.random (전투 중 시드 난수). 그리기 코드는 난수·전투 값을 쓰지 않음
  *  효과음: 사용자 제공 아오오니 소리 없음 → 전용 소리 없이 기존 공용 효과음(벽·충돌 등)만 사용
+ *  그림: 사용자 제공 원본 스프라이트 시트(aooni 폴더의 아오오니.png, 4방향×4프레임)를 tools/gen_aooni_sprites.py 로 잘라 씀
+ *        앞·뒤·옆(좌/우) 걷기는 원본 그대로, 지면 내리치기(양팔 벌림)·피격(머리 젖힘)은 원본 앞모습을 변형한 그림,
+ *        추적(앞으로 기울기·빠른 들썩임·부딪힘 휘청), 내리치기(웅크림→도약→쿵 찌그러짐), 문에서 등장(쑥 늘어남)은 위치·변형 애니메이션 (화면 전용)
  */
 (() => {
-  const TAU = Math.PI * 2, ID = 'aooni', IMG = 'assets/aooni/', BLUE = '#6a8cee';
+  const TAU = Math.PI * 2, ID = 'aooni', SKIN = '#7d74d8';
   const D = {
     aura: { extra: 14, tick: 0.1, mult: 0.2, show: 0.4 },                                    // 범위 = 충돌 거리 + 14px, 0.1초마다 ATK×0.2 (기본 ATK 30 → 초당 60)
     chase: { dur: 4.5, accel: 430, vmax: 300, drag: 0.9, wallRest: 0.6, wallStag: 0.3, hitRecoil: 0.55, hitStag: 0.38 },
@@ -470,29 +473,38 @@
     if (bl.hits >= 2) { ctx.fillRect(x + w - 8, top + 9, 5, 1); ctx.fillRect(x + w - 8, top + 10, 1, 3); ctx.fillRect(x + 3, y + h - 4, 3, 1); }
     ctx.restore();
   }
+  const CLO_H = 74, CLO_X = 4; // 옷장 그림 크기 (화면 전용: 원본 크기 아오오니(키 84)가 들어갈 만큼. 충돌 바닥 판정 D.closet.w×h 는 그대로)
   function drawCloset(ctx, bl) {
-    const H = D.closet.H, rise = bl.phase === 'rise' ? clamp(bl.t / D.closet.rise, 0, 1) : 1, vis = Math.round(H * (rise < 1 ? 1 - Math.pow(1 - rise, 2) : 1));
+    const H = CLO_H, rise = bl.phase === 'rise' ? clamp(bl.t / D.closet.rise, 0, 1) : 1, vis = Math.round(H * (rise < 1 ? 1 - Math.pow(1 - rise, 2) : 1));
     const sh = bl.rattle > 0 ? ((bl.t * 50 | 0) % 2 ? 1 : -1) : 0, trem = bl.phase === 'foeIn' && (bl.t * 3 | 0) % 4 === 0 ? ((bl.t * 30 | 0) % 2) : 0;
-    const x = Math.round(bl.x + sh + trem), base = Math.round(bl.y + bl.h), w = bl.w, top = base - vis;
+    const x = Math.round(bl.x - CLO_X + sh + trem), base = Math.round(bl.y + bl.h), w = bl.w + CLO_X * 2, top = base - vis, hw = w / 2;
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.32)'; ctx.fillRect(x + 3, base - 6, w, 8);
     ctx.beginPath(); ctx.rect(x - 4, top - 6, w + 8, vis + 8); ctx.clip();
-    const T = base - H; // 실제 꼭대기 (솟아오르는 중엔 아래쪽이 땅속)
-    const oy = H - vis; // 솟아오르는 양만큼 아래로 내려 그림
-    const Y = v => Math.round(v + oy);
+    const T = base - H, oy = H - vis, Y = v => Math.round(v + oy); // 솟아오르는 중엔 아래쪽이 땅속
+    const dT = T + 4, dH = H - 9, pH = Math.round(dH / 2 - 6);       // 문짝 위치·높이, 판넬 높이
     ctx.fillStyle = '#5e3a1e'; ctx.fillRect(x, Y(T), w, H);                    // 몸통
     ctx.fillStyle = '#7a4c28'; ctx.fillRect(x + 1, Y(T + 1), w - 2, H - 3);
-    ctx.fillStyle = '#9a6438'; ctx.fillRect(x - 1, Y(T - 3), w + 2, 4);          // 위 장식판
-    ctx.fillStyle = '#b07a48'; ctx.fillRect(x - 1, Y(T - 3), w + 2, 1);
-    ctx.fillStyle = '#8a5a32'; ctx.fillRect(x + 2, Y(T + 3), w / 2 - 3, H - 9); ctx.fillRect(x + w / 2 + 1, Y(T + 3), w / 2 - 3, H - 9); // 문짝 두 개
-    ctx.fillStyle = '#6a4224'; ctx.fillRect(x + 4, Y(T + 6), w / 2 - 7, 12); ctx.fillRect(x + w / 2 + 3, Y(T + 6), w / 2 - 7, 12); ctx.fillRect(x + 4, Y(T + 21), w / 2 - 7, 12); ctx.fillRect(x + w / 2 + 3, Y(T + 21), w / 2 - 7, 12);
-    ctx.fillStyle = '#1a0e08'; ctx.fillRect(x + w / 2 - 1, Y(T + 3), 2, H - 9);   // 문틈
-    if (bl.peek > 0 && bl.phase === 'aoIn') { ctx.fillStyle = '#ffffff'; ctx.fillRect(x + w / 2 - 1, Y(T + 14), 1, 2); ctx.fillRect(x + w / 2, Y(T + 14), 1, 2); }   // 틈으로 빼꼼
-    if (bl.phase === 'grab' || bl.phase === 'grab2') { ctx.fillStyle = '#6a8cee'; ctx.fillRect(x + w / 2 - 2, Y(T + 10), 4, 14); ctx.fillStyle = '#ffffff'; ctx.fillRect(x + w / 2 - 1, Y(T + 13), 1, 2); ctx.fillRect(x + w / 2 + 1, Y(T + 13), 1, 2); } // 문이 살짝 열리며 파란 얼굴
-    ctx.fillStyle = '#e8c060'; ctx.fillRect(x + w / 2 - 3, Y(T + 19), 1, 2); ctx.fillRect(x + w / 2 + 2, Y(T + 19), 1, 2); // 손잡이
+    ctx.fillStyle = '#9a6438'; ctx.fillRect(x - 1, Y(T - 4), w + 2, 5);          // 위 장식판
+    ctx.fillStyle = '#b07a48'; ctx.fillRect(x - 1, Y(T - 4), w + 2, 1);
+    ctx.fillStyle = '#8a5a32'; ctx.fillRect(x + 2, Y(dT), hw - 3, dH); ctx.fillRect(x + hw + 1, Y(dT), hw - 3, dH); // 문짝 두 개
+    ctx.fillStyle = '#6a4224'; for (const py of [dT + 4, dT + dH - 4 - pH]) { ctx.fillRect(x + 4, Y(py), hw - 7, pH); ctx.fillRect(x + hw + 3, Y(py), hw - 7, pH); } // 판넬
+    ctx.fillStyle = '#9a6a3c'; for (const py of [dT + 4, dT + dH - 4 - pH]) { ctx.fillRect(x + 4, Y(py), hw - 7, 1); ctx.fillRect(x + hw + 3, Y(py), hw - 7, 1); }
+    ctx.fillStyle = '#1a0e08'; ctx.fillRect(Math.round(x + hw - 1), Y(dT), 2, dH);   // 문틈
+    if (bl.peek > 0 && bl.phase === 'aoIn') { ctx.fillStyle = '#ffffff'; const ey = Y(T + 16); ctx.fillRect(Math.round(x + hw - 1), ey, 1, 2); ctx.fillRect(Math.round(x + hw), ey, 1, 2); }   // 틈으로 빼꼼
+    if (bl.phase === 'grab' || bl.phase === 'grab2') drawGrabFace(ctx, bl, x, Y(T), w); // 문이 벌어지며 틈으로 아오오니 얼굴
+    ctx.fillStyle = '#e8c060'; const hy = Y(dT + Math.round(dH * 0.48)); ctx.fillRect(Math.round(x + hw - 4), hy, 1, 3); ctx.fillRect(Math.round(x + hw + 3), hy, 1, 3); // 손잡이
     ctx.fillStyle = '#3a2414'; ctx.fillRect(x, Y(base - 3), w, 3); ctx.fillRect(x + 1, Y(base), 3, 1); ctx.fillRect(x + w - 4, Y(base), 3, 1); // 받침·다리
     ctx.restore();
-    if (rise < 1) { ctx.save(); ctx.fillStyle = '#6a5a48'; for (let i = 0; i < 5; i++) ctx.fillRect(x - 3 + i * 8, base - 1 - ((i * 7 + (bl.t * 40 | 0)) % 4), 3, 2); ctx.restore(); } // 흙
+    if (rise < 1) { ctx.save(); ctx.fillStyle = '#6a5a48'; for (let i = 0; i < 6; i++) ctx.fillRect(x - 3 + i * 8, base - 1 - ((i * 7 + (bl.t * 40 | 0)) % 4), 3, 2); ctx.restore(); } // 흙
+  }
+  function drawGrabFace(ctx, bl, x, T, w) { // 옷장 문틈이 벌어지고 그 사이로 원본 얼굴(앞모습 첫 프레임의 얼굴)이 보임
+    const k = clamp(bl.t / 0.18, 0, 1), gap = Math.round(4 + 10 * k), gx = Math.round(x + w / 2 - gap / 2), gy = T + 4, gh = CLO_H - 9;
+    ctx.fillStyle = '#05040a'; ctx.fillRect(gx, gy, gap, gh);
+    const s = bl.owner && Sprites.get(bl.owner.def);
+    if (s && s.img && s.fw === 48) { ctx.save(); ctx.beginPath(); ctx.rect(gx, gy, gap, gh); ctx.clip(); ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(s.img, 0, 0, 48, 84, Math.round(x + w / 2 - 24), gy + 2 + Math.round((1 - k) * 4), 48, 84); ctx.restore(); }
+    ctx.fillStyle = '#3a2414'; ctx.fillRect(gx - 1, gy, 1, gh); ctx.fillRect(gx + gap, gy, 1, gh); // 벌어진 문짝 가장자리
   }
   function drawDoorShape(ctx, P, side, c, alpha, open, fade) { // 벽에 붙은 나무 문 (open: 0 닫힘 ~ 1 열림)
     const w = D.door.w; ctx.save(); ctx.globalAlpha = alpha * (fade ?? 1);
@@ -516,7 +528,7 @@
     if (bl.t < 2.5) { const k = 0.5 + 0.5 * Math.sin(bl.t * 10); ctx.save(); ctx.globalAlpha = 0.6 * k * (1 - bl.t / 2.5) * appear; ctx.strokeStyle = '#ffe0a0'; ctx.lineWidth = 1; const up = bl.side === 'top' ? 18 : 0; ctx.strokeRect(bl.x - 3.5, bl.y - 3.5 - up, bl.w + 7, bl.h + 7 + up); ctx.restore(); }
   }
   function drawDark(ctx, b, C) { // 공포 연출: 옷장(숨은 상대) 주변 원형만 보이고 나머지는 어둠
-    const m = cMid(C), cx = m.x, cy = m.y - 14, R = D.closet.light, fin = clamp(C.t / 0.35, 0, 1), k = (C.phase === 'grab2' ? 1 : fin) * (0.97 + 0.03 * Math.sin(b.time * 9));
+    const m = cMid(C), cx = m.x, cy = m.y - 26, R = D.closet.light, fin = clamp(C.t / 0.35, 0, 1), k = (C.phase === 'grab2' ? 1 : fin) * (0.97 + 0.03 * Math.sin(b.time * 9));
     ctx.save(); ctx.globalAlpha = k;
     ctx.fillStyle = 'rgba(3,4,12,0.95)'; ctx.beginPath(); ctx.rect(-4000, -4000, 8000 + W, 8000 + H); ctx.arc(cx, cy, R, 0, TAU, true); ctx.fill('evenodd');
     const g = ctx.createRadialGradient(cx, cy, R * 0.55, cx, cy, R); g.addColorStop(0, 'rgba(3,4,12,0)'); g.addColorStop(1, 'rgba(3,4,12,0.95)');
@@ -526,7 +538,7 @@
     ctx.restore();
   }
   window.topHideUnit = (b, u) => { // 상단 UI 위 덧그리기(game.js drawTopUnits)에서도 어둠 밖 유닛은 그리지 않음
-    for (const o of b.u) { const C = o.ao && o.ao.closet; if (C && (C.phase === 'foeIn' || C.phase === 'grab2')) { const m = cMid(C); return Math.hypot(u.x - m.x, u.y - 20 - (m.y - 14)) > D.closet.light - 6; } }
+    for (const o of b.u) { const C = o.ao && o.ao.closet; if (C && (C.phase === 'foeIn' || C.phase === 'grab2')) { const m = cMid(C); return Math.hypot(u.x - m.x, u.y - 20 - (m.y - 26)) > D.closet.light - 6; } }
     return false;
   };
   // 화면이 밀리는 방 전환 연출: 문이 있는 동안 직전 화면을 복사해 두었다가, 전환 순간 이전 방이 밀려 나가고 새 방이 들어옴 (화면 전용)
@@ -548,9 +560,69 @@
   }
 
   // ---------- 캐릭터 정의 ----------
-  const pose = (k, src, back, frames) => ({ id: ID + '@' + k, name: '아오오니', color: BLUE, sprite: { src: IMG + src, ...(back ? { back: IMG + back } : {}), frameW: 24, frameH: 28, frames: frames || 1, fps: 8, scale: 2.5, foot: 1 } });
+  // 그림 파일 (원본 시트에서 생성). 경로는 통째로 적음: 에셋 묶음(js/assets_data.js)에 원본 시트까지 들어가지 않게
+  const SRC = { front: 'assets/aooni/front.png', back: 'assets/aooni/back.png', walkB: 'assets/aooni/walk_back.png', sideL: 'assets/aooni/side_l.png', sideR: 'assets/aooni/side_r.png', slam: 'assets/aooni/slam.png', hurt: 'assets/aooni/hurt.png', portrait: 'assets/aooni/portrait.png' };
+  const pose = (k, src, o = {}) => ({ id: ID + '@' + k, name: '아오오니', color: SKIN, sprite: { src, frameW: o.fw || 48, frameH: 84, frames: o.frames || 1, fps: o.fps || 8, scale: 1, foot: 1 } });
+  const POSES = {
+    front: pose('front', SRC.front, { frames: 4 }), back: pose('back', SRC.walkB, { frames: 4 }), sideL: pose('sideL', SRC.sideL, { frames: 4 }), sideR: pose('sideR', SRC.sideR, { frames: 4 }),
+    runF: pose('runF', SRC.front, { frames: 4, fps: 12 }), runB: pose('runB', SRC.walkB, { frames: 4, fps: 12 }), runL: pose('runL', SRC.sideL, { frames: 4, fps: 12 }), runR: pose('runR', SRC.sideR, { frames: 4, fps: 12 }),
+    slam: pose('slam', SRC.slam, { fw: 56 }), hurt: pose('hurt', SRC.hurt, { fw: 56 }),
+  };
+  // 보는 방향 고르기 (화면 전용: 전투 값은 읽기만, 기억은 이 파일의 WeakMap 에만)
+  //  움직일 때는 이동 방향, 서 있을 때는 상대 방향. 가로 성분이 크면 옆모습(원본 좌/우 행), 아니면 앞/뒤. 경계에서 깜빡이지 않게 히스테리시스
+  const VIEW = new WeakMap(), LAST = new Map(); let lastB = null;
+  function viewOf(u, b) {
+    const C = u.ao && u.ao.chase; let ax, ay;
+    if (C && Math.hypot(C.vx, C.vy) > 8) { ax = C.vx; ay = C.vy; }
+    else if (u.moving) { ax = Math.cos(u.dir); ay = Math.sin(u.dir); }
+    else { let e = null, m = 1e9; for (const o of b.u) if (o.team !== u.team && !o.dead && !o.hidden && !o.summon && !o.def.noDraw) { const d = dist(u, o); if (d < m) { m = d; e = o; } }
+      if (e) { ax = e.x - u.x; ay = e.y - u.y; } else { ax = u.facing; ay = 0; } }
+    const n = Math.hypot(ax, ay) || 1, h = Math.abs(ax) / n, prev = VIEW.get(u) || 'F';
+    const side = prev === 'L' || prev === 'R' ? h > 0.55 : h > 0.78;
+    let v = side ? (ax < 0 ? 'L' : 'R') : (C || u.moving ? (ay < 0 ? 'B' : 'F') : (u.lookUp ? 'B' : 'F'));
+    VIEW.set(u, v); return v;
+  }
+  function pickPose(u, b) {
+    if (b !== lastB) { LAST.clear(); lastB = b; } // 잔상용 기억은 지금 전투 것만
+    if (u.dead) return null;
+    if (u.poseT > 0 && u.pose === 'slam') return 'slam';
+    const v = viewOf(u, b), run = !!(u.ao && u.ao.chase);
+    if (u.flash > 0.05 && v === 'F' && !run) return 'hurt';
+    const k = run ? { F: 'runF', B: 'runB', L: 'runL', R: 'runR' }[v] : { F: 'front', B: 'back', L: 'sideL', R: 'sideR' }[v];
+    LAST.set(u, { k, t: b.time }); return k;
+  }
+  // 위치·변형 애니메이션. 반환값: 최종 좌우 배율 (옆모습은 원본 좌/우 그림을 그대로 → +1)
+  function drawXform(ctx, u, b, sx) {
+    if (u.dead) return sx;
+    const v = VIEW.get(u), side = v === 'L' || v === 'R', C = u.ao && u.ao.chase;
+    if (u.poseT > 0 && u.pose === 'slam') { // 웅크림 → 도약(양팔 벌림) → 쿵! 찌그러짐 (지면 내리치기 0.4초 준비 + 0.25초 여운)
+      const T = D.slam.wind + 0.25, p = clamp(1 - u.poseT / T, 0, 1), hit = D.slam.wind / T;
+      if (p < 0.18) { const q = p / 0.18; ctx.scale(1 + 0.1 * q, 1 - 0.12 * q); }
+      else if (p < hit) { const q = (p - 0.18) / (hit - 0.18); ctx.translate(0, -Math.round(14 * Math.sin(q * Math.PI * 0.92))); ctx.scale(1 - 0.06 * Math.sin(q * Math.PI), 1 + 0.1 * Math.sin(q * Math.PI)); }
+      else { const q = (p - hit) / (1 - hit), k = (1 - q) * (1 - q); ctx.translate(Math.round(Math.sin(q * 60) * 2 * k), 0); ctx.scale(1 + 0.22 * k, 1 - 0.26 * k); }
+      return sx;
+    }
+    if (C) { // 추적: 진행 방향으로 몸을 기울이고 쿵쾅 들썩임, 부딪힌 직후엔 뒤로 휘청
+      const s = Math.hypot(C.vx, C.vy), f = clamp(s / D.chase.vmax, 0, 1), st = C.stag > 0 ? C.stag / Math.max(D.chase.hitStag, D.chase.wallStag) : 0;
+      const ph = Math.abs(Math.sin(u.walk * 2.4)), lean = clamp(C.vx / D.chase.vmax, -1, 1) * 0.2 * f;
+      ctx.translate(0, -Math.round(3 * ph * f));
+      ctx.rotate(lean * (1 - st) - lean * 1.6 * st + (st ? Math.sin(b.time * 50) * 0.05 * st : 0));
+      ctx.scale(1 + 0.05 * (1 - ph) * f, 1 - 0.05 * (1 - ph) * f + 0.04 * f * (C.vy > 0 ? 1 : 0));
+    }
+    const X = u.ao && u.ao.exit; // 다른 방 문에서 막 나왔을 때: 몸이 쑥 늘어나며 튀어나옴
+    if (X && X.closeT >= 0 && X.closeT < 0.35) { const q = X.closeT / 0.35, k = Math.sin(q * Math.PI) * (1 - q); ctx.scale(1 - 0.18 * k, 1 + 0.28 * k); }
+    return side ? 1 : sx;
+  }
+  // 잔상: 남길 때의 보는 방향 그림으로 (흰 실루엣이 앞모습으로만 나오지 않게)
+  const AFTER = new WeakMap();
+  function afterPose(f) {
+    if (AFTER.has(f)) return AFTER.get(f);
+    let best = null, m = 1e9; for (const [u, L] of LAST) { const d = Math.hypot(u.x - f.x, u.y - f.y); if (d < m) { m = d; best = L; } }
+    const k = best && m < 80 ? best.k : null, r = k ? { def: POSES[k], sx: k.endsWith('L') || k.endsWith('R') ? 1 : null } : null;
+    AFTER.set(f, r); return r;
+  }
   CHARACTERS.push({
-    id: ID, name: '아오오니', fullName: '아오오니', gender: 'male', color: '#5a78e0', size: 1.25,
+    id: ID, name: '아오오니', fullName: '아오오니', gender: 'male', color: SKIN, size: 1.25,
     stats: { hp: 960, atk: 30, spd: 165, range: 50, atkRate: 0.8, def: 16, crit: 0.05, critMult: 1.6 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { ice: 0.7, fire: 1.15 },
@@ -561,9 +633,9 @@
       { id: 'aoDoor', name: '다른 방의 문', cd: 20 },
     ],
     passiveDesc: '냉기: 몸이 닿아 튕기는 거리보다 14px 넓은 범위 안의 상대에게 0.1초마다 ATK×0.2 도트 피해(방어 무시).',
-    sprite: { src: IMG + 'front.png', back: IMG + 'back.png', frameW: 24, frameH: 28, frames: 2, fps: 6, scale: 2.5, foot: 1, portraitRect: [1, 0, 22, 19] },
-    portrait: IMG + 'portrait.png',
-    poses: { slam: pose('slam', 'slam.png'), run: pose('run', 'run.png', 'run_back.png', 2), hurt: pose('hurt', 'hurt.png') },
+    sprite: { src: SRC.front, back: SRC.back, frameW: 48, frameH: 84, frames: 4, fps: 8, scale: 1, foot: 1, portraitRect: [6, 1, 36, 36] },
+    portrait: SRC.portrait,
+    poses: POSES, pickPose, drawXform, afterPose,
     lines: {}, // 대사 없음 (로그는 '아오오니: 스킬명')
   });
   window.AOONI = { D, ROOMS };
