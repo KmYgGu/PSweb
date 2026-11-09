@@ -136,6 +136,11 @@
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
     dlSpell: '............/..vvvvvvvv../..vGGGGGGv../..vGwwwwGv../..vGwccwGv../..vGwccwGv../..vGwwwwGv../..vGGGGGGv../..vGG.GGGv../..vGG.GGGv../..vvvvvvvv../............',
     dlTrap: '............/..MMMMMMMM../..MmmmmmmM../..MmwwwwmM../..Mmw..wmM../..Mmw..wmM../..MmwwwwmM../..MmmmmmmM../..MmmkmmmM../..MmmmmmmM../..MMMMMMMM../............',
+    // 아오오니 (js/aooni.js)
+    aoChase: '............/......xxxx../.....xzzzzx./l...xzwwzwwx/....xzwkzwkx/ll..xxxxxxxx/....xxxmmxx./l...xxxxxxx./.....xx..xx./..l..xx..xx./............/............',
+    aoSlam: '.nnnn......./.nNNn..nnnn./.nnnn..nNNn./.......nnnn./..k........./.......k..../...nnnn...../...nNNn...../...nnnn...../.g.......g../gggggggggggg/dddddddddddd',
+    aoCloset: '.NNNNNNNNNN./.NnnnnNnnnN./.Nn..nNn..N./.Nn..nkn..N./.NnnnwkwnnnN/.Nn..nkn..N./.Nn..yky..N./.Nn..nkn..N./.NnnnnknnnnN/.NNNNNNNNNN./.N........N./............',
+    aoDoor: '.....yy...../....yyyy..../...yy..yy.../..NNNNNNNN../..NnnnnnnN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnyN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnnN../dddddddddddd',
     // 그림이 없는 스킬 (새 캐릭터 등): 기본 별 모양
     _default: '............/.....xx...../.....xx...../....xzzx..../xxxxxzzxxxxx/.xxzzwwzzxx./..xxzwwzxx../...xzzzzx.../...xzxxzx.../..xzx..xzx../..xx....xx../............',
   };

@@ -2437,7 +2437,7 @@ const Render = (() => {
     // 유닛과 건물을 y 순서로 그림
     const list = [...b.u.map(u => ({ y: u.y, u })), ...b.buildings.filter(x => !x.dead).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
     for (const it of list) {
-      if (it.u) { drawUnit(ctx, it.u, b); drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); }
+      if (it.u) { drawUnit(ctx, it.u, b); if (!it.u.aoHid) drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); } // aoHid: 아오오니 옷장·문 숨김 중엔 산소 게이지도 숨김
       else if (it.draw) it.draw(ctx);
       else drawBuilding(ctx, it.bl);
     }
@@ -2504,7 +2504,7 @@ const Render = (() => {
   function drawTopUnits(c2, b, res, hudH) {
     c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, c2.canvas.width, c2.canvas.height);
     if (!b || !hudH || b.cam) return;
-    const L = b.u.filter(u => !u.hidden && (u.y + u.ky - b.airZ(u)) - 90 * (u.size || 1) * (1 + b.airZ(u) / 110) < hudH + 6);
+    const L = b.u.filter(u => !u.hidden && !(window.topHideUnit && window.topHideUnit(b, u)) && (u.y + u.ky - b.airZ(u)) - 90 * (u.size || 1) * (1 + b.airZ(u) / 110) < hudH + 6);
     const HK = STAGE_HOOKS.filter(h => h.drawAboveUI); // 듀얼 몬스터 등 (몸체 스프라이트만)
     if (!L.length && !HK.length) return;
     c2.setTransform(res, 0, 0, res, 0, 0); c2.imageSmoothingEnabled = false;
