@@ -1746,9 +1746,10 @@ const Render = (() => {
     ctx.rotate(rot);
     const fr = u.moving && !stone ? Math.floor(u.walk * s.fps / 6) : 0;
     if (u.def.drawUnder && !u.dead) u.def.drawUnder(ctx, u, b, s); // 캐릭터별 몸 뒤 장식 (브로리 오라 등)
-    if (u.def.hammer && u.lookUp) drawHammer(ctx, u, b);
+    const hamOn = u.def.hammer && !stageHolds(b, u); // 야구장 타석: 해머를 방망이처럼 손에 듦 (baseball.js drawBat)
+    if (hamOn && u.lookUp) drawHammer(ctx, u, b);
     Sprites.draw(ctx, s, fr, false);
-    if (u.def.hammer && !u.lookUp) drawHammer(ctx, u, b);
+    if (hamOn && !u.lookUp) drawHammer(ctx, u, b);
     for (const st of u.statuses) { // 상태이상 덧칠
       const d = STATUS_DEFS[st.id];
       if (d && d.tint) { ctx.globalAlpha = alpha * (d.tintA || 0.25) * (st.id === 'petrify' ? 1 : 0.8 + 0.2 * Math.sin(b.time * 5)); Sprites.drawTint(ctx, s, fr, d.tint); }
@@ -2168,6 +2169,11 @@ const Render = (() => {
     ctx.scale(f * psx * hk, hk); ctx.translate(15, -26);
     if (sw >= 0) bladeRibbon(ctx, 36, th - 0.85, 0.85, 5, '#ffc57b', 0.3 * Math.sin(Math.PI * clamp(sw, 0, 1)));
     ctx.rotate(th + Math.PI / 2);
+    hammerBody(ctx, b, u.hamSwing > 0 || (u.action && u.action.type === 'charge'));
+    ctx.restore();
+  }
+  // 로켓 해머 몸체 (손 위치 = 원점, 머리 = -y 쪽). jetOn: 추진 불꽃
+  function hammerBody(ctx, b, jetOn) {
     // 자루의 금속 모서리, 가죽 그립과 고정 링.
     ctx.fillStyle = '#24232d'; ctx.fillRect(-2.5, -30, 5, 35);
     ctx.fillStyle = '#646371'; ctx.fillRect(-1, -28, 2, 24);
@@ -2188,7 +2194,7 @@ const Render = (() => {
     // 냉각 핀과 추진 노즐. 불꽃 길이만 바꾸고 무기 크기는 유지한다.
     ctx.fillStyle = '#202431'; ctx.fillRect(-14, -39, 4, 10);
     ctx.fillStyle = '#788497'; for (let i = 0; i < 3; i++) ctx.fillRect(-14, -38 + i * 3, 3, 1);
-    if (u.hamSwing > 0 || (u.action && u.action.type === 'charge')) {
+    if (jetOn) {
       const jet = 9 + Math.sin(b.time * 55) * 3;
       glowAt(ctx, -15, -34, 13, '#ff9c48', 0.5);
       ctx.fillStyle = '#ef7139'; ctx.beginPath(); ctx.moveTo(-14, -38); ctx.lineTo(-14 - jet, -37);
@@ -2196,8 +2202,28 @@ const Render = (() => {
       ctx.fillStyle = '#ffcd73'; ctx.beginPath(); ctx.moveTo(-14, -37); ctx.lineTo(-18 - jet * 0.7, -34); ctx.lineTo(-14, -31); ctx.fill();
       ctx.fillStyle = '#fff5ce'; ctx.fillRect(-18, -36, 4, 4);
     }
+  }
+  // ── 손에 든 근접 무기 (그리기 전용, 시뮬 상태·난수 안 건드림): 야구장 타석에서 방망이 대신 휘두름
+  //  근접 무기 스프라이트(WEAPONS)나 절차적 로켓 해머가 있으면 그 무기, 없으면 null → 호출 쪽이 방망이를 그림
+  //  몸의 일부인 '무기'(오리 머리·이블린 다리·브로리/파라가스 기 주먹)는 제외
+  const NO_HOLD = new Set(['duckHead', 'heelLeg', 'kiFistG', 'kiFistP']);
+  function heldWeapon(u) {
+    if (!u || !u.def) return null;
+    if (u.def.hammer) { const hk = u.def.hammerScale || u.def.size || 1; return { k: 'hammer', hk, len: 40 * hk, trail: '#ffc57b', dx: 7 * hk, dy: -22 * hk }; }
+    const k = u.def.weapon || WEAPON_KEY[u.def.id], W = k && WEAPONS[k];
+    if (!W || NO_HOLD.has(k) || W.style === 'lunge') return null;
+    if (u.mc && u.mc.axe && u.mc.axe.state !== 'hand') return null; // 미츄헨: 도끼를 던져서 손에 없음 → 방망이
+    const sc = Math.min(1, 46 / W.w); // 원래 픽셀 크기 (긴 창만 46px 로 줄임)
+    return { k, len: W.w * sc, sc, trail: W.trail || '#ffffff', dx: 7, dy: -22 };
+  }
+  // (x, y) = 손 위치, th = 무기가 향하는 각도 (방망이와 같은 기준: +x 가 0, 시계 방향 +), swing: 휘두르는 중
+  function drawHeldWeapon(ctx, u, b, H, x, y, th, swing) {
+    ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.imageSmoothingEnabled = false;
+    if (H.k === 'hammer') { ctx.scale(H.hk, H.hk); ctx.rotate(th + Math.PI / 2); hammerBody(ctx, b, !!swing); }
+    else { const img = weaponCanvas(H.k), g = 3 * H.sc; ctx.rotate(th); ctx.drawImage(img, -g, -img.height * H.sc / 2, img.width * H.sc, img.height * H.sc); } // 손잡이 끝을 쥠
     ctx.restore();
   }
+  const stageHolds = (b, u) => { for (const h of STAGE_HOOKS) if (h.holdsWeapon && h.holdsWeapon(b, u)) return true; return false; };
   function drawBarrier(ctx, u, b) {
     const B = u.barrier; if (!B) return;
     const g = b.barrierGeom(u), gy = g.cy + 18, H = 44;
@@ -2524,5 +2550,5 @@ const Render = (() => {
     const TS = b.gTS && b.gTS.foe && b.gTS.foe.status('gStop') ? b.gTS : null; // 시간 정지 회색조
     try { for (const u of L.sort((a, c) => a.y - c.y)) { c2.filter = TS && u !== TS.owner ? 'grayscale(1)' : 'none'; drawUnit(c2, u, b); c2.globalAlpha = 1; } c2.filter = TS ? 'grayscale(1)' : 'none'; for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
-  return { draw, thumb, glowAt, drawTopUnits, drawUnit };
+  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon };
 })();
