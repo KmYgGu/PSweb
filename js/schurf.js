@@ -17,6 +17,8 @@
   const FORMS = { rabbit: form('rabbit', '토끼', 3, 1, 'assets/Schurf/forms/rabbit.png'), snake: form('snake', '뱀', 3, 1, 'assets/Schurf/forms/snake.png'), octopus: form('octopus', '문어', 3, 1, 'assets/Schurf/forms/octopus.png'),
     bear: form('bear', '곰', 3.6, 1.3, 'assets/Schurf/forms/bear.png'), dragon: form('dragon', '드래곤', 5, 1.6, 'assets/Schurf/forms/dragon.png') };
   const FORM_KO = { rabbit: '토끼', snake: '뱀', octopus: '문어', bear: '곰' };
+  // 변신 수치: 슈르프 본인은 자기 def.sch. 다른 캐릭터가 '변신!'을 빌려 쓴 경우(패스트푸드점 손님 스킬 등)엔 def.sch 가 없으므로 슈르프 기본 수치를 씀
+  const schOf = u => u.def.sch || CHARACTERS.find(c => c.id === ID).sch;
 
   // ---------- 1. 흡수 ----------
   // 복사 불가: 듀얼리스트 카드 슬롯(→ 대체 스킬 '흡수한 카드'), 자원(cost)이 필요한 스킬(이블린 가로테, 귀무사 혼령), 슈르프 자신의 스킬
@@ -103,6 +105,7 @@
 
   // ---------- 3. 변신! ----------
   function setForm(b, u, kind, dur) {
+    if (u.def.id !== ID && !u.schForm) u.schPrevForm = u.form || null; // 빌려 쓴 변신: 원래 변신 상태(브로리 초사이어인 등)를 기억했다가 끝날 때 되돌림
     u.form = FORMS[kind]; u.schForm = { kind, t: 0, dur, hopT: 0.5, dashT: 0.3, catchT: 0 };
     b.puff(u.x, u.y - 16, '#efe0b0'); b.ring(u.x, u.y - 16, 6, 36, 0.35, '#e8d8a8');
     b.text(u.x, u.y - 64, kind === 'dragon' ? '드래곤!' : FORM_KO[kind] + '!', '#ffe8b0', 11);
@@ -110,7 +113,7 @@
   }
   function endForm(b, u, quiet) {
     if (!u.schForm || u.schForm.kind === 'dragon') return;
-    u.form = null; u.schForm = null; if (u.action && u.action.sch) u.action = null; u.air = u.air && u.air.sch ? null : u.air;
+    u.form = u.def.id !== ID && u.schPrevForm !== undefined ? u.schPrevForm : null; delete u.schPrevForm; u.schForm = null; if (u.action && u.action.sch) u.action = null; u.air = u.air && u.air.sch ? null : u.air;
     if (!quiet) b.puff(u.x, u.y - 16, '#efe0b0');
   }
   SKILLS.schTransform = {
@@ -122,7 +125,7 @@
     },
   };
   function formStep(b, u, e, dt) {
-    const F = u.schForm, S = u.def.sch; F.t += dt;
+    const F = u.schForm, S = schOf(u); F.t += dt;
     if (F.kind === 'dragon') return;
     if (F.t >= F.dur || u.dead) return endForm(b, u);
     if (u.blocked('blocksAct')) return;
@@ -172,7 +175,7 @@
     }
   }
   function grab(b, u, e) {
-    const S = u.def.sch.octo; endForm(b, u, true); u.action = null;
+    const S = schOf(u).octo; endForm(b, u, true); u.action = null;
     const off = { x: e.x - u.x, y: e.y - u.y }, d = Math.hypot(off.x, off.y) || 1, R = 15 * (u.size + e.size) - 2;
     u.schGlue = { e, t: S.glue, ox: off.x / d * R, oy: off.y / d * R }; e.schGlueBy = u;
     b.text(e.x, e.y - 70, '붙잡힘!', '#d8a0ff', 11); b.shock((u.x + e.x) / 2, (u.y + e.y) / 2 - 18, 6, 34, '#c890ff', 0.35, 4);
@@ -189,8 +192,8 @@
   const oBump = Battle.prototype.bumpAttack; Battle.prototype.bumpAttack = function (u, e) { if (octo(u)) return; return oBump.call(this, u, e); };
   const oBasic = Battle.prototype.basicAttack; Battle.prototype.basicAttack = function (u, e) { if (octo(u)) return; return oBasic.call(this, u, e); };
   const oDmg = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o = {}) { // 곰: 받는 피해 25% 감소
-    if (tgt && tgt.schForm && tgt.schForm.kind === 'bear' && !o.dot) amt *= tgt.def.sch.bear.dr; return oDmg.call(this, src, tgt, amt, o); };
-  const oEva = Battle.prototype.evasion; Battle.prototype.evasion = function (tgt, o) { const v = oEva.call(this, tgt, o); return tgt.schForm && tgt.schForm.kind === 'rabbit' ? v + tgt.def.sch.rabbit.eva : v; };
+    if (tgt && tgt.schForm && tgt.schForm.kind === 'bear' && !o.dot) amt *= schOf(tgt).bear.dr; return oDmg.call(this, src, tgt, amt, o); };
+  const oEva = Battle.prototype.evasion; Battle.prototype.evasion = function (tgt, o) { const v = oEva.call(this, tgt, o); return tgt.schForm && tgt.schForm.kind === 'rabbit' ? v + schOf(tgt).rabbit.eva : v; };
 
   // ---------- 4. 최후의 변신 ----------
   SKILLS.schFinal = {
@@ -262,7 +265,14 @@
     step(b, dt) {
       if (b.schTor && b.schTor.length) b.schTor = b.schTor.filter(T => !b.over && torStep(b, T, dt));
       for (const u of b.u) {
-        if (u.def.id !== ID || b.over) continue;
+        if (u.def.id !== ID) { // 다른 캐릭터가 빌려 쓴 '변신!' (패스트푸드점 손님 스킬 등): 변신 진행·끝내기와 문어 붙잡기만 (흡수·최후의 변신은 슈르프 전용)
+          if (b.over || !(u.schForm || u.schGlue)) continue;
+          if (u.dead) { if (u.schGlue) { u.schGlue.e.schGlueBy = null; u.schGlue = null; } continue; }
+          if (u.schForm) formStep(b, u, b.enemy(u), dt);
+          if (u.schGlue) glueStep(b, u, dt);
+          continue;
+        }
+        if (b.over) continue;
         if (u.dead) { if (u.schGlue) { u.schGlue.e.schGlueBy = null; u.schGlue = null; } continue; }
         const lost = Math.floor((u.maxHp - u.hp) / (u.maxHp * u.def.sch.unit)); // 체력 단위 감소 → 흡수 초기화
         if (lost > (u.schLost || 0)) { u.schLost = lost; if (u.schCopy) dropCopy(b, u, '흡수 초기화'); }
@@ -274,11 +284,11 @@
     drawOver(ctx, b) {
       for (const T of b.schTor || []) drawTor(ctx, b, T);
       for (const u of b.u) {
-        if (u.def.id !== ID || u.dead) continue;
-        if (u.schForm && u.schForm.kind === 'dragon') drawBreath(ctx, b, u);
+        if (u.dead || (u.def.id !== ID && !u.schGlue)) continue; // 빌려 쓴 문어 붙잡기도 끈 표시
+        if (u.def.id === ID && u.schForm && u.schForm.kind === 'dragon') drawBreath(ctx, b, u);
         if (u.schGlue) { const e = u.schGlue.e; ctx.save(); ctx.strokeStyle = '#b070d0'; ctx.lineWidth = 3; ctx.globalAlpha = 0.85;
           for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(u.x, u.y - 14 - i * 8); ctx.quadraticCurveTo((u.x + e.x) / 2, (u.y + e.y) / 2 - 30 - i * 6 + Math.sin(b.time * 8 + i) * 4, e.x, e.y - 16 - i * 8); ctx.stroke(); } ctx.restore(); }
-        if (u.schCopy) { ctx.save(); ctx.fillStyle = '#ffe8b0'; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 6); ctx.fillRect(Math.round(u.x) - 2, Math.round(u.y) - 62, 4, 4); ctx.restore(); }
+        if (u.def.id === ID && u.schCopy) { ctx.save(); ctx.fillStyle = '#ffe8b0'; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 6); ctx.fillRect(Math.round(u.x) - 2, Math.round(u.y) - 62, 4, 4); ctx.restore(); }
       }
     },
   });

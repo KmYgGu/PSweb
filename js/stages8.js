@@ -100,7 +100,9 @@
         u.bbqHeat = clamp(u.bbqHeat + (safe ? -C.heat.cool : rand(C.heat.gain[0], C.heat.gain[1])) * dt, 0, 100);
         if (u.bbqHeat >= 100) {
           D.stats.bursts++; u.bbqHeat = C.heat.reset; u.bbqCd = C.heat.cd;
-          b.damage(u, b.enemy(u) || u, u.maxHp * rand(C.heat.dmg[0], C.heat.dmg[1]), { dot: true, element: 'fire' });
+          // 화상 피해는 과열된 본인이 받음 (설명: '가득 차면 화상·혼란·깡충'). 공격자 자리는 상대 — 이 피해로 쓰러지면 고기에 먹힘과 같이 상대 승리로 기록
+          // 듀얼리스트는 받는 피해가 LP 로 환산되므로(game.js damage) 일반 체력 기준으로 넣음 (인형뽑기 집게 낙하 피해와 같은 방식, js/stages6.js). 환경 피해라 치명타 없음 (다른 스테이지 기믹과 같음)
+          b.damage(b.enemy(u) || u, u, (u.def.duelist ? u.maxHp / (window.DUEL_LP_SCALE || 1) : u.maxHp) * rand(C.heat.dmg[0], C.heat.dmg[1]), { dot: true, element: 'fire', noCrit: true });
           if (!u.dead) { stgStatus(b, u, 'confusion', C.heat.conf); u.bbqHop = Math.round(rand(C.heat.hops[0], C.heat.hops[1] + 0.49)); }
           b.text(u.x, u.y - 84, '앗뜨거!', '#ff8a3a', 12); b.shock(u.x, u.y - 10, 8, 34, '#ff7a2a', 0.35, 3);
         }
