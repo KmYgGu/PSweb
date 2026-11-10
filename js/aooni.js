@@ -584,12 +584,20 @@
     let v = side ? (ax < 0 ? 'L' : 'R') : (C || u.moving ? (ay < 0 ? 'B' : 'F') : (u.lookUp ? 'B' : 'F'));
     VIEW.set(u, v); return v;
   }
+  // 메탈 팽이 스테이지 회전 / 공중에서 굴러감: game.js 의 공용 프레임 순환(앞·오른쪽 → 뒤·오른쪽 → 뒤·왼쪽 → 앞·왼쪽, 10fps)과 같은 박자·같은 회전 방향으로
+  //  아오오니의 진짜 4방향 그림을 돌림 (앞 → 오른쪽 → 뒤 → 왼쪽). 화면 전용: 시간·팀·슬롯만 읽음
+  function spinView(u, b) {
+    if (u.dead) return null;
+    if (b.bey) { const v = 'FRBL'[(Math.floor(b.time * 10) + u.team * 2 + (u.slot || 0)) % 4]; VIEW.set(u, v); return v; }
+    if (u.air && u.air.tumble) return Math.floor(u.air.t * 10) % 2 ? 'B' : 'F';
+    return null;
+  }
   function pickPose(u, b) {
     if (b !== lastB) { LAST.clear(); lastB = b; } // 잔상용 기억은 지금 전투 것만
     if (u.dead) { const v = VIEW.get(u); return v ? { F: 'front', B: 'back', L: 'sideL', R: 'sideR' }[v] : null; } // 쓰러질 때: 마지막으로 보던 방향 그림 그대로 (갑자기 앞/뒤로 바뀌지 않게)
     if (lieOf(u)) return null; // 옷장 기절(옆으로 누움): game.js 가 기본 뒷모습을 눕혀 그림
     if (u.poseT > 0 && u.pose === 'slam') return 'slam';
-    const v = viewOf(u, b), run = !!(u.ao && u.ao.chase);
+    const v = spinView(u, b) || viewOf(u, b), run = !!(u.ao && u.ao.chase);
     if (u.flash > 0.05 && v === 'F' && !run) return 'hurt';
     const k = run ? { F: 'runF', B: 'runB', L: 'runL', R: 'runR' }[v] : { F: 'front', B: 'back', L: 'sideL', R: 'sideR' }[v];
     LAST.set(u, { k, t: b.time }); return k;
@@ -607,7 +615,8 @@
   function drawXform(ctx, u, b, sx) {
     const v = VIEW.get(u), side = v === 'L' || v === 'R', C = u.ao && u.ao.chase;
     if (u.dead) return side ? 1 : sx; // 옆모습 그림은 원본 좌/우 그대로 (뒤집지 않음)
-    if (u.poseT > 0 && u.pose === 'slam') return slamXf(ctx, u, b, sx);
+    if (u.poseT > 0 && u.pose === 'slam') return slamXf(ctx, u, b, sx); // 팽이 스테이지: 내리치기 그림(앞모습 하나)은 game.js 가 주는 좌우 뒤집기(sx)로 회전
+    const spin = !!(b.bey || (u.air && u.air.tumble)); // 회전 중: 4방향 그림이 직접 방향을 보여 주므로 뒤집지 않음
     if (C) { // 추적: 진행 방향으로 몸을 기울이고 쿵쾅 들썩임, 부딪힌 직후엔 뒤로 휘청
       const s = Math.hypot(C.vx, C.vy), f = clamp(s / D.chase.vmax, 0, 1), st = C.stag > 0 ? C.stag / Math.max(D.chase.hitStag, D.chase.wallStag) : 0;
       const ph = Math.abs(Math.sin(u.walk * 2.4)), lean = clamp(C.vx / D.chase.vmax, -1, 1) * 0.2 * f;
@@ -617,7 +626,7 @@
     }
     const X = u.ao && u.ao.exit; // 다른 방 문에서 막 나왔을 때: 몸이 쑥 늘어나며 튀어나옴
     if (X && X.closeT >= 0 && X.closeT < 0.35) { const q = X.closeT / 0.35, k = Math.sin(q * Math.PI) * (1 - q); ctx.scale(1 - 0.18 * k, 1 + 0.28 * k); }
-    return side ? 1 : sx;
+    return side || spin ? 1 : sx;
   }
   // 잔상: 남길 때의 보는 방향 그림으로 (흰 실루엣이 앞모습으로만 나오지 않게)
   const AFTER = new WeakMap();

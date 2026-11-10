@@ -88,7 +88,7 @@ img { image-rendering: pixelated; }
 .main:not(:disabled):active, .sub:active { transform: translateY(2px); }
 
 /* 결과 */
-#result { position: absolute; inset: 0; background: rgba(14,15,24,.6); display: flex; align-items: center; justify-content: center; animation: fade .5s ease-out; }
+#result { position: absolute; inset: 0; z-index: 11; background: rgba(14,15,24,.6); display: flex; align-items: center; justify-content: center; animation: fade .5s ease-out; }
 @keyframes fade { from { opacity: 0; } }
 #result .box { width: 260px; padding: 20px 18px; border-radius: 12px; background: #262a3c; border: 3px solid #ffd75e; text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; animation: pop .45s cubic-bezier(.2,1.4,.4,1); }
 @keyframes pop { from { transform: scale(.7); opacity: 0; } }
@@ -271,10 +271,13 @@ img { image-rendering: pixelated; }
 @keyframes skUse { 0% { transform: scale(1.45); filter: brightness(2.4); box-shadow: 0 0 0 1px #fff, 0 0 6px 2px rgba(255,240,180,.9); } 60% { transform: scale(1.1); filter: brightness(1.4); box-shadow: 0 0 0 1px rgba(255,255,255,.6); } 100% { transform: none; filter: none; box-shadow: none; } }
 @keyframes skRdy { 0% { filter: brightness(2); } 100% { filter: none; } }
 .skrow.down { opacity: .35; }
+/* 쌓임 순서: 아이콘 강조(.ski.use z-index 1)가 HUD 밖으로 새어 결과창·리플레이·대화상자 위로 올라오지 않게 HUD 를 하나의 층(z-index 0)으로 묶음.
+   결과창 z 11, 전체 로그 20, 탈출맵 30~60, 리플레이 조작 6~10. 아이콘 설명(#skTip)은 z 5 = 맵 캔버스 위, 모든 창 아래 */
+#hud { z-index: 0; }
 /* 듀얼리스트 4칸 (드로우/몬스터/마법/함정): 숫자 = 덱 장수 / 패의 해당 카드 수 (오른쪽 아래) */
 .ski[data-s="rdy0"] img { opacity: .8; }
 .skrow.duel .cn { color: #ffe9a8; }
-#skTip { position: absolute; z-index: 30; padding: 3px 6px; border-radius: 4px; border: 1px solid #ffd75e; background: rgba(14,15,24,.95); color: #fff3d0; font-size: 11px; white-space: nowrap; pointer-events: none; }
+#skTip { position: absolute; z-index: 5; padding: 3px 6px; border-radius: 4px; border: 1px solid #ffd75e; background: rgba(14,15,24,.95); color: #fff3d0; font-size: 11px; white-space: nowrap; pointer-events: none; }
 
 /* ===== PC 넓은 화면 (폭 900px 이상, 전투 중): 왼쪽 전투 맵 + 오른쪽 세로 패널 =====
    body.wb 는 main.js fit() 이 켬. 무대 680×496 (논리 px): x 0~360 = 맵 (캔버스 y 64~560 구간), x 360~680 = 패널.

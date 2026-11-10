@@ -131,14 +131,11 @@
       for (let r = 0; r < I.crowdRows; r++) { x.fillStyle = '#2a1e30'; x.fillRect(AR.x, I.seatY + rowH * (r + 0.85) - 3, AR.w, 6); x.fillStyle = '#3e2a44'; x.fillRect(AR.x, I.seatY + rowH * (r + 0.85) - 3, AR.w, 2); }
     },
     SCR: { x: 120, w: 120 },
-    drawScreen(ctx, b, D, thumb) { // 중앙 대형 스크린: 실시간 중계 (화면 영역은 캡처에서 제외)
-      const I = D.I, sx = IDOL.SCR.x, sw = IDOL.SCR.w, sy = AR.y + 8, sh = I.top - AR.y - 20;
-      ctx.save();
-      if (thumb) {
-        ctx.fillStyle = '#1a2040'; ctx.fillRect(sx, sy, sw, sh);
-        ctx.fillStyle = '#ffb0e8'; ctx.font = 'bold 13px "Galmuri11", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('IDOL STAGE', sx + sw / 2, sy + sh / 2);
-        ctx.restore(); return;
-      }
+    // 중앙 대형 스크린: 실시간 중계. 무대 뒤 벽(배경)이라 캐릭터·투사체·이펙트·글자가 화면 위에 그려져야 함 →
+    //  drawTop(유닛·이펙트를 다 그린 뒤)에서는 카메라 영역을 버퍼로 캡처만 하고, 다음 프레임 drawUnder(유닛보다 먼저)에서 버퍼를 스크린에 그림 (1프레임 늦음, 눈에 안 띔)
+    //  캡처 영역은 위쪽 스크린 벽을 제외하므로 스크린이 자기 자신을 다시 찍는 일은 없음. 화면 전용 (전투 값은 읽기만)
+    captureScreen(ctx, b, D) {
+      const I = D.I, sw = IDOL.SCR.w, sh = I.top - AR.y - 20;
       const C = D.cam, cw = C.w, ch = cw * sh / sw;
       const cx = clamp(C.x, AR.x + cw / 2, AR.x + AR.w - cw / 2), cy = clamp(C.y, I.top - 10 + ch / 2, AR.y + AR.h - ch / 2); // 위쪽 스크린 벽은 캡처 안 함
       const m = ctx.getTransform(), src = ctx.canvas;
@@ -147,9 +144,19 @@
       const bw = Math.max(1, Math.round(sw * m.a)), bh = Math.max(1, Math.round(sh * m.d));
       if (buf.width !== bw || buf.height !== bh) { buf.width = bw; buf.height = bh; }
       const bx = buf.getContext('2d'); bx.imageSmoothingEnabled = false; bx.clearRect(0, 0, bw, bh);
-      bx.drawImage(src, px, py, pw, ph, 0, 0, bw, bh); // 오프스크린 버퍼로 먼저 복사 (자기 자신 재귀 방지)
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(buf, sx, sy, sw, sh);
+      bx.drawImage(src, px, py, pw, ph, 0, 0, bw, bh); // 오프스크린 버퍼로 복사
+      IDOL.bufB = b; // 어느 전투의 화면인지 (다른 전투/썸네일의 지난 화면이 비치지 않게)
+    },
+    drawScreen(ctx, b, D, thumb) {
+      const I = D.I, sx = IDOL.SCR.x, sw = IDOL.SCR.w, sy = AR.y + 8, sh = I.top - AR.y - 20;
+      ctx.save();
+      if (thumb) {
+        ctx.fillStyle = '#1a2040'; ctx.fillRect(sx, sy, sw, sh);
+        ctx.fillStyle = '#ffb0e8'; ctx.font = 'bold 13px "Galmuri11", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('IDOL STAGE', sx + sw / 2, sy + sh / 2);
+        ctx.restore(); return;
+      }
+      ctx.fillStyle = '#05060a'; ctx.fillRect(sx, sy, sw, sh);
+      if (IDOL.buf && IDOL.bufB === b) { ctx.imageSmoothingEnabled = false; ctx.drawImage(IDOL.buf, sx, sy, sw, sh); }
       ctx.globalAlpha = 0.06; ctx.fillStyle = '#000'; for (let y = sy; y < sy + sh; y += 3) ctx.fillRect(sx, y, sw, 1); // 아주 옅은 주사선
       ctx.globalAlpha = 1;
       const L = D.leader;
@@ -182,14 +189,14 @@
     },
     drawTop(ctx, b) { // 관객은 최상단 (무대 앞쪽 캐릭터가 관객 뒤에 있는 것처럼), 중계 화면은 관객 그리기 전 화면을 캡처
       const D = b.idol; if (!D) return;
-      IDOL.drawScreen(ctx, b, D, false);
+      IDOL.captureScreen(ctx, b, D); // 중계 화면은 drawUnder 에서 (배경)
       IDOL.drawCrowd(ctx, b, D, false);
     },
     drawUnder(ctx, b, thumb) {
       const D = b.idol; if (!D) return;
       const I = D.I, sh = I.top - AR.y - 20;
       ctx.save();
-      if (thumb) IDOL.drawScreen(ctx, b, D, true); else { ctx.fillStyle = '#05060a'; ctx.fillRect(IDOL.SCR.x, AR.y + 8, IDOL.SCR.w, sh); }
+      IDOL.drawScreen(ctx, b, D, !!thumb); // 중계 화면: 무대 뒤 벽이라 유닛보다 먼저 (지난 프레임 캡처)
       // 좌우 스크린: 팬심 수
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       [0, 1].forEach(i => { // 팀별 (2인 팀은 대표 이름 = 마지막 팀원, 예: 브로리)
