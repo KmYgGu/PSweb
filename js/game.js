@@ -2206,7 +2206,7 @@ const Render = (() => {
   // ── 손에 든 근접 무기 (그리기 전용, 시뮬 상태·난수 안 건드림): 야구장 타석에서 방망이 대신 휘두름
   //  근접 무기 스프라이트(WEAPONS)나 절차적 로켓 해머가 있으면 그 무기, 없으면 null → 호출 쪽이 방망이를 그림
   //  오리 박치기(머리)는 제외 → 방망이. 이블린 하이힐 다리·브로리/파라가스 기 주먹은 그대로 휘두름 (재미)
-  const NO_HOLD = new Set(['duckHead']);
+  const NO_HOLD = new Set(['duckHead']), BODY_HOLD = new Set(['heelLeg', 'kiFistG', 'kiFistP']);
   function heldWeapon(u) {
     if (!u || !u.def) return null;
     if (u.def.hammer) { const hk = u.def.hammerScale || u.def.size || 1; return { k: 'hammer', hk, len: 40 * hk, trail: '#ffc57b', dx: 7 * hk, dy: -22 * hk }; }
@@ -2214,7 +2214,7 @@ const Render = (() => {
     if (!W || NO_HOLD.has(k) || W.style === 'lunge') return null;
     if (u.mc && u.mc.axe && u.mc.axe.state !== 'hand') return null; // 미츄헨: 도끼를 던져서 손에 없음 → 방망이
     const reach = Math.max(20, u.reach || 40), len = W.sc ? W.w * W.sc : clamp(reach * 0.8, 16, 70), sc = len / W.w; // 전투 때와 같은 크기 (drawWeaponSwing 과 같은 계산)
-    return { k, len, sc, trail: W.trail || '#ffffff', dx: 7, dy: -22 };
+    return { k, len, sc, trail: W.trail || '#ffffff', dx: 7, dy: -22, body: BODY_HOLD.has(k) }; // body: 몸으로 치는 캐릭터 → 휘두를 때만 보임
   }
   // (x, y) = 손 위치, th = 무기가 향하는 각도 (방망이와 같은 기준: +x 가 0, 시계 방향 +), swing: 휘두르는 중
   function drawHeldWeapon(ctx, u, b, H, x, y, th, swing) {

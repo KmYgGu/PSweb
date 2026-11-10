@@ -819,17 +819,25 @@
   const batting = (b, D, u) => !!(u && !u.dead && !u.hidden && D.phase !== 'live' && D.phase !== 'after');
   const heldWeapon = u => (typeof Render !== 'undefined' && Render.heldWeapon ? Render.heldWeapon(u) : null);
   // 타석: 근접 무기 스프라이트가 있는 캐릭터는 그 무기, 없으면 야구 방망이. 같은 자세·같은 스윙 (그리기 전용)
+  // 아래 → 위 올려치기: 준비 = 무기가 아래로, 스윙하면 홈 쪽을 지나 어깨 위로. 오른쪽 타석(side -1)은 좌우 거울
+  //  헛스윙·파울 뒤 'pause' 동안은 D.pt 로 끝까지 휘두름 (그리기 전용, 시뮬 상태 안 바꿈). 몸으로 치는 캐릭터(다리·주먹)는 휘두를 때만 보임
+  const SW0 = 1.75, SWA = 3.6;
   function drawBat(ctx, b, D, u) {
-    const p = D.pitch, sw = p && p.swingT >= 0 ? clamp((p.t - p.swingT) / 0.16, 0, 1) : 0;
-    const H = heldWeapon(u), hx = u.x + (H ? H.dx : 7), hy = u.y + (H ? H.dy : -22), a = -2.3 + sw * 3.6; // 어깨 위로 든 방망이 → 스윙
-    if (H) Render.drawHeldWeapon(ctx, u, b, H, hx, hy, a, sw > 0 && sw < 1);
+    const p = D.pitch, side = D.side || 1;
+    const el = p && p.swingT >= 0 ? p.t - p.swingT + (D.phase === 'pause' ? D.pt : 0) : -1, sw = el >= 0 ? clamp(el / 0.16, 0, 1) : 0, swinging = sw > 0 && sw < 1;
+    const H = heldWeapon(u); if (H && H.body && !swinging) return;
+    const hx = u.x + side * (H ? H.dx : 7), hy = u.y + (H ? H.dy : -22), a = SW0 - sw * SWA;
+    ctx.save(); ctx.translate(Math.round(hx), Math.round(hy)); ctx.scale(side, 1);
+    if (H) Render.drawHeldWeapon(ctx, u, b, H, 0, 0, a, swinging);
     else {
-      ctx.save(); ctx.translate(Math.round(hx), Math.round(hy)); ctx.rotate(a);
+      ctx.save(); ctx.rotate(a);
       ctx.fillStyle = '#3a2414'; ctx.fillRect(-1, -1.5, 22, 4); ctx.fillStyle = '#c8955a'; ctx.fillRect(0, -1, 9, 2); ctx.fillRect(9, -1.5, 12, 3); ctx.fillStyle = '#e8c08a'; ctx.fillRect(10, -1.5, 10, 1);
       ctx.restore();
     }
-    if (sw > 0 && sw < 1) { ctx.globalAlpha = 0.35 * (1 - sw); ctx.strokeStyle = H ? H.trail : '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hx, hy, H ? Math.max(18, H.len * 0.85) : 18, -2.3, -2.3 + sw * 3.6); ctx.stroke(); ctx.globalAlpha = 1; }
+    if (swinging) { ctx.globalAlpha = 0.35 * (1 - sw); ctx.strokeStyle = H ? H.trail : '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, H ? Math.max(18, H.len * 0.85) : 18, a, SW0); ctx.stroke(); ctx.globalAlpha = 1; }
+    ctx.restore();
   }
+
   // 모자 위치: 스프라이트 첫 프레임에서 불투명한 맨 윗줄 (가능하면 픽셀 검사, 안 되면 비율로 추정)
   const capCache = {};
   function capInfo(def, back) {
