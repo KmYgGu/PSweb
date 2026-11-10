@@ -267,7 +267,7 @@
     const fl = battle.fallen, rt = battle.resultText && battle.resultText(label), duo = battle.u.filter(u => u.team === w.team && !u.summon).length > 1;
     $('#winTxt').textContent = rt || (fl ? `${label(fl)} 크레바스에 추락! ${teamLabel(w.team)} 승리!` : `${teamLabel(w.team)} 승리!`);
     $('#winTxt').style.fontSize = (fl || rt || duo) ? '17px' : '';
-    $('#winSub').textContent = battle.escape ? `${battle.escape.map.name} · ${(battle.escape.endTime ?? battle.time).toFixed(1)}초 · ${battle.escape.clear ? '클리어' : '실패'}` : `${STAGE_DEFS[stageId].name} · 전투 시간 ${battle.time.toFixed(1)}초 · 남은 체력 ${Math.ceil(w.hp)}/${w.maxHp}`;
+    $('#winSub').textContent = battle.escape ? `${battle.escape.map.name} · ${(battle.escape.endTime ?? battle.time).toFixed(1)}초 · ${battle.escape.clear ? '클리어' : '실패'}` : `${(STAGE_DEFS[battle.stageId] || STAGE_DEFS[stageId]).name} · 전투 시간 ${battle.time.toFixed(1)}초 · 남은 체력 ${Math.ceil(w.hp)}/${w.maxHp}`; // 스테이지 이름: 처음 고른 stageId 가 아니라 전투가 끝난 스테이지 (battle.stageId: 아오오니 문·루인·아드라 등 스테이지 교체 반영)
     $('#result').classList.remove('hidden');
   }
   $('#again').onclick = () => startBattle();
