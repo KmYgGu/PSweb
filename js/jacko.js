@@ -3,11 +3,11 @@
  *  평타 띄워베기 : 짧은 근접 베기. 맞은 상대는 잠깐 '공중에 뜸' (그림·위치 연출만: 이동·공격·스킬은 그대로 가능, 기절/제압 아님)
  *                  잭오랜턴은 떠 있는 상대와 몸이 부딪히지 않고 지나감. 베기 거리 안이면 같이 점프해 공중에서 한 번 더 벰,
  *                  멀면 땅에 남아 잠깐(0.6초) 다른 스킬로 바로 이어갈 수 있음
- *  1. 스텝        : 50% 상대 쪽 / 50% 무작위 방향으로 100px 를 0.45초 동안 한 바퀴 돌며 이동 (팽이 스테이지 회전과 같은 그림 순환)
+ *  1. 스텝        : 50% 상대 쪽 / 50% 무작위 방향으로 160px 를 0.45초 동안 한 바퀴 돌며 이동 (팽이 스테이지 회전과 같은 그림 순환)
  *                   스텝 중 모든 공격 회피·상대 관통, 벽·장애물(펌킨 타워 포함)은 못 지나감. 스텝 중 한 번 더 스텝(방향 다시 뽑음, 최대 2번)
- *                   쿨타임은 마지막 스텝이 끝난 뒤부터. 끝나면 0.5초 동안 띄워베기·다른 스킬로 바로 이어감
- *  2. 펌킨 타워   : 하나만 유지(새로 놓으면 이전 것 제거), 8초. 시계/반시계(반반) 방향으로 돌며 한 바퀴(2초)에 불꽃 8발을 포물선으로 던짐
- *                   (타워를 밀어도 타워 기준으로 발사). 떨어진 불꽃은 1.2초 동안 바닥에서 탐. 누구든 닿으면 타워를 밀며 그대로 이동,
+ *                   쿨타임은 마지막 스텝이 끝난 뒤부터(3초). 끝나면 0.5초 동안 띄워베기·다른 스킬로 바로 이어감
+ *  2. 펌킨 타워   : 하나만 유지(새로 놓으면 이전 것 제거), 0.7초 동안 한 바퀴만 빠르게 돌고 사라짐. 시계/반시계(반반) 방향으로 돌며 한 바퀴(0.7초)에 불꽃 12발을 포물선으로 던짐
+ *                   (타워를 밀어도 타워 기준으로 발사). 떨어진 불꽃은 1.2초 동안 바닥에서 탐(타워가 사라진 뒤에도 남음). 누구든 닿으면 타워를 밀며 그대로 이동,
  *                   더 밀 곳이 없으면 튕겨남. 부서지지 않음
  *  3. 호박 머리   : 3.5초 동안 공중에 뜬 호박 머리로 변신. 이동 방향의 양옆으로 불꽃을 쏘며 이동. 변신 중 다른 스킬·평타 불가.
  *                   시간이 다 되거나 피해를 조금이라도 받으면 해제. 공중 판정은 기존 공중 규칙(트램펄린 점프와 같음: 지상 충돌·지형·바닥 함정 무시,
@@ -23,11 +23,11 @@
 (() => {
   const TAU = Math.PI * 2, ID = 'jackO', COL = '#a8283a', FIRE = '#ffa040';
   const D = {
-    step: { len: 100, dur: 0.45, recastP: 0.5, recastAt: [0.4, 0.8], cancel: 0.5, near: 230 },
+    step: { len: 160, dur: 0.45, recastP: 0.5, recastAt: [0.4, 0.8], cancel: 0.5, near: 300 },
     lift: { dur: 0.8, h: 28 },
     air: { near: 8, cd: 1.6, dur: 0.46, hitAt: 0.24, mult: 0.75, h: 24, spd: 260 },
     gcancel: 0.6,
-    tower: { dur: 8, rev: 2.0, n: 8, r: 9, throwR: 66, fly: 0.42, fh: 26, mult: 0.45, hitR: 13, fire: { life: 1.2, r: 13, tick: 0.3, mult: 0.15 } },
+    tower: { dur: 0.7, rev: 0.7, n: 12, r: 18, throwR: 100, fly: 0.42, fh: 26, fade: 0.1, mult: 0.45, hitR: 16, fire: { life: 1.2, r: 16, tick: 0.3, mult: 0.15 } },
     head: { dur: 3.5, gap: 0.18, spd: 330, life: 0.4, mult: 0.4, h: 16 },
     flame: { gap: 0.06, ang: [-0.5, -0.25, 0, 0.25, 0.5], dist: [78, 100, 120, 100, 78], dur: 0.62, h: 54, mult: 1.0, splits: 3, hitR: 13 },
     lamp: { delay: 2, accel: 2600, vmax: 760, v0: 120, maxT: 1.4, kbDur: 0.4, wallK: 1 / 380, touchR: 22, wait: 1.5 },
@@ -109,12 +109,12 @@
       if (T.gone) continue;
       T.t += dt; T.pushT = Math.max(0, (T.pushT || 0) - dt);
       if (T.t >= T.dur || !T.owner || T.owner.dead) { removeTower(b, T); continue; }
-      if (T.t < 0.3) continue; // 솟아오르는 중
+      // 솟아오름/사라짐 페이드는 그리기만(0.1초). 수명=한 바퀴라 처음부터 회전·발사를 해야 정확히 한 바퀴 돌고 사라짐
       T.ang += T.sgn * TAU / D.tower.rev * dt; T.fireT -= dt;
       if (T.fireT <= 0) {
         T.fireT += D.tower.rev / D.tower.n;
         const tx = T.x + Math.cos(T.ang) * D.tower.throwR, ty = T.y + Math.sin(T.ang) * D.tower.throwR * 0.8;
-        S.tfl.push({ owner: T.owner, sx: T.x + Math.cos(T.ang) * 6, sy: T.y + Math.sin(T.ang) * 4, tx, ty, t: 0, dur: D.tower.fly, h: D.tower.fh, dmg: T.owner.st.atk * T.mult });
+        S.tfl.push({ owner: T.owner, sx: T.x + Math.cos(T.ang) * 12, sy: T.y + Math.sin(T.ang) * 8, tx, ty, t: 0, dur: D.tower.fly, h: D.tower.fh, dmg: T.owner.st.atk * T.mult });
         T.flash = 0.1;
       }
       T.flash = Math.max(0, (T.flash || 0) - dt);
@@ -327,10 +327,10 @@
   // ---------- 스킬 ----------
   const inCancel = u => !!(u.jko && u.jko.cancelT > 0);
   const okBase = (u, b) => !u.airborne && !(u.jko && u.jko.head) && !u.push && !u.pull && !u.climb && !u.inTrain;
-  SKILLS.jackStep = { desc: '절반 확률로 상대 쪽, 나머지는 무작위 방향으로 한 바퀴 돌며 빠르게 이동합니다(100px, 0.45초). 스텝 중에는 모든 공격을 피하고 상대를 통과하지만 벽·장애물은 못 지나갑니다. 스텝 중 한 번 더 스텝할 수 있고(방향 다시 뽑음), 끝나면 띄워베기나 다른 스킬로 바로 이어갑니다.',
+  SKILLS.jackStep = { desc: '절반 확률로 상대 쪽, 나머지는 무작위 방향으로 한 바퀴 돌며 빠르게 이동합니다(160px, 0.45초). 스텝 중에는 모든 공격을 피하고 상대를 통과하지만 벽·장애물은 못 지나갑니다. 스텝 중 한 번 더 스텝할 수 있고(방향 다시 뽑음), 끝나면 띄워베기나 다른 스킬로 바로 이어갑니다.',
     canUse: (u, e0, d, b) => { const e = foeOf(b, u); return okBase(u, b) && !!e && dist(u, e) < D.step.near; },
     use(u, e0, b, s) { stepStart(b, u, s, 1); } };
-  SKILLS.jackTower = { desc: '앞에 펌킨 타워를 세웁니다(하나만, 8초, 부서지지 않음). 시계/반시계 방향으로 돌며 한 바퀴에 불꽃 8발을 던지고, 떨어진 불꽃은 잠시 바닥에서 탑니다. 닿으면 타워를 밀며 지나가고, 더 밀 곳이 없으면 튕깁니다.',
+  SKILLS.jackTower = { desc: '앞에 큰 펌킨 타워를 세웁니다(하나만, 0.7초 동안 한 바퀴만 빠르게 돌고 사라짐, 부서지지 않음). 시계/반시계 방향으로 돌며 한 바퀴에 불꽃 12발을 던지고, 떨어진 불꽃은 타워가 사라진 뒤에도 잠시 바닥에서 탑니다. 닿으면 타워를 밀며 지나가고, 더 밀 곳이 없으면 튕깁니다.',
     canUse: (u, e0, d, b) => { const e = foeOf(b, u); return okBase(u, b) && !!e && (dist(u, e) < 200 || inCancel(u)); },
     use(u, e0, b, s) {
       const S = B_(b), e = foeOf(b, u), a = e ? angTo(u, e) : (u.facing > 0 ? 0 : Math.PI);
@@ -338,10 +338,10 @@
       S.towers = S.towers.filter(T => !T.gone);
       const T = { owner: u, x: 0, y: 0, r: D.tower.r, t: 0, dur: s.dur || D.tower.dur, sgn: Math.random() < 0.5 ? 1 : -1, ang: a, fireT: 0, mult: s.mult || D.tower.mult };
       let placed = false;
-      for (const k of [28, 18, -24, 0]) { const q = b.clampPos(u.x + Math.cos(a) * k, u.y + Math.sin(a) * k * 0.8, T.r); T.x = q.x; T.y = q.y; if (towerFits(b, T, T.x, T.y)) { placed = true; break; } }
+      for (const k of [40, 28, -32, 0]) { const q = b.clampPos(u.x + Math.cos(a) * k, u.y + Math.sin(a) * k * 0.8, T.r); T.x = q.x; T.y = q.y; if (towerFits(b, T, T.x, T.y)) { placed = true; break; } }
       if (!placed) { const q = b.clampPos(u.x, u.y, T.r); T.x = q.x; T.y = q.y; }
       S.towers.push(T);
-      b.dust(T.x, T.y); b.smoke(T.x, T.y - 8, '#6a3a2a', 5); b.text(T.x, T.y - 40, T.sgn > 0 ? '펌킨 타워 ↻' : '펌킨 타워 ↺', FIRE, 9);
+      b.dust(T.x, T.y); b.smoke(T.x, T.y - 16, '#6a3a2a', 5); b.text(T.x, T.y - 80, T.sgn > 0 ? '펌킨 타워 ↻' : '펌킨 타워 ↺', FIRE, 9);
       b.stats.jkTower = (b.stats.jkTower || 0) + 1;
     } };
   SKILLS.jackHead = { desc: '3.5초 동안 공중에 뜬 호박 머리로 변신해 이동 방향의 양옆으로 불꽃을 쏘며 움직입니다. 변신 중에는 다른 스킬·평타를 쓸 수 없고, 시간이 다 되거나 피해를 받으면 풀립니다.',
@@ -432,24 +432,24 @@
     ctx.restore();
   }
   function drawTower(ctx, T, b) {
-    const rise = Math.min(1, T.t / 0.3), end = Math.min(1, (T.dur - T.t) / 0.3), X = Math.round(T.x + (T.pushT > 0 ? Math.sin(b.time * 60) : 0)), Y = Math.round(T.y), H = Math.round(26 * rise * end);
+    const fade = D.tower.fade, rise = Math.min(1, T.t / fade), end = Math.min(1, (T.dur - T.t) / fade), X = Math.round(T.x + (T.pushT > 0 ? Math.sin(b.time * 60) : 0)), Y = Math.round(T.y), H = Math.round(52 * rise * end);
     ctx.save();
-    ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(X, Y + 1, 11, 4, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(X, Y + 2, 22, 8, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
     if (H > 2) {
-      ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 6, Y - H, 12, H);      // 기둥 (덩굴)
-      ctx.fillStyle = '#3e3230'; ctx.fillRect(X - 5, Y - H, 10, H - 1);
-      ctx.fillStyle = '#523952'; ctx.fillRect(X - 3, Y - H, 2, H - 1); ctx.fillRect(X + 2, Y - H + 4, 1, H - 6);
-      const hy = Y - H - 8; // 꼭대기 호박
-      ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 9, hy - 6, 18, 14);
-      ctx.fillStyle = '#ae3525'; ctx.fillRect(X - 8, hy - 5, 16, 12);
-      ctx.fillStyle = '#d8604a'; ctx.fillRect(X - 7, hy - 4, 4, 3);
-      ctx.fillStyle = '#7a2218'; ctx.fillRect(X - 1, hy - 5, 2, 12); ctx.fillRect(X - 8, hy + 5, 16, 2);
-      ctx.fillStyle = '#523952'; ctx.fillRect(X, hy - 9, 2, 4);
-      const g = T.flash > 0 ? '#fff0b0' : '#ffb040', fx = Math.round(Math.cos(T.ang) * 3);   // 얼굴은 발사 방향 쪽으로 돌아감
-      ctx.fillStyle = g; ctx.fillRect(X - 5 + fx, hy - 2, 3, 2); ctx.fillRect(X + 2 + fx, hy - 2, 3, 2); ctx.fillRect(X - 4 + fx, hy + 2, 8, 2);
-      ctx.fillStyle = '#5a1a10'; ctx.fillRect(X - 2 + fx, hy + 2, 1, 1); ctx.fillRect(X + 1 + fx, hy + 2, 1, 1);
+      ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 12, Y - H, 24, H);      // 기둥 (덩굴) — 기존 픽셀 타워를 약 2배로
+      ctx.fillStyle = '#3e3230'; ctx.fillRect(X - 10, Y - H, 20, H - 2);
+      ctx.fillStyle = '#523952'; ctx.fillRect(X - 6, Y - H, 4, H - 2); ctx.fillRect(X + 4, Y - H + 8, 2, H - 12);
+      const hy = Y - H - 16; // 꼭대기 호박
+      ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 18, hy - 12, 36, 28);
+      ctx.fillStyle = '#ae3525'; ctx.fillRect(X - 16, hy - 10, 32, 24);
+      ctx.fillStyle = '#d8604a'; ctx.fillRect(X - 14, hy - 8, 8, 6);
+      ctx.fillStyle = '#7a2218'; ctx.fillRect(X - 2, hy - 10, 4, 24); ctx.fillRect(X - 16, hy + 10, 32, 4);
+      ctx.fillStyle = '#523952'; ctx.fillRect(X, hy - 18, 4, 8);
+      const g = T.flash > 0 ? '#fff0b0' : '#ffb040', fx = Math.round(Math.cos(T.ang) * 6);   // 얼굴은 발사 방향 쪽으로 돌아감
+      ctx.fillStyle = g; ctx.fillRect(X - 10 + fx, hy - 4, 6, 4); ctx.fillRect(X + 4 + fx, hy - 4, 6, 4); ctx.fillRect(X - 8 + fx, hy + 4, 16, 4);
+      ctx.fillStyle = '#5a1a10'; ctx.fillRect(X - 4 + fx, hy + 4, 2, 2); ctx.fillRect(X + 2 + fx, hy + 4, 2, 2);
       // 회전 방향 화살표
-      ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffc070'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(X, Y - 1, 14, 5, 0, T.ang - 0.9 * T.sgn, T.ang, T.sgn < 0); ctx.stroke();
+      ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffc070'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X, Y - 2, 28, 10, 0, T.ang - 0.9 * T.sgn, T.ang, T.sgn < 0); ctx.stroke();
     }
     ctx.restore();
   }
@@ -491,8 +491,8 @@
     attack: { element: 'slash', delivery: 'melee' },
     resist: { fire: 0.85 },
     skills: [
-      { id: 'jackStep', name: '스텝', cd: 5, len: 100, dur: 0.45 },
-      { id: 'jackTower', name: '펌킨 타워 생성', cd: 14, dur: 8, mult: 0.45 },
+      { id: 'jackStep', name: '스텝', cd: 3, len: 160, dur: 0.45 },
+      { id: 'jackTower', name: '펌킨 타워 생성', cd: 14, dur: 0.7, mult: 0.45 },
       { id: 'jackHead', name: '호박 머리 변신', cd: 16, dur: 3.5, mult: 0.4 },
       { id: 'jackFlame', name: '호박 불꽃', cd: 10, mult: 1.0 },
       { id: 'jackLamp', name: '요술 램프', cd: 12, delay: 2 },
