@@ -32,7 +32,7 @@
       throwSpd: 420, keepR: 95, tagR: 16, catchR: 13, pickR: 13, baseR: 30, tagDelay: 0.12, recvR: 36, // recvR: 송구를 받는 거리 (이전 26 — 주자·타자 몸에 밀려 놓치는 일이 잦아서) playMax: 40,
       contact: { base: 0.66, out: 0.68, min: 0.2, max: 0.88, foul: 0.28 }, // 타격 확률: base + 방어력·사거리 − 투수 공격력, 볼이면 ×out, [min, max]. foul: 맞힌 공 중 파울 비율 (이전 0.5 / 0.6 / 0.12~0.82 / 0.32)
       catchP: { fly: 0.72, line: 0.48 }, // 뜬공·라인드라이브 포구 성공 확률 (실패하면 공을 떨어뜨림)
-      t: { setup: 1.6, windup: 0.5, pause: 0.6, after: 1.2, swap: 2.0, hrStop: 0.42 }, // hrStop: 홈런 타구 히트 스톱 (시뮬레이션 정지, 매번 같은 길이)
+      t: { setup: 1.6, windup: 0.5, pause: 0.6, after: 1.2, swap: 2.0, hrStop: 0.84 }, // hrStop: 홈런 타구 히트 스톱 (시뮬레이션 정지, 매번 같은 길이). v2026.11.10-17: 0.42 → 0.84 (+ 시네마틱 바)
     },
   };
 
@@ -693,6 +693,7 @@
       const C = b.cam, V = b.bsbView || { x: 0, y: 112, w: 360, h: 410 };
       ctx.save(); ctx.translate(C.x, C.y); ctx.scale(1 / C.k, 1 / C.k); // 화면 좌표 (카메라 해제)
       ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'middle';
+      drawCine(ctx, D, V); // 홈런 히트 스톱 시네마틱 바 (점수판·미니맵은 그 위에)
       drawBoard(ctx, b, D, V.x + 4, V.y + 2);
       drawMini(ctx, b, D, V.x + V.w - 70, V.y + 2);
       const M = D.msg;
@@ -822,6 +823,17 @@
   // 아래 → 위 올려치기: 준비 = 무기가 아래로, 스윙하면 홈 쪽을 지나 어깨 위로. 오른쪽 타석(side -1)은 좌우 거울
   //  헛스윙·파울 뒤 'pause' 동안은 D.pt 로 끝까지 휘두름 (그리기 전용, 시뮬 상태 안 바꿈). 몸으로 치는 캐릭터(다리·주먹)는 휘두를 때만 보임
   const SW0 = 1.75, SWA = 3.6;
+  // 홈런 시네마틱 바 (그리기 전용): 히트 스톱 시작에 위·아래 검은 띠가 0.14초 동안 밀려 들어오고, 끝나면 0.3초 동안 빠져나감
+  const CINE = { h: 0.12, inT: 0.14, outT: 0.3 };
+  function drawCine(ctx, D, V) {
+    const R = D.hr; if (!R) return;
+    const T = D.clock - R.t0, stop = D.S.t.hrStop;
+    const k = T < stop ? easeOut(clamp(T / CINE.inT, 0, 1)) : 1 - clamp((T - stop) / CINE.outT, 0, 1) ** 2;
+    if (k <= 0) return;
+    const h = Math.round(V.h * CINE.h * k);
+    ctx.fillStyle = '#000000'; ctx.fillRect(V.x, V.y, V.w, h); ctx.fillRect(V.x, V.y + V.h - h, V.w, h);
+    ctx.fillStyle = 'rgba(255,226,122,0.55)'; ctx.fillRect(V.x, V.y + h, V.w, 1); ctx.fillRect(V.x, V.y + V.h - h - 1, V.w, 1); // 가는 금빛 테
+  }
   function drawBat(ctx, b, D, u) {
     const p = D.pitch, side = D.side || 1;
     const el = p && p.swingT >= 0 ? p.t - p.swingT + (D.phase === 'pause' ? D.pt : 0) : -1, sw = el >= 0 ? clamp(el / 0.16, 0, 1) : 0, swinging = sw > 0 && sw < 1;
