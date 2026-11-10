@@ -141,6 +141,12 @@
     aoSlam: '.nnnn......./.nNNn..nnnn./.nnnn..nNNn./.......nnnn./..k........./.......k..../...nnnn...../...nNNn...../...nnnn...../.g.......g../gggggggggggg/dddddddddddd',
     aoCloset: '.NNNNNNNNNN./.NnnnnNnnnN./.Nn..nNn..N./.Nn..nkn..N./.NnnnwkwnnnN/.Nn..nkn..N./.Nn..yky..N./.Nn..nkn..N./.NnnnnknnnnN/.NNNNNNNNNN./.N........N./............',
     aoDoor: '.....yy...../....yyyy..../...yy..yy.../..NNNNNNNN../..NnnnnnnN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnyN../..Nn.nn.nN../..Nn.nn.nN../..NnnnnnnN../dddddddddddd',
+    // 잭오랜턴 (js/jacko.js)
+    jackStep: '....zzzz..../..zz....zz../.z...kk...z./z...kxxk...z/....kxxk..../.....kk...z./....xxxx..z./...x.xx.x.z./.z..x..x..z./..z.x..x.z../...zzz.zz.../............',
+    jackTower: '..o......o../.....PP...../...kRRRRk.../..kRoRRoRk../..kRRRRRRk../..kRooooRk../...kRRRRk.../o....dd....o/.....dd...../.....dd...../....dddd..../...dddddd...',
+    jackHead: '......P...../..rr.PP...../.rRrRRRRr.../hRRRRRRRRRh./hRyyRRRyyRh./hRyyRRRyyRh./hRRRRyRRRRh./hRyRyyyRyRh./h.RyyyyyyR.h/h..RRRRRR..h/h....oo....h/.....yo.....',
+    jackFlame: '....oo....../...o..o...../..o....o..../.o......o.../.y.......o../yyy.....oyo./.y......yyy./........oyo./..y........./.yyy..o...../..y..oyo..../.....yyy....',
+    jackLamp: '..........o./.........oy./....yy...o../...YyyY..Y../..YyyyyYYY../.YyywyyyY.../.YyyyyyyY.../..YYYYYY..../....YY....../...YYYY...../..dddddd..../............',
     // 그림이 없는 스킬 (새 캐릭터 등): 기본 별 모양
     _default: '............/.....xx...../.....xx...../....xzzx..../xxxxxzzxxxxx/.xxzzwwzzxx./..xxzwwzxx../...xzzzzx.../...xzxxzx.../..xzx..xzx../..xx....xx../............',
   };

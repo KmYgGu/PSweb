@@ -1680,7 +1680,7 @@ const Render = (() => {
     if (LIE) fdef = u.fdef; // 상황별 그림 대신 기본(변신 중이면 변신) 그림의 뒷모습
     let s = Sprites.get(fdef);
     const TB = u.air && u.air.tumble; // 공중에서 굴러감: 앞/뒷모습 번갈아
-    const SPF = b.bey && !u.dead ? [[0, 1], [1, 1], [1, -1], [0, -1]][(Math.floor(b.time * 10) + u.team * 2 + (u.slot || 0)) % 4] : null; // 메탈 팽이: 앞·오른쪽 → 뒤·오른쪽 → 뒤·왼쪽 → 앞·왼쪽 프레임 순환 (10fps)
+    const SPF = b.bey && !u.dead ? [[0, 1], [1, 1], [1, -1], [0, -1]][(Math.floor(b.time * 10) + u.team * 2 + (u.slot || 0)) % 4] : u.jkSpin != null && !u.dead ? [[0, 1], [1, 1], [1, -1], [0, -1]][Math.min(3, Math.floor(u.jkSpin * 4))] : null // 잭오랜턴 스텝: 같은 프레임 순환으로 한 바퀴 (u.jkSpin = 진행도 0..1) // 메탈 팽이: 앞·오른쪽 → 뒤·오른쪽 → 뒤·왼쪽 → 앞·왼쪽 프레임 순환 (10fps)
     const wantBack = LIE ? true : SPF ? !!SPF[0] : TB ? Math.floor(u.air.t * 10) % 2 === 1 : u.lookUp;
     if (s.back && wantBack) s = s.back; // 상대보다 아래에 있으면 뒷모습
     const sx = spriteSX(u.def, !!(s.back === undefined && wantBack && Sprites.get(fdef).back), SPF ? SPF[1] : u.facing);
@@ -1695,7 +1695,7 @@ const Render = (() => {
       const p = Math.min(1, u.deadT * 3); fox = n[0] * 20 * easeOut(p); foy = n[1] * 20 * easeOut(p);
       fk = Math.max(0, 1 - Math.max(0, u.deadT - 0.15) / 1.1); alpha = Math.min(1, fk * 1.4);
     }
-    const z = b.airZ(u), zk = 1 + z / 110; // 공중 높이
+    const z = b.airZ(u) + (u.jkLiftZ || 0), zk = 1 + b.airZ(u) / 110; // 공중 높이 (jkLiftZ: 잭오랜턴 띄워베기 — 그림 높이만, 크기는 그대로)
     const stone = !!u.status('petrify');
     const frozen = stone || u.blocked('blocksMove');
     const bob = stone ? 0 : u.moving ? Math.abs(Math.sin(u.walk)) * -2 : Math.sin(b.time * 3 + u.team) * 0.6;
@@ -1718,6 +1718,7 @@ const Render = (() => {
     if (zk !== 1) ctx.scale(zk, zk);
     if (u.shrinkK && u.shrinkK !== 1) ctx.scale(u.shrinkK, u.shrinkK); // 수축
     if (u.spinT > 0) ctx.scale(Math.cos(u.spinT * 14) || 0.05, 1); // 에너미 컨트롤러: 제자리 한 바퀴
+    if (u.jkSpin != null && !u.dead && !b.bey) ctx.scale(0.45 + 0.55 * Math.abs(Math.sin(u.jkSpin * Math.PI * 4)), 1); // 잭오랜턴 스텝: 프레임이 바뀌는 순간 가장 얇게 (회전감)
     if (u.wiggle) ctx.rotate(Math.sin(b.time * 28) * 0.28); // 크레인에 매달림: 바둥바둥
     // 피격 반동은 스프라이트에만 적용: 발 위치와 충돌 범위는 그대로다.
     if (u.recoil && !stone && !F) {
@@ -2045,6 +2046,7 @@ const Render = (() => {
     wireHook: { w: 30, h: 9, style: 'swing', trail: '#ffb060', draw(g) { for (let i = 0; i < 22; i += 2) R(g, i, 4 + (i % 4 ? 0 : 1), 2, 1, '#ffcf8a'); R(g, 22, 2, 6, 3, '#c0c4cc'); R(g, 27, 3, 2, 5, '#c0c4cc'); R(g, 25, 6, 2, 2, '#e8ecf4'); R(g, 22, 2, 6, 1, '#ffffff'); R(g, 20, 3, 2, 3, '#ff7a30'); } },
     tachi: { w: 44, h: 9, style: 'swing', trail: '#ff6070', draw(g) { R(g, 0, 4, 9, 3, '#1e1418'); for (let i = 1; i < 9; i += 3) R(g, i, 4, 1, 3, '#a02030'); R(g, 9, 2, 2, 6, '#c8a050'); for (let i = 0; i < 31; i++) { const y = 3 - Math.round(Math.sin(i / 31 * 1.4) * 2.5); R(g, 11 + i, y + 1, 1, 2, '#d8dce8'); R(g, 11 + i, y + 1, 1, 1, '#ffffff'); R(g, 11 + i, y + 3, 1, 1, '#6a3040'); } } },
     toyHammer: { w: 26, h: 16, style: 'swing', trail: '#ffe060', draw(g) { R(g, 0, 7, 16, 2, '#e8c050'); R(g, 0, 7, 16, 1, '#fff0a0'); R(g, 14, 1, 11, 14, '#e83a3a'); R(g, 14, 1, 11, 3, '#ff8080'); R(g, 14, 1, 2, 14, '#f0f0f0'); R(g, 23, 1, 2, 14, '#f0f0f0'); R(g, 24, 12, 1, 3, '#a02020'); } },
+    jackCane: { w: 40, h: 12, style: 'swing', trail: '#ff9a6a', arc: [1.15, -1.4], draw(g) { R(g, 0, 8, 33, 2, '#523952'); R(g, 0, 8, 33, 1, '#8e577e'); R(g, 0, 7, 3, 4, '#2c1e1d'); R(g, 26, 6, 3, 5, '#ae3525'); R(g, 26, 6, 3, 1, '#d8604a'); R(g, 32, 3, 3, 7, '#523952'); R(g, 33, 1, 5, 3, '#523952'); R(g, 33, 1, 4, 1, '#8e577e'); R(g, 37, 2, 3, 5, '#523952'); R(g, 36, 6, 2, 2, '#523952'); R(g, 38, 3, 1, 3, '#8e577e'); } }, // 잭오랜턴 지팡이 (아래 → 위로 올려 베기)
     rifleButt: { w: 38, h: 9, style: 'swing', trail: '#ffb0a0', heavy: true, draw(g) { R(g, 0, 3, 12, 2, '#3a3438'); R(g, 0, 3, 12, 1, '#6a6068'); R(g, 10, 5, 3, 3, '#2a2428'); R(g, 12, 2, 14, 4, '#b8242a'); R(g, 12, 2, 14, 1, '#e8545a'); R(g, 17, 6, 3, 3, '#7a1a1e'); R(g, 26, 2, 9, 6, '#a01e24'); R(g, 26, 2, 9, 1, '#d84a50'); R(g, 35, 1, 3, 8, '#5a1216'); R(g, 36, 2, 1, 6, '#c8b8b0'); } }, // 육군보병 개머리판 (끝 = 개머리)
     ninjato: { w: 36, h: 7, style: 'swing', trail: '#a8e0ff', draw(g) { R(g, 0, 2, 9, 3, '#20283a'); for (let i = 1; i < 9; i += 2) R(g, i, 2, 1, 3, '#4a6aa0'); R(g, 9, 0, 3, 7, '#30303a'); R(g, 12, 2, 22, 3, '#cfd8e4'); R(g, 12, 2, 22, 1, '#ffffff'); R(g, 34, 3, 2, 1, '#ffffff'); R(g, 13, 4, 20, 1, '#6aa8ff'); } },
     // 오리 박치기: 무기 없음 → 오리 몸 전체가 공격 방향으로 머리부터 들이받음(lungeOff) + 머리 앞 픽셀 충격 버스트
