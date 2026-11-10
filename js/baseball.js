@@ -60,6 +60,8 @@
   const rise = D => Math.min(D.S.riseMax, 1 + D.clock * D.S.rise);
   const npcSpd = (D, n) => n.spd0 * D.S.spd * rise(D);
   const thrSpd = D => D.S.throwSpd * (0.6 + 0.4 * rise(D));
+  // 실점 위험도 (송구·추격 우선순위): 홈으로 뛰는 주자 > 3루로 > 2루로 > 되돌아가는 주자 > 타자(홈런 말고는 득점 못 함)
+  const threat = t => !t.kind ? 0 : t.st === 'back' ? 8 : t.to === 4 ? 70 : t.to === 3 ? 40 : 18;
   const teamName = (b, t) => mains(b, t).map(o => o.def.name).join(' & ');
 
   function mkNpc(D, def, team, kind, pos, x, y) {
@@ -245,7 +247,7 @@
     startLive(b, D) {
       D.phase = 'live'; D.playT = 0; D.hitType = D.ball.typ; b.stats.bsHit++; BB.clearAilments(b, D, false);
       for (const n of D.fielders) { n.rt = 0.12 + (n.pos === 'C' ? 0.2 : 0); n.recv = null; }
-      for (const r of D.runners) { r.st = 'on'; r.aggr = rand(0.85, 1.15); }
+      for (const r of D.runners) { r.st = 'on'; r.aggr = rand(0.85, 1.3); }
       for (const u of b.u) u.bsV = null;
       sys(b, `${D.batU.def.name} 타격! (${{ ground: '땅볼', line: '라인드라이브', fly: '뜬공' }[D.ball.typ]})`);
     },
@@ -367,7 +369,7 @@
         }
         if (!H.kind) { // 투수: 이동은 평소대로(무작위). 타자가 멀면 타자에 가까운 수비수에게 송구
           H.bsPassCd = (H.bsPassCd || 0) - dt;
-          const TT = BB.targets(b, D), t = BB.nearest(H, TT);
+          const TT = BB.targets(b, D), t = BB.pickChase(H, TT);
           if (t && H.bsPassCd <= 0 && !H.blocked('blocksAct')) { const d0 = hyp(H.x - t.x, H.y - t.y); if (d0 > D.S.keepR) { const L = BB.leadPass(D, H, TT, 0); if (L && L.gap < L.hold - 50) BB.throwTo(b, D, H, L.f, L.q); else H.bsPassCd = 0.3; } }
         }
       }
@@ -376,6 +378,7 @@
       BB.fieldAI(b, D, dt);
       BB.runAI(b, D, dt);
     },
+    pickChase(o, L) { let best = null, bd = 1e9; for (const t of L) { const d = hyp(o.x - t.x, o.y - t.y) - 1.2 * threat(t); if (d < bd) { bd = d; best = t; } } return best; }, // 가까움 + 실점 위험
     nearest(o, L) { let best = null, bd = 1e9; for (const t of L) { const d = hyp(o.x - t.x, o.y - t.y); if (d < bd) { bd = d; best = t; } } return best; },
     // ---------- 예측 송구 (공이 도착할 때의 위치로 판단) ----------
     // 타자(캐릭터) 속도: 위치 변화로 추정 (부드럽게). 시뮬레이션 값이지만 야구장 전용
@@ -414,7 +417,7 @@
           let tau = Math.max(0.12, hyp(f.x - q.x, f.y - q.y) / thr), P = BB.predict(D, t, tau), Q = BB.reachPt(D, f, P, tau);
           for (let i = 0; i < 3; i++) { tau = Math.max(0.12, hyp(Q.x - q.x, Q.y - q.y) / thr); P = BB.predict(D, t, tau); Q = BB.reachPt(D, f, P, tau); }
           if (P.safe) continue; // 공이 닿기 전에 베이스에 들어감
-          const gap = hyp(Q.x - P.x, Q.y - P.y), cost = gap + tau * 25;
+          const gap = hyp(Q.x - P.x, Q.y - P.y), cost = gap + tau * 25 - threat(t) * (gap < 30 ? 1 : 0.3); // 아웃 가능성이 높을수록 실점 위험 큰 주자 우선
           if (!best || cost < best.cost) {
             const hs = H.kind ? npcSpd(D, H) * chase : 0, hold = Math.max(0, hyp(P.x - H.x, P.y - H.y) - hs * tau);
             best = { f, q: Q, t, gap, tau, cost, hold };
@@ -455,7 +458,7 @@
       if (H && H.kind) { // 공 가진 수비수
         busy.add(H); H.passCd = (H.passCd || 0) - dt;
         if (H.rt <= 0 && H.stun <= 0) {
-          const t = BB.nearest(H, T);
+          const t = BB.pickChase(H, T);
           if (t) {
             const d0 = hyp(H.x - t.x, H.y - t.y);
             if (d0 < D.S.keepR) BB.moveNpc(D, H, t.x, t.y, 0.62, dt);
@@ -470,7 +473,7 @@
         const ord = D.fielders.filter(n => !busy.has(n) && n.stun <= 0).map(n => [n, hyp(n.x - L.x, n.y - L.y) / npcSpd(D, n) + (n.pos === 'C' && hyp(L.x - S0.home.x, L.y - S0.home.y) > 140 ? 9 : 0)]).sort((a, c) => a[1] - c[1]);
         for (let i = 0; i < Math.min(2, ord.length); i++) { const n = ord[i][0]; busy.add(n); if (n.rt <= 0) BB.moveNpc(D, n, L.x, L.y, 1, dt); }
       } else if (H || B.st === 'throw') { // 마크: 대상마다 가장 가까운 수비수 1명이 다가가 송구 받을 준비
-        for (const t of T.slice(0, 2)) { // 대상의 0.5초 뒤 위치로 (지나간 자리 대신 앞질러 감)
+        for (const t of T.slice().sort((a, c) => threat(c) - threat(a)).slice(0, 2)) { // 대상의 0.5초 뒤 위치로 (지나간 자리 대신 앞질러 감)
           const P = BB.predict(D, t, 0.5);
           let best = null, bd = 1e9; for (const n of D.fielders) { if (busy.has(n) || n.stun > 0) continue; const d = hyp(n.x - P.x, n.y - P.y); if (d < bd) { bd = d; best = n; } }
           if (!best) continue; busy.add(best);
@@ -504,13 +507,18 @@
           if (B.st === 'air' && !B.bounced) continue; // 뜬공: 잡히는지 볼 때까지 대기
           const nx = r.base + 1;
           if (nx <= 3 && (runnerAt(D, nx) || D.runners.some(o => o !== r && o.st === 'run' && o.to === nx))) continue;
-          const tr = hyp(r.x - BASES[nx % 4].x, r.y - BASES[nx % 4].y) / sp, td = BB.defTime(D, nx % 4);
-          if (tr < td * r.aggr) { r.st = 'run'; r.to = nx; b.stats.bsAdv++; }
+          const NB = BASES[nx % 4], tr = hyp(r.x - NB.x, r.y - NB.y) / sp, td = BB.defTime(D, nx % 4);
+          // 공 상황 읽기: 깊은 타구(홈에서 멂)·다른 곳으로 가는 송구면 한 베이스 더 노림
+          const deep = B.st !== 'held' && hyp(B.x - S0.home.x, B.y - S0.home.y) > 230 ? 0.22 : 0;
+          const away = B.st === 'throw' && B.thr && hyp(B.thr.x1 - NB.x, B.thr.y1 - NB.y) > 120 ? 0.2 : 0;
+          if (tr < td * r.aggr * (1 + deep + away)) { r.st = 'run'; r.to = nx; b.stats.bsAdv++; if (tr >= td * r.aggr) b.stats.bsXtra = (b.stats.bsXtra || 0) + 1; }
           continue;
         }
         if (r.st === 'run') {
           const P = BASES[r.to % 4], d = hyp(r.x - P.x, r.y - P.y), from = BASES[r.base], prog = 1 - d / S0.bd;
           if (prog < 0.45 && d / sp > BB.defTime(D, r.to % 4) * 1.15 * r.aggr) { r.st = 'back'; b.stats.bsBack++; continue; } // 위험 → 되돌아감
+          const inc = B.st === 'throw' && B.thr && hyp(B.thr.x1 - P.x, B.thr.y1 - P.y) < 34 && (B.thr.dur - B.thr.t) + 0.1 < d / sp; // 다음 베이스로 공이 먼저 도착
+          if (prog < 0.6 && inc && d / sp > (B.thr.dur - B.thr.t) * 1.25 * r.aggr) { r.st = 'back'; b.stats.bsBack++; continue; }
           if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) {
             if (r.to === 4) { BB.score(b, D, r); if (D.phase !== 'live') return; continue; }
             r.base = r.to; r.st = 'on'; const s = baseSpot(r.base); void from; void s;
