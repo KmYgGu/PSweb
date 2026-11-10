@@ -245,7 +245,7 @@
       if (foul) B.st = 'foul';
     },
     startLive(b, D) {
-      D.phase = 'live'; D.playT = 0; D.hitType = D.ball.typ; b.stats.bsHit++; BB.clearAilments(b, D, false);
+      D.phase = 'live'; D.playT = 0; D.hitType = D.ball.typ; D.safeB = 0; D.safeT = 0; D.safeN = 0; D.relK = 0; D.setT = 0; b.stats.bsHit++; BB.clearAilments(b, D, false);
       for (const n of D.fielders) { n.rt = 0.12 + (n.pos === 'C' ? 0.2 : 0); n.recv = null; }
       for (const r of D.runners) { r.st = 'on'; r.aggr = rand(0.85, 1.3); }
       for (const u of b.u) u.bsV = null;
@@ -335,7 +335,7 @@
     // ---------- 경기 중 ----------
     targets(b, D) { // 태그 대상: 타자 + 베이스를 떠난 주자
       const L = [], bu = D.batU;
-      if (bu && !bu.dead && !bu.hidden && !bu.aoHid && !bu.airborne) L.push(bu);
+      if (bu && !bu.dead && !bu.hidden && !bu.aoHid && !bu.airborne && !D.safeB) L.push(bu); // 베이스에 세이프된 타자는 태그 대상 아님
       for (const r of D.runners) if (r.st !== 'on') L.push(r);
       return L;
     },
@@ -374,11 +374,45 @@
         }
       }
       // 타자: 베이스를 밟으면 안타 (1·2·3루 어디든)
-      if (bu && !bu.dead && !bu.airborne && !bu.hidden && B.st !== 'hrfly') for (let k = 1; k <= 3; k++) if (hyp(bu.x - BASES[k].x, bu.y - BASES[k].y) < D.S.baseR + bu.pad) return BB.endPlay(b, D, 'H', k);
+      //  v2026.11.10-20: 세이프돼도 플레이는 계속 (주자 진루·송구). 타자는 그 베이스에 가만히 서 있음
+      if (bu && !bu.dead && !bu.hidden && B.st !== 'hrfly') {
+        if (D.safeB) { const s = baseSpot(D.safeB); bu.x = s.x; bu.y = s.y; bu.moving = false; bu.action = null; bu.push = null; bu.pull = null; }
+        else if (!bu.airborne) {
+          if (D.relK && hyp(bu.x - BASES[D.relK].x, bu.y - BASES[D.relK].y) > D.S.baseR + bu.pad + 10) D.relK = 0; // 귀루로 비켜 준 베이스: 한 번 벗어나야 다시 세이프 가능
+          for (let k = 1; k <= 3; k++) if (k !== D.relK && hyp(bu.x - BASES[k].x, bu.y - BASES[k].y) < D.S.baseR + bu.pad) { if (BB.batterSafe(b, D, k)) break; }
+        }
+      }
       BB.fieldAI(b, D, dt);
       BB.runAI(b, D, dt);
+      if (D.phase !== 'live') return;
+      // 플레이 종료: 타자가 세이프된 뒤 모든 주자가 베이스에 있고 수비가 공을 쥔 채 0.7초 (안전장치: 세이프 후 10초)
+      if (D.safeB) {
+        const calm = !D.runners.some(r => r.st !== 'on') && B.st === 'held';
+        D.setT = calm ? D.setT + dt : 0;
+        if (D.setT >= 0.7 || D.clock - D.safeT > 10) return BB.endPlay(b, D, 'H', D.safeB);
+      }
     },
     pickChase(o, L) { let best = null, bd = 1e9; for (const t of L) { const d = hyp(o.x - t.x, o.y - t.y) - 1.2 * threat(t); if (d < bd) { bd = d; best = t; } } return best; }, // 가까움 + 실점 위험
+    // 타자 세이프: 빈 베이스면 그 자리에 섬. 처음 세이프(이번 플레이)는 기존처럼 그 베이스의 주자를 다음 베이스로 밀어냄
+    batterSafe(b, D, k) {
+      const o = runnerAt(D, k);
+      if (o) { if (D.safeN > 0) return false; o.st = 'run'; o.to = k + 1; }
+      const bu = D.batU; D.safeB = k; D.safeT = D.clock; D.safeN++; D.setT = 0;
+      for (const r of D.runners) if (r !== o && r.st === 'run' && r.to === k && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; } // 그 베이스로 뛰던 주자는 되돌아감
+      b.text(bu.x, bu.y - 60, '세이프!', '#9fffb8', 11); sys(b, `${bu.def.name} ${k}루 세이프 — 플레이 계속`);
+      return true;
+    },
+    // 베이스 k 비우기 (귀루 요청): 세이프된 타자 → 풀려나 자유 이동, 주자 → 그 이전 베이스로 (연쇄). 비울 수 없으면 false
+    vacate(b, D, k, who) {
+      if (k < 1) return false;
+      if (D.safeB === k) { const bu = D.batU; D.safeB = 0; D.relK = k; D.setT = 0; b.text(bu.x, bu.y - 60, '귀루 요청!', '#ffd08a', 10); sys(b, `${who ? who.def.name + ' 귀루 → ' : ''}${bu.def.name} ${k}루를 비켜 줌`); return true; }
+      const o = D.runners.find(r => r !== who && r.base === k && (r.st === 'on' || r.st === 'back'));
+      if (!o) return true;
+      if (k - 1 < 1 || !BB.vacate(b, D, k - 1, o)) return false;
+      o.base = k - 1; o.to = k; o.st = 'back'; b.stats.bsBack++; b.text(o.x, o.y - 44, '귀루!', '#ffd08a', 9);
+      return true;
+    },
+    backOK(b, D, r) { return BB.vacate(b, D, r.base, r); }, // 되돌아갈 베이스가 차 있으면 비켜 달라고 요청
     nearest(o, L) { let best = null, bd = 1e9; for (const t of L) { const d = hyp(o.x - t.x, o.y - t.y); if (d < bd) { bd = d; best = t; } } return best; },
     // ---------- 예측 송구 (공이 도착할 때의 위치로 판단) ----------
     // 타자(캐릭터) 속도: 위치 변화로 추정 (부드럽게). 시뮬레이션 값이지만 야구장 전용
@@ -506,7 +540,7 @@
         if (r.st === 'on') {
           if (B.st === 'air' && !B.bounced) continue; // 뜬공: 잡히는지 볼 때까지 대기
           const nx = r.base + 1;
-          if (nx <= 3 && (runnerAt(D, nx) || D.runners.some(o => o !== r && o.st === 'run' && o.to === nx))) continue;
+          if (nx <= 3 && (runnerAt(D, nx) || D.safeB === nx || D.runners.some(o => o !== r && o.st === 'run' && o.to === nx))) continue; // 세이프된 타자가 있는 베이스도 찬 것
           const NB = BASES[nx % 4], tr = hyp(r.x - NB.x, r.y - NB.y) / sp, td = BB.defTime(D, nx % 4);
           // 공 상황 읽기: 깊은 타구(홈에서 멂)·다른 곳으로 가는 송구면 한 베이스 더 노림
           const deep = B.st !== 'held' && hyp(B.x - S0.home.x, B.y - S0.home.y) > 230 ? 0.22 : 0;
@@ -516,9 +550,9 @@
         }
         if (r.st === 'run') {
           const P = BASES[r.to % 4], d = hyp(r.x - P.x, r.y - P.y), from = BASES[r.base], prog = 1 - d / S0.bd;
-          if (prog < 0.45 && d / sp > BB.defTime(D, r.to % 4) * 1.15 * r.aggr) { r.st = 'back'; b.stats.bsBack++; continue; } // 위험 → 되돌아감
+          if (prog < 0.45 && d / sp > BB.defTime(D, r.to % 4) * 1.15 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; } // 위험 → 되돌아감 (베이스가 차 있으면 귀루 요청)
           const inc = B.st === 'throw' && B.thr && hyp(B.thr.x1 - P.x, B.thr.y1 - P.y) < 34 && (B.thr.dur - B.thr.t) + 0.1 < d / sp; // 다음 베이스로 공이 먼저 도착
-          if (prog < 0.6 && inc && d / sp > (B.thr.dur - B.thr.t) * 1.25 * r.aggr) { r.st = 'back'; b.stats.bsBack++; continue; }
+          if (prog < 0.6 && inc && d / sp > (B.thr.dur - B.thr.t) * 1.25 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; }
           if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) {
             if (r.to === 4) { BB.score(b, D, r); if (D.phase !== 'live') return; continue; }
             r.base = r.to; r.st = 'on'; const s = baseSpot(r.base); void from; void s;
@@ -571,7 +605,7 @@
       else if (kind !== '3O') { D.outs++; big = { F: '플라이 아웃!', T: '태그 아웃!', K: '삼진 아웃!' }[kind]; sub = kind === 'K' ? `${bu.def.name} 삼진` : `${arg || ''} → ${bu.def.name} 아웃`; col = '#ff9a8a'; sys(b, `${bu.def.name} ${big} (${D.outs}아웃)`); }
       else { big = '쓰리 아웃!'; col = '#ff9a8a'; }
       logPlay(b, D, kind, { arg: typeof arg === 'number' || typeof arg === 'string' ? arg : undefined, playT: +D.playT.toFixed(2) });
-      D.balls = 0; D.strikes = 0; D.pitch = null; D.side = Math.random() < 0.5 ? 1 : -1;
+      D.balls = 0; D.strikes = 0; D.pitch = null; D.side = Math.random() < 0.5 ? 1 : -1; D.safeB = 0; D.relK = 0;
       if (B && B.st !== 'gone') { B.st = 'dead'; B.holder = null; }
       if (b.over) return;
       if (D.score[0] >= D.S.win || D.score[1] >= D.S.win) return BB.finish(b, D, D.score[0] >= D.S.win ? 0 : 1);
@@ -993,7 +1027,7 @@
   // 투구 대기·플레이 종료 연출 중: 캐릭터 정지 (상태이상·쿨타임도 멈춤, 시각 값만 감쇠)
   const _uu = Pp.updateUnit;
   Pp.updateUnit = function (u, dt) {
-    const D = this.bsb; if (!D || !D.on || D.halt || D.phase === 'live' || this.over || this.freeze) return _uu.call(this, u, dt);
+    const D = this.bsb; if (!D || !D.on || D.halt || (D.phase === 'live' && !(D.safeB && u === D.batU)) || this.over || this.freeze) return _uu.call(this, u, dt); // 세이프된 타자: 베이스에서 정지
     u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt); if (u.wSwing && (u.wSwing.t += dt) >= u.wSwing.dur) u.wSwing = null;
     u.boost *= Math.pow(0.08, dt); u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
     if (u.dead) u.deadT += dt; u.moving = false;
