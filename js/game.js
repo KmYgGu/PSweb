@@ -2213,8 +2213,8 @@ const Render = (() => {
     const k = u.def.weapon || WEAPON_KEY[u.def.id], W = k && WEAPONS[k];
     if (!W || NO_HOLD.has(k) || W.style === 'lunge') return null;
     if (u.mc && u.mc.axe && u.mc.axe.state !== 'hand') return null; // 미츄헨: 도끼를 던져서 손에 없음 → 방망이
-    const sc = Math.min(1, 46 / W.w); // 원래 픽셀 크기 (긴 창만 46px 로 줄임)
-    return { k, len: W.w * sc, sc, trail: W.trail || '#ffffff', dx: 7, dy: -22 };
+    const reach = Math.max(20, u.reach || 40), len = W.sc ? W.w * W.sc : clamp(reach * 0.8, 16, 70), sc = len / W.w; // 전투 때와 같은 크기 (drawWeaponSwing 과 같은 계산)
+    return { k, len, sc, trail: W.trail || '#ffffff', dx: 7, dy: -22 };
   }
   // (x, y) = 손 위치, th = 무기가 향하는 각도 (방망이와 같은 기준: +x 가 0, 시계 방향 +), swing: 휘두르는 중
   function drawHeldWeapon(ctx, u, b, H, x, y, th, swing) {
