@@ -133,7 +133,7 @@ img { image-rendering: pixelated; }
 
 /* ===== 선택 화면 레이아웃: 화면 높이에 맞춤 (상단 고정 / 목록 스크롤 / 하단 버튼 고정) ===== */
 #select, #stageSel { height: 100%; overflow: hidden; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
-#select > h1, #select > .slots, #select > .hint, #stageSel > h1, #stageSel > .vsline, #stageSel > .modesel, #stageSel > .modedesc { flex: none; }
+#select > h1, #select > .modesel, #select > .slots, #select > .hint, #stageSel > h1, #stageSel > .vsline, #stageSel > .modesel { flex: none; }
 #select .slot { height: 236px; }
 #select .grid, #stageSel .sgrid { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; align-content: start; padding: 2px 2px 6px; }
 #select .btns, #stageSel .btns { flex: none; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
@@ -235,14 +235,26 @@ img { image-rendering: pixelated; }
 #vidDlg button { height: 32px; border-radius: 5px; font-size: 13px; font-weight: bold; background: #3a4058; color: #eef0f6; }
 #vidDlg #vidDlgDir { background: #ffd75e; color: #3a2e10; }
 
-/* 전투 타입 선택 (A/B) */
-.modesel { display: flex; gap: 6px; align-items: center; justify-content: center; margin: 2px 0 2px; font-size: 13px; color: #cfd6e6; }
-.modesel button { background: #252a38; color: #cfd6e6; border: 1px solid #4a5268; border-radius: 6px; padding: 3px 12px; cursor: pointer; font: inherit; }
-.modesel button.on { background: #ffd66b; color: #1b1e27; border-color: #ffd66b; font-weight: bold; }
-.modedesc { text-align: center; font-size: 11px; color: #9aa3b8; margin-bottom: 6px; }
+/* 전투 타입·경기 집중 모드: 토글 스위치 (설명은 호버/롱프레스 말풍선) */
+.modesel { display: flex; gap: 8px; align-items: center; justify-content: center; margin: 2px 0 8px; font-size: 13px; color: #cfd6e6; -webkit-touch-callout: none; touch-action: manipulation; }
+.modesel .swlab { background: none; color: #9aa3b8; border: 0; padding: 6px 2px; min-height: 28px; font: inherit; cursor: pointer; }
+.modesel .swlab.on { color: #ffd66b; font-weight: bold; }
+.modesel .swtitle { color: #cfd6e6; }
+.modesel.on .swtitle { color: #ffd66b; }
+.modesel .switch { position: relative; flex: none; width: 48px; height: 28px; padding: 0; border-radius: 14px; background: #252a38; border: 1px solid #4a5268; cursor: pointer; -webkit-touch-callout: none; }
+.modesel .switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #ffd66b; box-shadow: 0 1px 2px rgba(0,0,0,.45); transition: left .16s ease; pointer-events: none; }
+.modesel .switch.on { background: #3a3420; border-color: #ffd66b; }
+.modesel .switch.on .knob { left: 22px; }
 #stageSel > .vsline { margin-bottom: 6px; }
-#stageSel > .modesel { width: 100%; margin: 0 0 2px; flex-wrap: wrap; }
-#stageSel > .modedesc { width: 100%; margin: 0 0 8px; line-height: 1.35; padding: 0 8px; box-sizing: border-box; }
+#stageSel > .modesel { width: 100%; margin: 0 0 8px; cursor: pointer; }
+#modeTip { position: absolute; z-index: 15; max-width: 328px; width: max-content; padding: 8px 10px 9px; border-radius: 8px; background: #161822; border: 1px solid #ffd66b; color: #eef0f6; font-size: 12px; line-height: 1.45; word-break: keep-all; overflow-wrap: break-word; box-shadow: 0 4px 14px rgba(0,0,0,.5); visibility: hidden; pointer-events: none; left: 0; top: 0; -webkit-touch-callout: none; }
+#modeTip.show { visibility: visible; pointer-events: auto; }
+#modeTip .tiprow + .tiprow { margin-top: 6px; }
+#modeTip .tiprow .k { color: #cfd6e6; }
+#modeTip .tiprow.cur { color: #fff8e0; }
+#modeTip .tiprow.cur .k { color: #ffd66b; font-weight: bold; }
+#modeTip .tiptail { position: absolute; top: -6px; width: 10px; height: 10px; background: #161822; border-left: 1px solid #ffd66b; border-top: 1px solid #ffd66b; transform: rotate(45deg); pointer-events: none; }
+#modeTip.above .tiptail { top: auto; bottom: -6px; transform: rotate(225deg); }
 
 /* 첫 화면 보조 버튼 (리플레이 열기 · 탈출맵): 2열 큰 버튼 (터치 48px) */
 #select .extrabtns { display: flex; gap: 10px; width: 100%; margin-top: 8px; flex: none; }

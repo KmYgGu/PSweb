@@ -67,17 +67,144 @@
   // ---------- 전투 타입 (A: 기존 / B: 몸박 피해 없음·피격 반전). 캐릭터 선택 화면에서 고르고 리플레이에 기록 ----------
   let battleMode = 'A'; try { if (localStorage.getItem('psBattleMode') === 'B') battleMode = 'B'; } catch (e) {}
   const MODE_DESC = { A: '기존 방식: 몸 부딪힘도 피해를 줍니다.', B: '몸 부딪힘 피해 없음 · 근접 평타 쿨타임 증가(사거리가 길수록 더) · 공격받으면 진행 방향 반전' };
-  function refreshMode() { document.querySelectorAll('#modeSel button').forEach(b => b.classList.toggle('on', b.dataset.m === battleMode)); $('#modeDesc').textContent = MODE_DESC[battleMode]; }
-  document.querySelectorAll('#modeSel button').forEach(b => b.onclick = () => { battleMode = b.dataset.m; try { localStorage.setItem('psBattleMode', battleMode); } catch (e) {} refreshMode(); });
+  // 토글 스위치 설명 말풍선 (호버 지속 500ms / 터치 롱프레스 500ms). 두 컨트롤이 하나를 씀
+  const modeTip = $('#modeTip'), modeTipBody = modeTip.querySelector('.tipbody');
+  const ModeTip = (() => {
+    const HOVER = 500, GRACE = 180, PRESS = 500, TOUCH_HOLD = 2800;
+    let showT = 0, hideT = 0, pressT = 0, autoT = 0, shown = false, blockClick = false, hoverOn = false, press = null, owner = null, getHtml = null;
+    const clr = k => { if (k) clearTimeout(k); };
+    function hide() {
+      clr(showT); clr(hideT); clr(autoT); showT = hideT = autoT = 0;
+      if (!shown) return;
+      shown = false; owner = null; getHtml = null;
+      modeTip.classList.remove('show', 'above'); modeTip.setAttribute('aria-hidden', 'true');
+      document.querySelectorAll('[aria-describedby="modeTip"]').forEach(el => el.removeAttribute('aria-describedby'));
+    }
+    function place() {
+      if (!owner || !getHtml) return;
+      modeTipBody.innerHTML = getHtml();
+      const sr = stage.getBoundingClientRect(), ar = owner.getBoundingClientRect(), sc = sr.width / 360 || 1;
+      const ax = (ar.left - sr.left) / sc, ay = (ar.top - sr.top) / sc, aw = ar.width / sc, ah = ar.height / sc;
+      const tw = modeTip.offsetWidth, th = modeTip.offsetHeight, pad = 8, gap = 8;
+      let top = ay + ah + gap, above = false;
+      if (top + th + pad > 640) { top = ay - gap - th; above = true; }
+      if (top < pad) top = pad;
+      let left = ax + aw / 2 - tw / 2;
+      if (left < pad) left = pad;
+      if (left + tw > 360 - pad) left = 360 - pad - tw;
+      modeTip.style.left = left + 'px'; modeTip.style.top = top + 'px';
+      modeTip.classList.toggle('above', above);
+      const mid = ax + aw / 2 - left;
+      modeTip.querySelector('.tiptail').style.left = (Math.max(12, Math.min(tw - 12, mid)) - 5) + 'px';
+    }
+    function show(root, htmlFn) {
+      if (root.closest('.hidden')) return;
+      shown = true; owner = root; getHtml = htmlFn;
+      clr(hideT); clr(autoT); hideT = autoT = 0;
+      const sw = root.querySelector('.switch');
+      if (sw) sw.setAttribute('aria-describedby', 'modeTip');
+      modeTip.setAttribute('aria-hidden', 'false');
+      place(); modeTip.classList.add('show');
+    }
+    modeTip.addEventListener('pointerenter', () => { clr(hideT); hideT = 0; });
+    modeTip.addEventListener('pointerleave', e => {
+      if (e.pointerType === 'touch') return;
+      hideT = setTimeout(() => { hideT = 0; if (!hoverOn) hide(); }, GRACE);
+    });
+    document.addEventListener('pointerdown', e => {
+      if (!shown) return;
+      if (modeTip.contains(e.target) || (owner && owner.contains(e.target))) return;
+      hide();
+    }, true);
+    function bind(root, htmlFn) {
+      root._refreshModeTip = () => { if (shown && owner === root) place(); };
+      root.addEventListener('pointerenter', e => {
+        if (e.pointerType === 'touch') return;
+        hoverOn = true; clr(hideT); hideT = 0;
+        if (!(shown && owner === root)) { clr(showT); showT = setTimeout(() => { showT = 0; show(root, htmlFn); }, HOVER); }
+      });
+      root.addEventListener('pointerleave', e => {
+        if (e.pointerType === 'touch') return;
+        hoverOn = false; clr(showT); showT = 0;
+        hideT = setTimeout(() => { hideT = 0; if (!hoverOn && !modeTip.matches(':hover')) hide(); }, GRACE);
+      });
+      root.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        blockClick = false;
+        press = { x: e.clientX, y: e.clientY, type: e.pointerType, id: e.pointerId, root };
+        clr(pressT);
+        pressT = setTimeout(() => { pressT = 0; blockClick = true; show(root, htmlFn); }, PRESS);
+      });
+      const endPress = e => {
+        if (!press || press.root !== root || (e.pointerId != null && e.pointerId !== press.id)) return;
+        clr(pressT); pressT = 0;
+        const typ = press.type, held = blockClick;
+        press = null;
+        if (typ === 'touch' && held) { clr(autoT); autoT = setTimeout(() => { autoT = 0; hide(); }, TOUCH_HOLD); }
+      };
+      root.addEventListener('pointerup', endPress);
+      root.addEventListener('pointercancel', e => {
+        if (!press || press.root !== root) return;
+        if (e.pointerId != null && e.pointerId !== press.id) return;
+        clr(pressT); pressT = 0; press = null; blockClick = false;
+      });
+      root.addEventListener('pointermove', e => {
+        if (!press || press.root !== root || e.pointerId !== press.id) return;
+        const dx = e.clientX - press.x, dy = e.clientY - press.y;
+        if (dx * dx + dy * dy > 64) { clr(pressT); pressT = 0; }
+      });
+      root.addEventListener('contextmenu', e => { e.preventDefault(); });
+      root.addEventListener('click', e => {
+        if (blockClick) { e.preventDefault(); e.stopPropagation(); blockClick = false; return; }
+        clr(showT); showT = 0; // 짧은 클릭은 말풍선을 띄우지 않음
+        if (hoverOn && !(shown && owner === root)) showT = setTimeout(() => { showT = 0; show(root, htmlFn); }, HOVER);
+      }, true);
+    }
+    return { bind, hide, refresh: () => place() };
+  })();
+
+  function refreshMode() {
+    const on = battleMode === 'B', sw = $('#modeSw');
+    sw.classList.toggle('on', on);
+    sw.setAttribute('aria-checked', on ? 'true' : 'false');
+    sw.setAttribute('aria-label', '전투 타입 ' + battleMode + '타입');
+    document.querySelectorAll('#modeSel .swlab').forEach(b => b.classList.toggle('on', b.dataset.m === battleMode));
+    if ($('#modeSel')._refreshModeTip) $('#modeSel')._refreshModeTip();
+  }
+  $('#modeSel').addEventListener('click', e => {
+    const lab = e.target.closest('.swlab');
+    if (lab) battleMode = lab.dataset.m;
+    else if (e.target.closest('.switch')) battleMode = battleMode === 'B' ? 'A' : 'B';
+    else return;
+    try { localStorage.setItem('psBattleMode', battleMode); } catch (err) {}
+    refreshMode();
+  });
+  ModeTip.bind($('#modeSel'), () => ['A', 'B'].map(m => `<div class="tiprow${battleMode === m ? ' cur' : ''}"><span class="k">${m}타입:</span> ${MODE_DESC[m]}</div>`).join(''));
   refreshMode();
+
   // ---------- 경기 집중 모드 (스테이지 선택 화면). 맵 이동 기술의 효과는 들어가고 스테이지·기믹·스코어는 처음 고른 그대로. 기본 끄기, file:// 에서도 기억 ----------
   let focusMode = false; try { if (localStorage.getItem('psFocusMode') === '1') focusMode = true; } catch (e) {}
-  function refreshFocus() { document.querySelectorAll('#focusSel button').forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === focusMode)); }
-  document.querySelectorAll('#focusSel button').forEach(b => b.onclick = () => { focusMode = b.dataset.f === '1'; try { localStorage.setItem('psFocusMode', focusMode ? '1' : '0'); } catch (e) {} refreshFocus(); });
+  const FOCUS_TIP = { on: '맵 이동 기술의 효과는 들어가지만, 스테이지·기믹·스코어는 처음 고른 그대로 유지됩니다.', off: '맵 이동 기술이 다른 스테이지로 옮깁니다.' };
+  function refreshFocus() {
+    const sw = $('#focusSw');
+    sw.classList.toggle('on', focusMode);
+    sw.setAttribute('aria-checked', focusMode ? 'true' : 'false');
+    $('#focusSel').classList.toggle('on', focusMode);
+    if ($('#focusSel')._refreshModeTip) $('#focusSel')._refreshModeTip();
+  }
+  $('#focusSel').addEventListener('click', () => {
+    focusMode = !focusMode;
+    try { localStorage.setItem('psFocusMode', focusMode ? '1' : '0'); } catch (err) {}
+    refreshFocus();
+  });
+  ModeTip.bind($('#focusSel'), () =>
+    `<div class="tiprow${focusMode ? ' cur' : ''}"><span class="k">켜면:</span> ${FOCUS_TIP.on}</div>` +
+    `<div class="tiprow${!focusMode ? ' cur' : ''}"><span class="k">끄면:</span> ${FOCUS_TIP.off}</div>`);
   refreshFocus();
   // ---------- 스테이지 선택 ----------
   let stageId = 'arena';
   function openStages() {
+    ModeTip.hide();
     $('#select').classList.add('hidden'); $('#stageSel').classList.remove('hidden');
     $('#vsline').innerHTML = `<span style="color:#9cc4ff">${pick[0].name}</span> VS <span style="color:#ffb0b0">${pick[1].name}</span> <span style="color:#ffe08a">· ${battleMode}타입</span>`;
   }
