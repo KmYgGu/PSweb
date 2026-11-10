@@ -2205,8 +2205,8 @@ const Render = (() => {
   }
   // ── 손에 든 근접 무기 (그리기 전용, 시뮬 상태·난수 안 건드림): 야구장 타석에서 방망이 대신 휘두름
   //  근접 무기 스프라이트(WEAPONS)나 절차적 로켓 해머가 있으면 그 무기, 없으면 null → 호출 쪽이 방망이를 그림
-  //  몸의 일부인 '무기'(오리 머리·이블린 다리·브로리/파라가스 기 주먹)는 제외
-  const NO_HOLD = new Set(['duckHead', 'heelLeg', 'kiFistG', 'kiFistP']);
+  //  오리 박치기(머리)는 제외 → 방망이. 이블린 하이힐 다리·브로리/파라가스 기 주먹은 그대로 휘두름 (재미)
+  const NO_HOLD = new Set(['duckHead']);
   function heldWeapon(u) {
     if (!u || !u.def) return null;
     if (u.def.hammer) { const hk = u.def.hammerScale || u.def.size || 1; return { k: 'hammer', hk, len: 40 * hk, trail: '#ffc57b', dx: 7 * hk, dy: -22 * hk }; }
