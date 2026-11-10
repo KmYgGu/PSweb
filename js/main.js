@@ -1,6 +1,30 @@
 /* UI / 화면 흐름 / 메인 루프 */
 (() => {
   const $ = s => document.querySelector(s);
+
+  // ---------- 버전 표시 + 새 버전 확인 (js/version.js · tools/bump_version.cjs) ----------
+  // 메인 화면 제목 옆 작은 글자. 웹(http/https)에서는 version.json 을 캐시 없이 한 번 읽어, 지금 실행 중인 것보다 새 버전이 올라가 있으면
+  // (= index.html 이 브라우저 캐시의 예전 것) 주소에 ?_v=새버전 을 붙여 한 번만 새로고침 → 새 index.html · 새 ?v= 스크립트를 받음.
+  // 반복 방지: 같은 버전으로는 탭마다 한 번만 시도 (sessionStorage). 화면을 이미 누른 뒤나 메인 화면이 아니면 새로고침하지 않음. file:// · 오프라인은 아무것도 안 함
+  const APPV = window.APP_VERSION || '';
+  { const el = $('#appVer'); if (el && APPV) el.textContent = 'v' + APPV; }
+  (() => {
+    if (!APPV || !/^https?:$/.test(location.protocol) || !window.fetch) return;
+    try { const q = new URLSearchParams(location.search); if (q.has('_v')) { q.delete('_v'); const qs = q.toString(); history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash); } } catch (e) { /* 주소 정리 실패는 무시 */ }
+    let touched = false; const mark = () => { touched = true; };
+    for (const k of ['pointerdown', 'keydown', 'touchstart']) addEventListener(k, mark, { once: true, capture: true, passive: true });
+    const num = v => String(v).split(/[.-]/).map(x => parseInt(x, 10) || 0);
+    const newer = (a, b) => { const A = num(a), B = num(b); for (let i = 0; i < Math.max(A.length, B.length); i++) { const d = (A[i] || 0) - (B[i] || 0); if (d) return d > 0; } return false; };
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => {
+      const nv = j && typeof j.version === 'string' ? j.version : null;
+      if (!nv || !newer(nv, APPV)) return;
+      const sel = $('#select'); if (touched || !sel || sel.classList.contains('hidden')) return;
+      const K = 'psweb.verReload';
+      try { if (sessionStorage.getItem(K) === nv) return; sessionStorage.setItem(K, nv); } catch (e) { return; } // 저장 불가 환경은 반복 위험 → 새로고침 안 함
+      const q = new URLSearchParams(location.search); q.set('_v', nv);
+      location.replace(location.pathname + '?' + q.toString() + location.hash);
+    }).catch(() => { /* 오프라인 등: 지금 버전 그대로 */ });
+  })();
   const stage = $('#stage'), cv = $('#cv'), ctx = cv.getContext('2d'), cvTop = $('#cvTop'), ctxTop = cvTop.getContext('2d'), hudEl = $('#hud');
   const RES = 2; // 내부 해상도 배율 (글자 선명도)
 
@@ -520,7 +544,8 @@
   // 별도 녹화용 캔버스(720x1280)에 전장 + 상단 UI(DOM) + 상단 UI 위 캐릭터 + 하단 로그 + 배너를 합성해서 MediaRecorder 로 실시간 녹화.
   const VID = {
     active: null, folder: null, ready: null,
-    rel(url) { try { const base = new URL('.', location.href).href; let u = new URL(url, location.href).href; if (!u.startsWith(base)) return null; return decodeURIComponent(u.slice(base.length)); } catch (e) { return null; } },
+    // rel: 주소 뒤 ?v=버전 (캐시 무효화) 은 떼고 assets/... 경로로
+    rel(url) { try { const base = new URL('.', location.href).href; let u = new URL(url, location.href).href.replace(/[?#].*$/, ''); if (!u.startsWith(base)) return null; return decodeURIComponent(u.slice(base.length)); } catch (e) { return null; } },
     map(url) { if (!url) return null; if (url.startsWith('data:') || url.startsWith('blob:')) return url; const r = VID.rel(url); if (!r) return null; return (VID.folder && VID.folder[r]) || (window.ASSET_DATA && ASSET_DATA[r]) || null; },
     loadData() { if (window.ASSET_DATA || this.ready) return this.ready || Promise.resolve(); return (this.ready = new Promise(res => { const s = document.createElement('script'); s.src = 'js/assets_data.js?' + Date.now(); s.onload = s.onerror = () => res(); document.head.appendChild(s); })); },
     useFiles(files) { // <input webkitdirectory> 로 고른 폴더 (assets 또는 PSweb) → assets/... 경로 → blob: 주소

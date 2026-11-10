@@ -43,6 +43,9 @@ img { image-rendering: pixelated; }
 /* 선택 화면 */
 #select { position: absolute; inset: 0; padding: 12px 10px; background: rgba(22,24,36,.94); display: flex; flex-direction: column; align-items: center; }
 #select h1 { font-size: 18px; color: #ffe27a; text-shadow: 0 2px 0 #6a4b1a; margin-bottom: 5px; letter-spacing: 1px; }
+#select h1 { position: relative; } /* 버전 글자는 제목 오른쪽에 붙여서 제목 가운데 정렬은 그대로 */
+#select h1 .appver { position: absolute; left: 100%; bottom: 3px; margin-left: 5px; white-space: nowrap; font-size: 9px; color: #9aa3c0; text-shadow: none; letter-spacing: 0; font-weight: normal; opacity: .85; pointer-events: none; }
+#select h1 .appver:empty { display: none; }
 .slots { display: flex; gap: 8px; width: 100%; }
 .slot { flex: 1; height: 318px; overflow-y: auto; border-radius: 8px; background: #262a3c; border: 2px solid #34394f; padding: 7px; cursor: pointer; transition: border-color .2s, box-shadow .2s; }
 .slot.p0.active { border-color: #6aa8ff; box-shadow: 0 0 0 2px rgba(106,168,255,.25); }

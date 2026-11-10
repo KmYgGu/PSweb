@@ -2,10 +2,19 @@
 
 HTML/CSS/바닐라 JS + Canvas. 빌드 과정 없음. `python3 -m http.server 8080` 실행 후 http://localhost:8080 접속 (index.html 파일을 바로 열어도 동작함).
 
+## 버전 · 캐시 무효화 (커밋할 때마다)
+푸시 전에 **`node tools/bump_version.cjs`** 를 실행하고 바뀐 파일(`js/version.js`, `version.json`, `index.html`)을 같이 커밋합니다.
+- 버전 형식: 한국 날짜 + 그날 몇 번째 = `2026.11.10-1` (같은 날 다시 실행하면 `-2`, `-3` …). 직접 지정: `node tools/bump_version.cjs --set 2026.11.10-5`. 검사만: `node tools/bump_version.cjs --check` (세 파일 버전이 다르면 종료 코드 1).
+- 기준은 `js/version.js` 의 `APP_VERSION` 하나. 메인 화면 제목 옆에 `v버전` 으로 작게 표시(전투 화면에는 없음).
+- `index.html` 의 모든 로컬 js/css 주소 뒤에 `?v=버전` 이 붙어서, 새 버전 index.html 을 받으면 스크립트도 전부 새로 받습니다. 캐릭터 그림·초상화(`Sprites`, 듀얼 몬스터)와 효과음(`assets/sfx`)도 `assetV()` 로 같은 `?v=버전` 이 붙습니다 (file:// 에서도 그대로 동작, Node `tools/headless.js` 는 `?v=` 를 떼고 파일을 읽음).
+- index.html 자체는 GitHub Pages 가 최대 10분 캐시하고 헤더는 바꿀 수 없습니다. 그래서 웹에서는 시작할 때 `version.json` 을 캐시 없이 한 번 읽어, 실행 중인 버전보다 새 버전이면 주소에 `?_v=새버전` 을 붙여 **한 번만** 새로고침합니다 (주소의 `?_v=` 는 바로 지워짐). 같은 버전으로는 탭마다 한 번만 시도(sessionStorage), 화면을 이미 눌렀거나 메인 화면이 아니면 하지 않음, file:// · 오프라인 · version.json 오류면 아무것도 안 함.
+- 리플레이의 "다른 버전에서 저장됨" 판정(`main.js` 의 `BUILD` = 캐릭터·스테이지 목록 해시)과 탈출맵 서버 버전(`server/index.js`, `package.json` 2.0.0)은 이 버전과 별개입니다.
+
 ## 파일 구성
 | 파일 | 역할 |
 |---|---|
 | `index.html` | 화면 구조 (선택 화면, HUD, 로그, 결과 창) |
+| `js/version.js` · `version.json` | 게임 버전 (`tools/bump_version.cjs` 로만 바꿈) · 메인 화면 표시 · 캐시 무효화 |
 | `css/style.css` | UI 스타일 (360x640 논리 해상도, 화면 크기에 맞게 확대) |
 | `js/characters.js` | **스탯 정의 + 캐릭터 데이터** |
 | `js/elements.js` | **속성(ELEMENT_DEFS) / 전달 방식(DELIVERY_DEFS) / 약점·저항 표시 기준** |

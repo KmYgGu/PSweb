@@ -356,7 +356,7 @@ const DuelSprites = (() => {
     if (cache[id] !== undefined) return cache[id];
     const S = DUEL_SPRITES[id]; if (!S) return (cache[id] = null);
     if (S.src) { // PNG 스프라이트 (구울즈 등): 로드 전엔 null (캐시하지 않음), 표시 높이 S.h 에 맞춰 배율 자동
-      if (!S._img) { S._img = new Image(); S._img.onerror = () => console.warn('[duel] 몬스터 스프라이트 로드 실패', S.src); S._img.src = S.src; }
+      if (!S._img) { S._img = new Image(); S._img.onerror = () => console.warn('[duel] 몬스터 스프라이트 로드 실패', S.src); S._img.src = typeof assetV === 'function' ? assetV(S.src) : S.src; }
       const im = S._img; if (!im.complete || !im.naturalWidth) return null;
       return (cache[id] = { c: im, w: im.naturalWidth, h: im.naturalHeight, s: S.scale || (S.h || 40) / im.naturalHeight }); /* S.scale: 고정 배율 (구울즈 몬스터 = 플레이어와 같은 0.5) */
     }

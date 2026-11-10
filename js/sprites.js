@@ -66,14 +66,14 @@ const Sprites = (() => {
   function cfgOf(def) { const s = def.sprite; return typeof s === 'string' ? { src: s } : (s || {}); }
   const loaded = {}, portraits = {};
   function loadImg(src) {
-    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = src; });
+    return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error(src)); i.src = typeof assetV === 'function' ? assetV(src) : src; }); // ?v=버전: 푸시 후 예전 그림 캐시 방지
   }
   function preload(defs) {
     return Promise.all(defs.map(def => {
       const cfg = cfgOf(def), jobs = [];
       if (cfg.src) jobs.push(loadImg(cfg.src).then(img => { loaded[def.id] = img; }).catch(() => console.warn('스프라이트 로드 실패, 절차적 스프라이트 사용:', cfg.src)));
       if (cfg.back) jobs.push(loadImg(cfg.back).then(img => { loaded[def.id + '@back'] = img; }).catch(() => console.warn('뒷모습 로드 실패:', cfg.back)));
-      if (def.portrait) jobs.push(loadImg(def.portrait).then(() => { portraits[def.id] = def.portrait; }).catch(() => console.warn('초상화 로드 실패:', def.portrait)));
+      if (def.portrait) jobs.push(loadImg(def.portrait).then(() => { portraits[def.id] = typeof assetV === 'function' ? assetV(def.portrait) : def.portrait; }).catch(() => console.warn('초상화 로드 실패:', def.portrait)));
       return Promise.all(jobs).then(() => { delete cache[def.id]; });
     }));
   }

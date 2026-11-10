@@ -9,6 +9,7 @@ const Sfx = (() => {
     ko: 500, ui: 35, start: 400, dash: 120, jump: 150, land: 150, splash: 200, boom: 120 };
   const MAX = 8;
   const BASE = 'assets/sfx/';
+  const verU = u => typeof assetV === 'function' ? assetV(u) : u; // ?v=버전 (캐시 무효화)
   // 이벤트 → 샘플 후보 (랜덤 선택), 게인
   // 이벤트 → 샘플 후보 [이름들, 게인, 재생속도]. 전부 실제 녹음(어쿠스틱) 소스.
   const SAMPLES = {
@@ -116,7 +117,7 @@ const Sfx = (() => {
       const emb = window.SFX_DATA && window.SFX_DATA[n];
       if (emb) { const bin = atob(emb), a = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
         ctx.decodeAudioData(a.buffer, b => bufs.set(n, b), () => {}); return; }
-      fetch(BASE + n + '.ogg').then(r => r.ok ? r : fetch(BASE + n + '.wav')).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
+      fetch(verU(BASE + n + '.ogg')).then(r => r.ok ? r : fetch(verU(BASE + n + '.wav'))).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); })
       .then(a => new Promise((ok, no) => ctx.decodeAudioData(a, ok, no))).then(b => bufs.set(n, b)).catch(() => {}); });
   }
   // 출력 버스: 드라이 + 리버브 센드

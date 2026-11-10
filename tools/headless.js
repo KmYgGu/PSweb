@@ -4,7 +4,7 @@ const fs = require('fs'), path = require('path'), vm = require('vm');
 const SKIP = /(^|\/)(main|escape_ui|escape_net|escape_config|sfxchar)\.js$/; // sfxchar: 캐릭터 효과음 데이터 (소리 전용, 시뮬 무관)
 function loadGame(root = path.join(__dirname, '..')) {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-  const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(s => !SKIP.test(s));
+  const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1].replace(/[?#].*$/, '')).filter(s => !SKIP.test(s)); // 주소 뒤 ?v=버전 (캐시 무효화) 은 떼고 파일 경로로
   const noop = new Proxy(function () {}, { get: (t, k) => k === Symbol.toPrimitive ? () => 0 : k === 'canvas' ? fakeCanvas() : k === 'measureText' ? () => ({ width: 0 }) : k === 'getImageData' || k === 'createImageData' ? (x, y, w, h) => ({ data: new Uint8ClampedArray(Math.max(4, (w | 0) * (h | 0) * 4)), width: w, height: h }) : noop, apply: () => noop, set: () => true });
   function fakeCanvas() { return { width: 0, height: 0, style: {}, getContext: () => noop, toDataURL: () => '', addEventListener() {} }; }
   const el = () => Object.assign(fakeCanvas(), { classList: { add() {}, remove() {}, toggle() {}, contains: () => false }, appendChild() {}, setAttribute() {}, querySelector: () => null, querySelectorAll: () => [] });
