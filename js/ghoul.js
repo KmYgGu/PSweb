@@ -217,7 +217,7 @@
     return true;
   }
   const SPORT = ['soccer', 'race'];
-  const stagePool = b => Object.keys(STAGE_DEFS).filter(k => k !== b.stageId && !STAGE_DEFS[k].test && !STAGE_DEFS[k].hidden);
+  const stagePool = b => Object.keys(STAGE_DEFS).filter(k => k !== b.stageId && !STAGE_DEFS[k].test && !STAGE_DEFS[k].hidden && !STAGE_DEFS[k].noSwitchIn); // noSwitchIn: 전투 중 교체로는 들어가지 않는 스테이지 (야구장)
 
   // ---------- 카드 ----------
   const mon = (n, name, level, atk, element, text, effect, ai, x = {}) => ({ id: SPR(n), name, type: 'monster', level, atk, def: 0, element, sprite: SPR(n), gender: 'female', text, effect, ai, ...x });

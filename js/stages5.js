@@ -14,7 +14,7 @@
   // ---------- 공격 이펙트 → 스테이지 훅 (시전자 추적) ----------
   const FX_HOOKS = [];
   const P = Battle.prototype;
-  const active = b => b.soc || b.ff;
+  const active = b => b.soc || b.ff || (b.bsb && b.bsb.on); // bsb: 야구장 (js/baseball.js, 수비수·주자 밀기)
   const emit = (b, g) => { if (b._fxMute) return; g.actor = b._actor || null; for (const h of FX_HOOKS) h.onFx(b, g); };
   const _uu = P.updateUnit;
   P.updateUnit = function (u, dt) { if (!active(this)) return _uu.call(this, u, dt); const pv = this._actor; this._actor = u; try { return _uu.call(this, u, dt); } finally { this._actor = pv; } };
@@ -497,5 +497,5 @@
 
   STAGE_HOOKS.push(SOCCER, FF);
   FX_HOOKS.push(SOCCER, FF);
-  window.StageExt4 = { SOCCER, FF, FOOD, icon };
+  window.StageExt4 = { SOCCER, FF, FOOD, icon, FX_HOOKS };
 })();

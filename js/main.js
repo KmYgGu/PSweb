@@ -345,7 +345,9 @@
     }
     if (wideWant() !== wideOn) fit();
     const hudH = wideOn ? WB.hudH : hudEl.offsetHeight, botTop = wideOn ? WB.botTop : $('#bottom').offsetTop; // 넓은 화면: 카메라 영역은 폰 배치와 같게
-    if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) });
+    const camView = { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) };
+    if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, camView);
+    else if (battle && window.BASEBALL) BASEBALL.updateCam(battle, dt, camView); // 야구장 카메라 (js/baseball.js, 시각 전용)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !wideOn && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0); // 넓은 화면: HUD가 맵 위에 없음
