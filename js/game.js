@@ -111,6 +111,7 @@ class Battle {
     this.multi = this.u.length > 2;
     this.stageId = STAGE_DEFS[stageId] ? stageId : 'arena';
     this.modeB = hooks.mode === 'B'; // 전투 타입 (기본 A = 기존 방식)
+    this.focusMode = !!hooks.focusMode; // 경기 집중 모드 (기본 끄기 — 예전 호출부와 비트 동일)
     this.stage = STAGE_DEFS[this.stageId];
     this.buildings = (this.stage.buildings || []).map((b, i) => makeBuilding(b, i));
     this.rules = { bumpDmg: 8, bumpSpeedK: 0.03, projK: 0.6, meleeK: 0.5, strongMin: 60, ...(this.stage.buildingRules || {}) };

@@ -70,6 +70,11 @@
   function refreshMode() { document.querySelectorAll('#modeSel button').forEach(b => b.classList.toggle('on', b.dataset.m === battleMode)); $('#modeDesc').textContent = MODE_DESC[battleMode]; }
   document.querySelectorAll('#modeSel button').forEach(b => b.onclick = () => { battleMode = b.dataset.m; try { localStorage.setItem('psBattleMode', battleMode); } catch (e) {} refreshMode(); });
   refreshMode();
+  // ---------- 경기 집중 모드 (스테이지 선택 화면). 맵 이동 기술의 효과는 들어가고 스테이지·기믹·스코어는 처음 고른 그대로. 기본 끄기, file:// 에서도 기억 ----------
+  let focusMode = false; try { if (localStorage.getItem('psFocusMode') === '1') focusMode = true; } catch (e) {}
+  function refreshFocus() { document.querySelectorAll('#focusSel button').forEach(b => b.classList.toggle('on', (b.dataset.f === '1') === focusMode)); }
+  document.querySelectorAll('#focusSel button').forEach(b => b.onclick = () => { focusMode = b.dataset.f === '1'; try { localStorage.setItem('psFocusMode', focusMode ? '1' : '0'); } catch (e) {} refreshFocus(); });
+  refreshFocus();
   // ---------- 스테이지 선택 ----------
   let stageId = 'arena';
   function openStages() {
@@ -233,10 +238,10 @@
     const seed = opt.seed != null ? opt.seed : em ? em.seed : (Math.random() * 4294967296) >>> 0; rng = mkRng(seed);
     const hooks = opt.replay ? { onSkill: addLog, onVoice: addVoice, onEnd: () => {}, onSystem: addSys, onStatus: addStatus }
       : { onSkill: (u, sk, l) => { REC.skill(u, sk); addLog(u, sk, l); }, onVoice: addVoice, onEnd: w => { REC.finish(); showResult(w); }, onSystem: t => { REC.sys(t); addSys(t); }, onStatus: addStatus };
-    hooks.mode = battleMode;
+    hooks.mode = battleMode; hooks.focusMode = focusMode;
     seeded(() => { battle = new Battle(pick[0], pick[1], hooks, stageId); if (em) ESCAPE.apply(battle, em); });
     if (!opt.replay) { REC.begin(battle, seed); if (em) REC.cur.escape = em; }
-    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name) + (battleMode === 'B' ? ' · B타입' : ''); if (em) $('#stageName').textContent = '🚪 ' + em.name; // short: 하단 바용 짧은 이름
+    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name) + (battleMode === 'B' ? ' · B타입' : '') + (focusMode ? ' · 경기 집중' : ''); if (em) $('#stageName').textContent = '🚪 ' + em.name; // short: 하단 바용 짧은 이름. 탈출맵은 🚪 이름만 (교체 거부라 경기 집중 표기 불필요)
     seeded(buildHud);
     window.__battle = battle;
   }
@@ -369,7 +374,7 @@
   const HL_NAME = { dmg: '대량 피해', kill: '처치', end: '결정타', stage: '스테이지 변경', castle: '백은성 붕괴', exodia: '엑조디아', fusion: '융합', transform: '변신·각성', ult: '필살기', card: '상급 카드', comeback: '역전', timestop: '시간 정지', big: '큰 기술' };
   const REC = {
     cur: null, last: null,
-    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, mode: battleMode, dur: 0, samples: [], ev: [], check: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
+    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, mode: battleMode, focusMode, dur: 0, samples: [], ev: [], check: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
     ev(type, team, w) { if (this.cur && !this.cur.done) this.cur.ev.push([Math.round(this.b.time * 100) / 100, type, team, w]); },
     step(b) {
       const R = this.cur; if (!R || R.done || b !== this.b) return;
@@ -423,8 +428,8 @@
     open(rec, o = {}) {
       const a = CHARACTERS.find(c => c.id === rec.a), b = CHARACTERS.find(c => c.id === rec.b);
       if (!a || !b || !STAGE_DEFS[rec.stage]) { toast('이 리플레이의 캐릭터/스테이지를 찾을 수 없어요'); return false; }
-      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; } // 리플레이도 소리 재생 (예전: 여기서 Sfx.toggle(false)로 꺼서 무음이었음)
-      this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; // 모드 없는 옛 리플레이 = A
+      if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, focusMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; } // 리플레이도 소리 재생 (예전: 여기서 Sfx.toggle(false)로 꺼서 무음이었음)
+      this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; focusMode = !!rec.focusMode; // 모드 없는 옛 리플레이 = A, focusMode 없는 옛 리플레이 = 끄기
       this.range = rec.range ? rec.range.slice() : [0, rec.dur]; this.A = this.B = null; this.stopAt = null; this.warned = false; $('#rpWarn').textContent = rec.build !== BUILD ? '다른 버전에서 저장됨' : '';
       $('#select').classList.add('hidden'); $('#speed').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop'].forEach(s => $(s).classList.remove('hidden')); $('#rpSave').classList.add('hidden');
@@ -437,7 +442,7 @@
       this.pause(); this.on = false; this.banner = 0; $('#rpBanner').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop', '#rpSave'].forEach(s => $(s).classList.add('hidden')); $('#speed').classList.remove('hidden');
       const L = this.live; rng = null; // 소리 설정은 리플레이가 바꾸지 않으므로 복원 불필요 (리플레이 중 소리 버튼으로 바꾼 값 유지)
-      pick[0] = L.pick[0]; pick[1] = L.pick[1]; stageId = L.stageId; battleMode = L.mode || 'A'; fullLog = L.fullLog;
+      pick[0] = L.pick[0]; pick[1] = L.pick[1]; stageId = L.stageId; battleMode = L.mode || 'A'; focusMode = !!L.focusMode; fullLog = L.fullLog;
       if (L.battle && !L.select) { battle = L.battle; window.__battle = battle; $('#hud').classList.remove('hidden'); $('#bottom').classList.remove('hidden'); buildHud(); updateHud(9); updateHud(9); $('#log').innerHTML = L.log; $('#stageName').textContent = L.stg; if (L.result) $('#result').classList.remove('hidden'); }
       else { battle = null; $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); $('#result').classList.add('hidden'); $('#select').classList.remove('hidden'); refresh(); }
       this.live = null;
@@ -500,7 +505,7 @@
       if (kind === 'hl') { const h = R.hl[this.potgI || 0] || R.hl[0]; range = [Math.max(this.range[0], h.s), Math.min(this.range[1], h.e)]; }
       else if (kind === 'seg') range = [Math.min(this.A, this.B), Math.max(this.A, this.B)];
       else range = this.range.slice();
-      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, mode: R.mode || 'A', names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
+      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, mode: R.mode || 'A', focusMode: !!R.focusMode, names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
         hl: (R.hl || []).filter(h => h.e > range[0] && h.s < range[1]).map(h => ({ ...h, s: Math.max(h.s, range[0]), e: Math.min(h.e, range[1]) })), check: (R.check || []).filter(c => c[0] <= range[1] + 0.05), created: R.created, saved: new Date().toISOString() };
       return o;
     },

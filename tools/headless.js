@@ -16,7 +16,7 @@ function loadGame(root = path.join(__dirname, '..')) {
   vm.createContext(ctx);
   // 스크립트 간 최상위 const/class 공유를 위해 하나로 이어 붙여 실행
   const src = scripts.map(s => fs.readFileSync(path.join(root, s), 'utf8')).join('\n;\n');
-  vm.runInContext(src + '\n;globalThis.ESCAPE = window.ESCAPE; globalThis.CHARACTERS = CHARACTERS; globalThis.Battle = Battle;', ctx, { filename: 'bundle.js' });
+  vm.runInContext(src + '\n;globalThis.ESCAPE = window.ESCAPE; globalThis.CHARACTERS = CHARACTERS; globalThis.Battle = Battle; globalThis.STAGE_DEFS = STAGE_DEFS; globalThis.STAGE_HOOKS = STAGE_HOOKS; globalThis.SKILLS = SKILLS; globalThis.AR = AR;', ctx, { filename: 'bundle.js' });
   return ctx;
 }
 module.exports = { loadGame };

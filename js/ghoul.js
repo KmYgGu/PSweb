@@ -176,12 +176,13 @@
   }
 
   // ---------- 스테이지 교체 ----------
-  // CORE: 스테이지와 무관한 전투 상태 — 임시 전투(T)의 값으로 덮어쓰지 않고 그대로 둠. modeB: 전투 타입(A/B)은 스테이지가 바뀌어도 유지
-  const CORE = new Set(['modeB', 'u', 'proj', 'parts', 'texts', 'tele', 'timers', 'fx', 'time', 'slowT', 'zoom', 'lastBump', 'over', 'winner', 'ended', 'endT', 'shakeT', 'shakeA', 'hooks', 'visualFx', 'visualTime', 'impactReady', 'finisher', 'stats', 'endType', 'resultText', 'multi', 'freeze', 'exodia', 'duelFx', 'duelHaz', 'duelSpirits', 'duelPops', 'kfx', 'kproj', 'kStorm', 'gAct', 'gLost', 'gSumN', 'gFrozenP', 'gCrack', 'gZone', 'gShield', 'gStage', '_shk', '_topPass', 'fallen', 'gSlime']);
+  // CORE: 스테이지와 무관한 전투 상태 — 임시 전투(T)의 값으로 덮어쓰지 않고 그대로 둠. modeB: 전투 타입(A/B)은 스테이지가 바뀌어도 유지. focusMode: 경기 집중 모드도 유지(집중 전투는 교체하지 않지만 값이 지워지지 않게)
+  const CORE = new Set(['modeB', 'focusMode', 'u', 'proj', 'parts', 'texts', 'tele', 'timers', 'fx', 'time', 'slowT', 'zoom', 'lastBump', 'over', 'winner', 'ended', 'endT', 'shakeT', 'shakeA', 'hooks', 'visualFx', 'visualTime', 'impactReady', 'finisher', 'stats', 'endType', 'resultText', 'multi', 'freeze', 'exodia', 'duelFx', 'duelHaz', 'duelSpirits', 'duelPops', 'kfx', 'kproj', 'kStorm', 'gAct', 'gLost', 'gSumN', 'gFrozenP', 'gCrack', 'gZone', 'gShield', 'gStage', '_shk', '_topPass', 'fallen', 'gSlime']);
   const UNIT_SKIP = new Set(['duel', 'duelHud', 'nBuffs', 'lastHp', 'summon', 'tgtU']);
   function teamDefs(b) { return [0, 1].map(t => { const m = b.u.filter(o => o.team === t && !o.summon); return (m.find(o => o.def.partner) || m[m.length - 1]).def; }); }
   function switchStage(b, id) {
     if (!STAGE_DEFS[id] || b.over || b.escape) return false; // 탈출맵: 맵(벽·이동 영역·출구)이 스테이지를 대신하므로 교체하지 않음
+    if (b.focusMode) { sys(b, '경기 집중: 스테이지 유지'); return true; } // 효과(피해·소환·문 연출)는 호출 쪽이 그대로 진행. 스테이지·기믹·스코어는 손대지 않음. false 면 아오오니 문 연출이 취소됨
     for (const h of STAGE_HOOKS) h.leave && h.leave(b); // 이전 스테이지 기믹이 건 상태이상·유닛 상태 정리 (js/stages8.js 교실/바베큐)
     const [dA, dB] = teamDefs(b), T = new Battle(dA, dB, {}, id), T0 = new Battle(dA, dB, {}, b.stageId);
     const fresh = new Set(Object.keys(new Unit(dA, 0)));
@@ -212,7 +213,7 @@
     }
     b.proj = b.proj.filter(p => !b.blockAt(p.x, p.y + 14));
     for (const o of b.u) if (o.gCastle) { o.gCastle.cx = undefined; } b.gTS = null; // 스테이지 교체: 성 위치 재설정, 시간정지 연출 해제
-    const el = document.getElementById('stageName'); if (el && typeof document !== 'undefined' && window.__battle === b) el.textContent = '🗺 ' + (STAGE_DEFS[id].short || STAGE_DEFS[id].name) + (b.modeB ? ' · B타입' : ''); // 하단 바: 처음 화면(main.js startBattle)과 같은 형식
+    const el = document.getElementById('stageName'); if (el && typeof document !== 'undefined' && window.__battle === b) el.textContent = '🗺 ' + (STAGE_DEFS[id].short || STAGE_DEFS[id].name) + (b.modeB ? ' · B타입' : '') + (b.focusMode ? ' · 경기 집중' : ''); // 하단 바: 처음 화면(main.js startBattle)과 같은 형식
     sys(b, `스테이지 변경: ${STAGE_DEFS[id].name}`);
     return true;
   }

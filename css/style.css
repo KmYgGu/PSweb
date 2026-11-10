@@ -133,7 +133,7 @@ img { image-rendering: pixelated; }
 
 /* ===== 선택 화면 레이아웃: 화면 높이에 맞춤 (상단 고정 / 목록 스크롤 / 하단 버튼 고정) ===== */
 #select, #stageSel { height: 100%; overflow: hidden; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
-#select > h1, #select > .slots, #select > .hint, #stageSel > h1, #stageSel > .vsline { flex: none; }
+#select > h1, #select > .slots, #select > .hint, #stageSel > h1, #stageSel > .vsline, #stageSel > .modesel, #stageSel > .modedesc { flex: none; }
 #select .slot { height: 236px; }
 #select .grid, #stageSel .sgrid { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; align-content: start; padding: 2px 2px 6px; }
 #select .btns, #stageSel .btns { flex: none; margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,.06); }
@@ -240,6 +240,9 @@ img { image-rendering: pixelated; }
 .modesel button { background: #252a38; color: #cfd6e6; border: 1px solid #4a5268; border-radius: 6px; padding: 3px 12px; cursor: pointer; font: inherit; }
 .modesel button.on { background: #ffd66b; color: #1b1e27; border-color: #ffd66b; font-weight: bold; }
 .modedesc { text-align: center; font-size: 11px; color: #9aa3b8; margin-bottom: 6px; }
+#stageSel > .vsline { margin-bottom: 6px; }
+#stageSel > .modesel { width: 100%; margin: 0 0 2px; flex-wrap: wrap; }
+#stageSel > .modedesc { width: 100%; margin: 0 0 8px; line-height: 1.35; padding: 0 8px; box-sizing: border-box; }
 
 /* 첫 화면 보조 버튼 (리플레이 열기 · 탈출맵): 2열 큰 버튼 (터치 48px) */
 #select .extrabtns { display: flex; gap: 10px; width: 100%; margin-top: 8px; flex: none; }
