@@ -345,3 +345,7 @@ img { image-rendering: pixelated; }
   /* 전체 로그 창: 낮아진 무대 높이에 맞춤 */
   body.wb #fullLog .flbox { width: 420px; height: calc(100% - 20px); }
 }
+/* 홈런 시네마틱 바 (main.js cineSync): 무대 맨 위·맨 아래 끝에 붙여 틈 없이 HUD·하단 UI 위를 덮음. 클릭은 통과. z 4 = 아이콘 설명(5)·리플레이 조작(6~)·결과창(11) 아래 */
+#cineT, #cineB { position: absolute; left: 0; width: 360px; height: 0; background: #000; z-index: 4; pointer-events: none; display: none; box-sizing: content-box; }
+#cineT { top: 0; box-shadow: 0 1px 0 rgba(255,226,122,.55); }
+#cineB { bottom: 0; box-shadow: 0 -1px 0 rgba(255,226,122,.55); }

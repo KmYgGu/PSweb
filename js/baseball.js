@@ -693,7 +693,6 @@
       const C = b.cam, V = b.bsbView || { x: 0, y: 112, w: 360, h: 410 };
       ctx.save(); ctx.translate(C.x, C.y); ctx.scale(1 / C.k, 1 / C.k); // 화면 좌표 (카메라 해제)
       ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'middle';
-      drawCine(ctx, D, V); // 홈런 히트 스톱 시네마틱 바 (점수판·미니맵은 그 위에)
       drawBoard(ctx, b, D, V.x + 4, V.y + 2);
       drawMini(ctx, b, D, V.x + V.w - 70, V.y + 2);
       const M = D.msg;
@@ -823,16 +822,23 @@
   // 아래 → 위 올려치기: 준비 = 무기가 아래로, 스윙하면 홈 쪽을 지나 어깨 위로. 오른쪽 타석(side -1)은 좌우 거울
   //  헛스윙·파울 뒤 'pause' 동안은 D.pt 로 끝까지 휘두름 (그리기 전용, 시뮬 상태 안 바꿈). 몸으로 치는 캐릭터(다리·주먹)는 휘두를 때만 보임
   const SW0 = 1.75, SWA = 3.6;
-  // 홈런 시네마틱 바 (그리기 전용): 히트 스톱 시작에 위·아래 검은 띠가 0.14초 동안 밀려 들어오고, 끝나면 0.3초 동안 빠져나감
-  const CINE = { h: 0.12, inT: 0.14, outT: 0.3 };
-  function drawCine(ctx, D, V) {
-    const R = D.hr; if (!R) return;
+  // 홈런 시네마틱 바 (그리기 전용): 히트 스톱 동안 화면 맨 위·맨 아래부터 검은 띠가 밀려 들어와 타자·공 주변의 좁은 띠만 남김.
+  //  0.14초 동안 들어오고, 타구 발사 후 0.3초 동안 빠져나감. 화면 표시는 main.js 의 DOM 띠(#cineT/#cineB, HUD·하단 UI 위), 녹화는 drawCineCanvas
+  //  cine(b) → { k: 0~1, y0, y1 } (캔버스 논리 좌표의 남는 띠 위·아래) 또는 null
+  const CINE = { half: 40, inT: 0.14, outT: 0.3 }; // half: 남는 띠 절반 높이 (월드 px, 카메라 배율 곱함) — 타자 손(공 맞는 높이) 중심
+  function cine(b) {
+    const D = b && b.bsb, R = D && D.on && D.hr, C = b && b.cam; if (!R || !C) return null;
     const T = D.clock - R.t0, stop = D.S.t.hrStop;
     const k = T < stop ? easeOut(clamp(T / CINE.inT, 0, 1)) : 1 - clamp((T - stop) / CINE.outT, 0, 1) ** 2;
-    if (k <= 0) return;
-    const h = Math.round(V.h * CINE.h * k);
-    ctx.fillStyle = '#000000'; ctx.fillRect(V.x, V.y, V.w, h); ctx.fillRect(V.x, V.y + V.h - h, V.w, h);
-    ctx.fillStyle = 'rgba(255,226,122,0.55)'; ctx.fillRect(V.x, V.y + h, V.w, 1); ctx.fillRect(V.x, V.y + V.h - h - 1, V.w, 1); // 가는 금빛 테
+    if (k <= 0) return null;
+    const u = D.batU, wy = u ? u.y - 20 : S0.home.y - 20, cy = (wy - C.y) * C.k, h = CINE.half * C.k;
+    return { k, y0: cy - h, y1: cy + h };
+  }
+  function drawCineCanvas(x, b, H, off) { // 녹화용: 논리 좌표 캔버스(높이 H)에 직접 그림. off = 캔버스 y 오프셋
+    const c = cine(b); if (!c) return;
+    const t = Math.round(c.k * Math.max(0, c.y0 + off)), bo = Math.round(c.k * Math.max(0, H - (c.y1 + off)));
+    x.fillStyle = '#000000'; x.fillRect(0, 0, W, t); x.fillRect(0, H - bo, W, bo);
+    x.fillStyle = 'rgba(255,226,122,0.55)'; if (t > 1) x.fillRect(0, t - 1, W, 1); if (bo > 1) x.fillRect(0, H - bo, W, 1);
   }
   function drawBat(ctx, b, D, u) {
     const p = D.pitch, side = D.side || 1;
@@ -987,5 +993,5 @@
 
   STAGE_HOOKS.push(BB);
   if (window.StageExt4 && window.StageExt4.FX_HOOKS) window.StageExt4.FX_HOOKS.push(BB);
-  window.BASEBALL = { BB, updateCam, jumpLift, BASES, SPOT, FPOS, S: S0 };
+  window.BASEBALL = { BB, updateCam, jumpLift, BASES, SPOT, FPOS, S: S0, cine, drawCineCanvas };
 })();

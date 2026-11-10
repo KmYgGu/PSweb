@@ -480,6 +480,7 @@
     const camView = { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) };
     if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, camView);
     else if (battle && window.BASEBALL) BASEBALL.updateCam(battle, dt, camView); // 야구장 카메라 (js/baseball.js, 시각 전용)
+    cineSync(); // 홈런 시네마틱 바 (DOM, HUD·하단 UI 위)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !wideOn && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0); // 넓은 화면: HUD가 맵 위에 없음
@@ -488,6 +489,18 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+  // 홈런 시네마틱 바: 무대(#stage) 맨 위·맨 아래 끝에 붙인 검은 띠 2개 → 틈 없이 HUD·하단 UI까지 덮음 (그리기 전용, BASEBALL.cine)
+  let cineEl = null;
+  function cineSync() {
+    const c = battle && window.BASEBALL && BASEBALL.cine ? BASEBALL.cine(battle) : null;
+    if (!c && !cineEl) return;
+    if (!cineEl) { cineEl = ['cineT', 'cineB'].map(id => { const d = document.createElement('div'); d.id = id; stage.appendChild(d); return d; }); }
+    const [T, B] = cineEl;
+    if (!c) { T.style.display = B.style.display = 'none'; return; }
+    const off = cv.offsetTop, SH = stage.clientHeight; // 넓은 화면: 캔버스가 위로 64px 올라가 있음
+    T.style.height = Math.round(c.k * Math.max(0, c.y0 + off)) + 'px'; B.style.height = Math.round(c.k * Math.max(0, SH - (c.y1 + off))) + 'px';
+    T.style.display = B.style.display = 'block';
+  }
 
   // ================= 리플레이 (최고의 플레이) =================
   // 방식: 화면을 녹화하지 않고 "시드 + 캐릭터 + 스테이지"만 기록. 전투 로직의 난수를 시드로 고정하므로
@@ -729,6 +742,7 @@
       x.setTransform(RES, 0, 0, RES, 0, 0); x.globalAlpha = 1; this.raster(x, hudEl, 1, S);
       Render.drawTopUnits(A.tx, battle, RES, hudEl.offsetHeight); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.drawImage(A.t, 0, 0);
       x.setTransform(RES, 0, 0, RES, 0, 0); this.raster(x, $('#bottom'), 1, S); this.raster(x, $('#rpBanner'), 1, S); x.globalAlpha = 1;
+      if (window.BASEBALL && BASEBALL.drawCineCanvas) { x.setTransform(RES, 0, 0, RES, 0, 0); BASEBALL.drawCineCanvas(x, battle, H, 0); } // 홈런 시네마틱 바 (녹화에도)
       A.done = Math.max(A.done, battle.time);
       const k = clamp((battle.time - A.s) / Math.max(0.01, A.e - A.s), 0, 1); $('#vidBar').style.width = (k * 100) + '%'; $('#vidTxt').textContent = `🎬 녹화 중 ${fmtS(battle.time - A.s)} / ${fmtS(A.e - A.s)}`;
       if (!RP.playing && RP.banner <= 0 && battle.time >= A.e - 0.02) this.stop(false);
