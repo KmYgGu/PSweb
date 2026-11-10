@@ -5,6 +5,7 @@
  *  2. 지면 내리치기: 피해 없음. 위에서 상자 여러 개가 떨어짐(그림자 예고). 상자에 상대가 부딪히면(깔리면) 기절.
  *                   상자는 공격·부딪힘으로 상하좌우로만 밀리고 3번 부딪히면 파괴
  *  3. 옷장 소환   : 무작위 위치에 옷장이 땅에서 솟아오름. 먼저 닿은 쪽이 들어감
+ *                   (아오오니는 옷장이 생길 때 한 번 굴린 25% 확률로만 빈 옷장 쪽으로 일부러 걸어감. 실패하면 평소대로 움직이다 우연히 닿을 때만 들어감)
  *                   - 아오오니가 먼저: 잠시 숨음 → 상대가 부딪히면 끌어들여 현재 체력 10% → 옷장 붕괴, 상대 기절 / 아무도 안 오면 그냥 나옴
  *                   - 상대가 먼저: 스킬 봉인 상태로 숨음 + 공포 연출(옷장 주변 원형만 보이고 나머지는 어둠, 아오오니는 추적 안 씀)
  *                     → 아오오니가 옷장에 부딪히면 들어가 최대 체력 5% → 이후 동일 / 일정 시간 지나면 상대가 스스로 나옴
@@ -24,7 +25,7 @@
     aura: { extra: 14, tick: 0.1, mult: 0.2, show: 0.4 },                                    // 범위 = 충돌 거리 + 14px, 0.1초마다 ATK×0.2 (기본 ATK 30 → 초당 60)
     chase: { dur: 4.5, accel: 430, vmax: 300, drag: 0.9, wallRest: 0.6, wallStag: 0.3, hitRecoil: 0.55, hitStag: 0.38 },
     slam: { wind: 0.4, n: 5, near: 2, nearR: 60, fall: 0.6, gap: 0.12, size: 20, hits: 3, push: 36, pushT: 0.22, stunFall: 1.1, stunBump: 0.8, immune: 1.2, life: 15, escLife: 6, max: 10, drop: 230 },
-    closet: { rise: 0.6, idle: 8, aoHide: 5, foeHide: 6, ambush: 0.7, grabK: 0.10, enterK: 0.05, stun: 1.5, w: 28, h: 14, H: 44, light: 66, seek: 1.0, seekP: 0.45, steer: 0.6 },
+    closet: { goP: 0.25, rise: 0.6, idle: 8, aoHide: 5, foeHide: 6, ambush: 0.7, grabK: 0.10, enterK: 0.05, stun: 1.5, w: 28, h: 14, H: 44, light: 66, seek: 1.0, seekP: 0.45, steer: 0.6 },
     door: { life: 12, hp: 150, w: 36, d: 12, base: 0.6, per: 1 / 150, min: 0.8, max: 4.0, slide: 0.6, maxHit: 60 },
   };
   // 문 너머 '다른 방' 후보: 외벽이 사각형이고 특수 승리 규칙이 없는 스테이지 (현재 스테이지 제외)
@@ -46,6 +47,7 @@
   // 전투 전체에서 옷장/문/숨음 진행 중인지 (서로 배타: 꼬임·무한 대기 방지)
   const busy = b => b.u.some(o => o.aoHid || (o.ao && (o.ao.closet || o.ao.door || o.ao.away)));
   const anyHid = b => b.u.some(o => o.aoHid);
+  const lieOf = u => !u.dead && u.statuses && u.statuses.find(s => s.aoLie && s.id === 'stun'); // 옷장에서 붙잡혔다 풀려난 기절 (옆으로 누운 그림, 화면 전용 표시)
 
   // ---------- 숨김(옷장 안 / 다른 방으로 가는 중) ----------
   function hide(b, u, why, x, y) {
@@ -246,7 +248,7 @@
     const r = closetSpot(b); if (!r) { b.text(u.x, u.y - 64, '옷장 실패', '#c8c0b0', 9); return; }
     const bl = { ...r, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, cracks: [[], [], []], rubble: [], windows: [], aoCloset: true, owner: u, t: 0, phase: 'rise', rattle: 0, draw: drawCloset };
     b.buildings.push(bl); for (const o of b.u) if (!o.dead && !o.airborne) b.resolveBuildings(o, true);
-    A_(u).closet = { bl, phase: 'rise', t: 0, occ: null, steerT: 0 };
+    A_(u).closet = { bl, phase: 'rise', t: 0, occ: null, steerT: 0, go: Math.random() < D.closet.goP }; // 빈 옷장으로 일부러 향할지: 옷장마다 한 번만 25%
     b.debris(bl.x + bl.w / 2, bl.y + bl.h, 12); b.shake(1.5); playSfx('wall'); sys(b, '옷장이 땅에서 솟아올랐습니다…'); stat(b, 'aoCloset');
   }
   const cMid = C => ({ x: C.bl.x + C.bl.w / 2, y: C.bl.y + C.bl.h });
@@ -273,7 +275,7 @@
     }
     const p = closetSide(b, C, u, victim ? { x: m.x * 2 - victim.x, y: m.y * 2 - victim.y + 30 } : null); unhide(b, u, p.x, p.y);
     closetEnd(b, u, 'collapse');
-    if (victim && !victim.dead && !b.over) { b.resolveBuildings(victim, true); b.applyStatus(victim, 'stun', D.closet.stun, u, { aoAllow: true }); b.text(victim.x, victim.y - 70, '기절!', '#ffe27a', 11); }
+    if (victim && !victim.dead && !b.over) { b.resolveBuildings(victim, true); const st = b.applyStatus(victim, 'stun', D.closet.stun, u, { aoAllow: true }); if (st) st.aoLie = victim.x < u.x ? -1 : 1; /* 그림 전용 표시: 뒷모습으로 아오오니 반대쪽으로 쓰러져 누움 (전투 계산은 읽지 않음) */ b.text(victim.x, victim.y - 70, '기절!', '#ffe27a', 11); }
     if (!b.over) u.dir = fixAngle(angTo(u, victim || u) + Math.PI + rand(-0.6, 0.6));
   }
   function closetStep(b, u, dt) {
@@ -286,7 +288,7 @@
     const park = o => hide(b, o, o === u ? 'closetAo' : 'closetFoe', m.x, m.y - 2);
     if (C.phase === 'rise') { if (C.t >= D.closet.rise) { C.phase = 'idle'; C.t = 0; } return; }
     if (C.phase === 'idle') {
-      if (touchable(u) && !u.action && !u.ao.chase && (C.steerT -= dt) <= 0) { C.steerT = D.closet.steer; u.dir = fixAngle(Math.atan2(m.y - 4 - u.y, m.x - u.x)); } // 자기 옷장으로 향함
+      if (C.go && touchable(u) && !u.action && !u.ao.chase && (C.steerT -= dt) <= 0) { C.steerT = D.closet.steer; u.dir = fixAngle(Math.atan2(m.y - 4 - u.y, m.x - u.x)); } // 자기 옷장으로 향함 (25% 확률로 정해진 옷장만, 아니면 평소대로 움직이다 우연히 닿을 때만)
       if (touchable(u) && near(u) && !u.action) { park(u); C.phase = 'aoIn'; C.t = 0; C.occ = u; bl.rattle = 0.3; b.text(m.x, m.y - 56, '쏙', '#cfe0ff', 10); sys(b, `${u.def.name}: 옷장 안에 숨었다…`); return; }
       const f = foes.find(near);
       if (f) { endChase(b, u); park(f); C.phase = 'foeIn'; C.t = 0; C.occ = f; bl.rattle = 0.3; b.text(m.x, m.y - 56, '숨었다!', '#e8e0ff', 10); sys(b, `${f.def.name}이(가) 옷장에 숨었습니다! (스킬 봉인)`); stat(b, 'aoFoeHide'); return; }
@@ -562,7 +564,7 @@
   // ---------- 캐릭터 정의 ----------
   // 그림 파일 (원본 시트에서 생성). 경로는 통째로 적음: 에셋 묶음(js/assets_data.js)에 원본 시트까지 들어가지 않게
   const SRC = { front: 'assets/aooni/front.png', back: 'assets/aooni/back.png', walkB: 'assets/aooni/walk_back.png', sideL: 'assets/aooni/side_l.png', sideR: 'assets/aooni/side_r.png', slam: 'assets/aooni/slam.png', hurt: 'assets/aooni/hurt.png', portrait: 'assets/aooni/portrait.png' };
-  const pose = (k, src, o = {}) => ({ id: ID + '@' + k, name: '아오오니', color: SKIN, sprite: { src, frameW: o.fw || 48, frameH: 84, frames: o.frames || 1, fps: o.fps || 8, scale: 1, foot: 1 } });
+  const pose = (k, src, o = {}) => ({ id: ID + '@pose-' + k, /* '@back' 로 끝나면 sprites.js 의 뒷모습 키(def.id+'@back')와 겹쳐 기본 뒷모습이 걷기 시트 통째로 바뀌는 버그 → 'pose-' 접두어 */ name: '아오오니', color: SKIN, sprite: { src, frameW: o.fw || 48, frameH: 84, frames: o.frames || 1, fps: o.fps || 8, scale: 1, foot: 1 } });
   const POSES = {
     front: pose('front', SRC.front, { frames: 4 }), back: pose('back', SRC.walkB, { frames: 4 }), sideL: pose('sideL', SRC.sideL, { frames: 4 }), sideR: pose('sideR', SRC.sideR, { frames: 4 }),
     runF: pose('runF', SRC.front, { frames: 4, fps: 12 }), runB: pose('runB', SRC.walkB, { frames: 4, fps: 12 }), runL: pose('runL', SRC.sideL, { frames: 4, fps: 12 }), runR: pose('runR', SRC.sideR, { frames: 4, fps: 12 }),
@@ -584,7 +586,8 @@
   }
   function pickPose(u, b) {
     if (b !== lastB) { LAST.clear(); lastB = b; } // 잔상용 기억은 지금 전투 것만
-    if (u.dead) return null;
+    if (u.dead) { const v = VIEW.get(u); return v ? { F: 'front', B: 'back', L: 'sideL', R: 'sideR' }[v] : null; } // 쓰러질 때: 마지막으로 보던 방향 그림 그대로 (갑자기 앞/뒤로 바뀌지 않게)
+    if (lieOf(u)) return null; // 옷장 기절(옆으로 누움): game.js 가 기본 뒷모습을 눕혀 그림
     if (u.poseT > 0 && u.pose === 'slam') return 'slam';
     const v = viewOf(u, b), run = !!(u.ao && u.ao.chase);
     if (u.flash > 0.05 && v === 'F' && !run) return 'hurt';
@@ -592,16 +595,19 @@
     LAST.set(u, { k, t: b.time }); return k;
   }
   // 위치·변형 애니메이션. 반환값: 최종 좌우 배율 (옆모습은 원본 좌/우 그림을 그대로 → +1)
+  // 지면 내리치기 동작: 웅크림 → 도약 → 쿵! 찌그러짐 (0.4초 준비 + 0.25초 여운). 슈르프가 흡수해 쓸 때도 game.js 가 이 동작만 빌려 씀 (그림은 슈르프 것 그대로)
+  function slamXf(ctx, u, b, sx) {
+    if (u.dead || !(u.poseT > 0 && u.pose === 'slam')) return sx;
+    const T = D.slam.wind + 0.25, p = clamp(1 - u.poseT / T, 0, 1), hit = D.slam.wind / T;
+    if (p < 0.18) { const q = p / 0.18; ctx.scale(1 + 0.1 * q, 1 - 0.12 * q); }
+    else if (p < hit) { const q = (p - 0.18) / (hit - 0.18); ctx.translate(0, -Math.round(14 * Math.sin(q * Math.PI * 0.92))); ctx.scale(1 - 0.06 * Math.sin(q * Math.PI), 1 + 0.1 * Math.sin(q * Math.PI)); }
+    else { const q = (p - hit) / (1 - hit), k = (1 - q) * (1 - q); ctx.translate(Math.round(Math.sin(q * 60) * 2 * k), 0); ctx.scale(1 + 0.22 * k, 1 - 0.26 * k); }
+    return sx;
+  }
   function drawXform(ctx, u, b, sx) {
-    if (u.dead) return sx;
     const v = VIEW.get(u), side = v === 'L' || v === 'R', C = u.ao && u.ao.chase;
-    if (u.poseT > 0 && u.pose === 'slam') { // 웅크림 → 도약(양팔 벌림) → 쿵! 찌그러짐 (지면 내리치기 0.4초 준비 + 0.25초 여운)
-      const T = D.slam.wind + 0.25, p = clamp(1 - u.poseT / T, 0, 1), hit = D.slam.wind / T;
-      if (p < 0.18) { const q = p / 0.18; ctx.scale(1 + 0.1 * q, 1 - 0.12 * q); }
-      else if (p < hit) { const q = (p - 0.18) / (hit - 0.18); ctx.translate(0, -Math.round(14 * Math.sin(q * Math.PI * 0.92))); ctx.scale(1 - 0.06 * Math.sin(q * Math.PI), 1 + 0.1 * Math.sin(q * Math.PI)); }
-      else { const q = (p - hit) / (1 - hit), k = (1 - q) * (1 - q); ctx.translate(Math.round(Math.sin(q * 60) * 2 * k), 0); ctx.scale(1 + 0.22 * k, 1 - 0.26 * k); }
-      return sx;
-    }
+    if (u.dead) return side ? 1 : sx; // 옆모습 그림은 원본 좌/우 그대로 (뒤집지 않음)
+    if (u.poseT > 0 && u.pose === 'slam') return slamXf(ctx, u, b, sx);
     if (C) { // 추적: 진행 방향으로 몸을 기울이고 쿵쾅 들썩임, 부딪힌 직후엔 뒤로 휘청
       const s = Math.hypot(C.vx, C.vy), f = clamp(s / D.chase.vmax, 0, 1), st = C.stag > 0 ? C.stag / Math.max(D.chase.hitStag, D.chase.wallStag) : 0;
       const ph = Math.abs(Math.sin(u.walk * 2.4)), lean = clamp(C.vx / D.chase.vmax, -1, 1) * 0.2 * f;
@@ -638,5 +644,5 @@
     poses: POSES, pickPose, drawXform, afterPose,
     lines: {}, // 대사 없음 (로그는 '아오오니: 스킬명')
   });
-  window.AOONI = { D, ROOMS };
+  window.AOONI = { D, ROOMS, slamXf, lieOf };
 })();
