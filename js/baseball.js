@@ -85,6 +85,7 @@
   // 포스 상태 (주자만, 타자 제외): 떠난 베이스를 세이프된 타자나 다른 주자가 차지해 돌아갈 수 없는 주자 → 다음 베이스를 공 가진 수비가 밟으면 아웃 (v2026.11.11)
   const forced = (D, r) => r.kind === 'R' && r.st === 'run' && (D.safeB === r.base || D.runners.some(o => o !== r && o.base === r.base && o.st === 'on'));
   const ROLL_FR = 1.5; // 굴러가는 공 감속 (ballPhys 와 같은 값)
+  const HOME = { slack: 0.2, dare: 1.4 }; // 홈 승부 (v2026.11.11): slack = 포수 송구가 주자보다 이만큼(초) 늦어도 던짐, dare = 3루 주자 홈 쇄도 과감도
   // 홈런 타구 궤적 (k: 0 → 1 = 타격 지점 → 펜스, 1 초과는 관중석 쪽으로 계속 — 그리기 전용)
   const hrPos = (R, k) => ({ x: R.x0 + (R.x1 - R.x0) * k, y: R.y0 + (R.y1 - R.y0) * k, z: Math.max(0, R.z0 + (R.z1 - R.z0) * k + 64 * Math.sin(Math.PI * Math.min(k, 1)) + (k > 1 ? (k - 1) * 40 : 0)) });
   // 그리기 전용 결정적 해시 (시뮬레이션 난수를 쓰지 않음): 같은 투구·같은 수비수면 항상 같은 값
@@ -455,8 +456,10 @@
         if (!H.kind) { // 투수: 이동은 평소대로(무작위). 타자가 멀면 타자에 가까운 수비수에게 송구
           H.bsPassCd = (H.bsPassCd || 0) - dt;
           const TT = BB.targets(b, D), t = BB.pickChase(H, TT);
-          const FP = H.bsPassCd <= 0 && !H.blocked('blocksAct') ? BB.forcePlay(b, D, H) : null; // 투수도 포스 송구
-          if (FP && FP.mode === 'throw') { BB.throwTo(b, D, H, FP.f, { x: FP.P.x, y: FP.P.y }); b.stats.bsForceThrow = (b.stats.bsForceThrow || 0) + 1; }
+          const HP = H.bsPassCd <= 0 && !H.blocked('blocksAct') ? BB.homePlay(b, D, H) : null; // 투수도 홈 승부·포스 송구
+          const FP = !HP && H.bsPassCd <= 0 && !H.blocked('blocksAct') ? BB.forcePlay(b, D, H) : null;
+          if (HP) { BB.throwTo(b, D, H, HP.f, HP.P); b.stats.bsHomeThrow = (b.stats.bsHomeThrow || 0) + 1; }
+          else if (FP && FP.mode === 'throw') { BB.throwTo(b, D, H, FP.f, { x: FP.P.x, y: FP.P.y }); b.stats.bsForceThrow = (b.stats.bsForceThrow || 0) + 1; }
           else if (t && H.bsPassCd <= 0 && !H.blocked('blocksAct')) { const d0 = hyp(H.x - t.x, H.y - t.y); if (d0 > D.S.keepR) { const L = BB.leadPass(D, H, TT, 0); if (L && L.gap < L.hold - 30) BB.throwTo(b, D, H, L.f, L.q); else H.bsPassCd = 0.3; } }
         }
       }
@@ -563,6 +566,15 @@
       }
       return best;
     },
+    // 홈 승부: 홈으로 뛰는 주자가 있으면 타자 추격보다 포수 송구 우선. 공(과 포수)이 주자보다 HOME.slack 초 안쪽으로 늦는 아슬아슬한 경우까지 던짐
+    homePlay(b, D, H) {
+      const P = BASES[0], q = BB.holderPos(H), thr = thrSpd(D), rr = D.runners.find(r => r.st === 'run' && r.to === 4 && r.stun <= 0); if (!rr) return null;
+      const tR = hyp(P.x - rr.x, P.y - rr.y) / Math.max(30, npcSpd(D, rr));
+      let c = D.fielders.find(f => f.pos === 'C' && f !== H && f.stun <= 0.2);
+      if (!c) { let bd = 1e9; for (const f of D.fielders) { if (f === H || f.stun > 0.2) continue; const d = hyp(f.x - P.x, f.y - P.y); if (d < bd) { bd = d; c = f; } } }
+      if (!c || Math.max(hyp(P.x - q.x, P.y - q.y) / thr, hyp(c.x - P.x, c.y - P.y) / npcSpd(D, c)) + D.S.tagDelay > tR + HOME.slack) return null;
+      return { f: c, P: { x: P.x, y: P.y - 8 } };
+    },
     runnerOut(b, D, r, H) {
       D.runners = D.runners.filter(o => o !== r); D.outs++; b.stats.bsRunOut++;
       b.text(r.x, r.y - 50, '아웃!', '#ff9a8a', 12); sys(b, `주자 ${r.def.name} 태그 아웃 (${D.outs}아웃)`); logPlay(b, D, 'runnerOut', { who: r.def.name });
@@ -594,10 +606,12 @@
       const busy = new Set();
       if (H && H.kind) { // 공 가진 수비수
         busy.add(H); H.passCd = (H.passCd || 0) - dt;
-        const FP = H.rt <= 0.18 && H.stun <= 0 ? BB.forcePlay(b, D, H) : null; // 포스 플레이는 공을 줍자마자(0.12초 뒤) 바로
+        const HP = H.rt <= 0.18 && H.stun <= 0 && H.passCd <= 0.23 ? BB.homePlay(b, D, H) : null; // 홈 승부: 타자를 쫓던 중이어도 포수에게
+        if (HP) { BB.throwTo(b, D, H, HP.f, HP.P); b.stats.bsHomeThrow = (b.stats.bsHomeThrow || 0) + 1; }
+        const FP = !HP && H.rt <= 0.18 && H.stun <= 0 ? BB.forcePlay(b, D, H) : null; // 포스 플레이는 공을 줍자마자(0.12초 뒤) 바로
         if (FP && FP.mode === 'carry') BB.moveNpc(D, H, FP.P.x, FP.P.y, 1, dt);
         else if (FP && FP.mode === 'throw' && H.passCd <= 0.23) { BB.throwTo(b, D, H, FP.f, { x: FP.P.x, y: FP.P.y }); b.stats.bsForceThrow = (b.stats.bsForceThrow || 0) + 1; }
-        else if (H.rt <= 0 && H.stun <= 0) {
+        else if (!HP && H.rt <= 0 && H.stun <= 0) {
           const t = BB.pickChase(H, T);
           if (t) { // 송구 기준 완화 (v2026.11.11): 주자를 잡을 수 있는 송구(차이 30 미만)면 더 과감히
             const d0 = hyp(H.x - t.x, H.y - t.y);
@@ -654,7 +668,7 @@
           if (B.st === 'air' && !B.bounced) continue; // 뜬공: 잡히는지 볼 때까지 대기
           const nx = r.base + 1;
           if (nx <= 3 && (runnerAt(D, nx) || D.safeB === nx || D.runners.some(o => o !== r && o.st === 'run' && o.to === nx))) continue; // 세이프된 타자가 있는 베이스도 찬 것
-          const NB = BASES[nx % 4], tr = hyp(r.x - NB.x, r.y - NB.y) / sp, td = BB.defTime(D, nx % 4);
+          const NB = BASES[nx % 4], tr = hyp(r.x - NB.x, r.y - NB.y) / sp, td = BB.defTime(D, nx % 4) * (nx === 4 ? HOME.dare : 1); // 홈 쇄도는 더 과감하게
           // 공 상황 읽기: 깊은 타구(홈에서 멂)·다른 곳으로 가는 송구면 한 베이스 더 노림
           const deep = B.st !== 'held' && hyp(B.x - S0.home.x, B.y - S0.home.y) > 230 ? 0.22 : 0;
           const away = B.st === 'throw' && B.thr && hyp(B.thr.x1 - NB.x, B.thr.y1 - NB.y) > 120 ? 0.2 : 0;
@@ -663,7 +677,7 @@
         }
         if (r.st === 'run') {
           const P = BASES[r.to % 4], d = hyp(r.x - P.x, r.y - P.y), from = BASES[r.base], prog = 1 - d / S0.bd;
-          if (!forced(D, r) && prog < 0.45 && d / sp > BB.defTime(D, r.to % 4) * 1.15 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; } // 위험 → 되돌아감 (베이스가 차 있으면 귀루 요청)
+          if (!forced(D, r) && prog < 0.45 && d / sp > BB.defTime(D, r.to % 4) * (r.to === 4 ? HOME.dare : 1) * 1.15 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; } // 위험 → 되돌아감 (베이스가 차 있으면 귀루 요청)
           const inc = B.st === 'throw' && B.thr && hyp(B.thr.x1 - P.x, B.thr.y1 - P.y) < 34 && (B.thr.dur - B.thr.t) + 0.1 < d / sp; // 다음 베이스로 공이 먼저 도착
           if (!forced(D, r) && prog < 0.6 && inc && d / sp > (B.thr.dur - B.thr.t) * 1.25 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; }
           if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) {
