@@ -89,6 +89,73 @@
 
   // ---------- 화면 메시지 / 기록 ----------
   function banner(D, big, sub, col, dur = 1.5) { D.msg = { big, sub: sub || '', col: col || '#ffe27a', t: 0, dur }; }
+
+  // ---------- 긴장감 연출 (v2026.11.11): 접전 슬로모션 · 볼카운트 긴장 · 상황 실황 자막 ----------
+  //  상태(D.slow/D.tense/D.cap/D.streak)는 화면 전용: 판정·난수(Math.random)에 쓰지 않음 → 결과·리플레이 동일
+  //  슬로모션은 시뮬레이션 dt 를 바꾸지 않고 화면 진행 속도만 늦춤 (main.js 루프·리플레이가 BASEBALL.timeK 를 곱함)
+  const SLOW = { k: 0.28, win: 0.5, gap: 0.18, dur: 0.5, after: 0.4, cd: 1.0, tenseK: [1, 0.75, 0.55] };
+  function slowOn(D) { const L = D && D.slow; if (!L) return null; const end = L.resT != null ? L.resT + SLOW.after : L.t0 + SLOW.dur; return D.clock <= end ? L : null; }
+  // 접전 감시: 대상(타자·주자)이 베이스에 닿는 시간과 공(송구·태그)이 닿는 시간이 거의 같으면 슬로모션 시작
+  function closeWatch(b, D) {
+    if (slowOn(D) || D.clock < (D.slowCd || 0)) return;
+    const B = D.ball; if (!B || (B.st !== 'throw' && B.st !== 'held')) return;
+    for (const t of BB.targets(b, D)) {
+      let P = null, tr = 1e9;
+      if (t.kind) { P = BASES[t.st === 'back' ? t.base : t.to % 4]; tr = hyp(P.x - t.x, P.y - t.y) / Math.max(30, npcSpd(D, t)); }
+      else { const V = t.bsV, sp = V ? hyp(V.vx, V.vy) : 0; if (sp < 40) continue;
+        for (let k = 1; k <= 3; k++) { if (k === D.relK) continue; const Q = BASES[k], d = hyp(Q.x - t.x, Q.y - t.y); if (d > 130 || (V.vx * (Q.x - t.x) + V.vy * (Q.y - t.y)) < 0.6 * sp * d) continue; if (d / sp < tr) { tr = d / sp; P = Q; } } }
+      if (!P || tr > SLOW.win) continue;
+      let tb = 1e9;
+      if (B.st === 'throw') { if (hyp(B.thr.x1 - P.x, B.thr.y1 - P.y) < 46) tb = B.thr.dur - B.thr.t; }
+      else { const H = B.holder; if (H) { const hs = H.kind ? npcSpd(D, H) * 0.62 : (H.speed || 200); if (hyp(H.x - P.x, H.y - P.y) < 70) tb = Math.max(0, hyp(H.x - t.x, H.y - t.y) - D.S.tagR - 10) / Math.max(40, hs); } }
+      if (tb > SLOW.win || Math.abs(tb - tr) > SLOW.gap) continue;
+      D.slow = { t0: D.clock, x: P.x, y: P.y, who: t, resT: null, res: null }; D.slowCd = D.clock + SLOW.dur + SLOW.cd; b.stats.bsClose = (b.stats.bsClose || 0) + 1;
+      b.text(P.x, P.y - 70, '접전!', '#ffe27a', 12); return;
+    }
+  }
+  // 접전 결과 표시 (세이프·아웃 순간): 슬로모션 중이면 크게
+  function closeCall(b, D, who, safe, x, y) {
+    const L = slowOn(D); if (!L || L.resT != null || (L.who && who && L.who !== who)) return;
+    L.resT = D.clock; L.res = safe ? 'safe' : 'out';
+    const col = safe ? '#9fffb8' : '#ff8a7a'; b.text(x, y - 84, safe ? '세이프!!' : '아웃!!', col, 18); b.ring(x, y - 6, 4, 46, 0.45, col); b.glow(x, y - 16, 40, col, 0.4); b.shake(2);
+    const k = safe ? 'bsCloseSafe' : 'bsCloseOut'; b.stats[k] = (b.stats[k] || 0) + 1;
+  }
+  const occ = (D, k) => !!(runnerAt(D, k) || (D.pend && D.pend.k === k));
+  // 볼카운트·주자 상황 긴장도 (0~2) + 실황 자막. 투구마다 계산 (난수 없음)
+  function tension(b, D) {
+    const nb = D.balls, ns = D.strikes, onB = [1, 2, 3].filter(k => occ(D, k)).length, loaded = onB === 3, need = D.S.win - D.score[D.bat], gap = D.score[1 - D.bat] - D.score[D.bat];
+    const walkOff = onB + 1 >= need, scoring = occ(D, 2) || occ(D, 3);
+    let lv = 0, tag = '';
+    if (nb >= 3 && ns >= 2) { lv = 2; tag = '풀카운트!'; } else if (ns >= 2) { lv = 1; tag = '2스트라이크'; } else if (nb >= 3) { lv = 1; tag = '3볼'; }
+    if ((loaded && D.outs >= 2) || (walkOff && (ns >= 2 || nb >= 3))) lv = 2; else if ((loaded || (scoring && D.outs >= 2) || walkOff) && lv < 1) lv = 1;
+    if (!tag && lv) tag = loaded ? '만루' : walkOff ? '찬스' : '득점권';
+    D.tense = { lv, tag, t0: D.clock };
+    const pick = a => a[b.stats.bsPitch % a.length];
+    let cap = null;
+    if (!nb && !ns) { // 새 타석: 상황 자막
+      if (walkOff && occ(D, 3) && need === 1) cap = pick(['3루 주자만 들어오면 경기 끝!', '한 점이면 끝! 3루에 주자가 있습니다']);
+      else if (walkOff) cap = pick(['한 방이면 경기 끝! 끝내기 찬스', '홈런 하나면 그대로 승리!']);
+      else if (loaded && D.outs >= 2) cap = pick(['2사 만루! 운명의 한 타석', '2아웃 만루, 여기서 갈립니다']);
+      else if (loaded) cap = pick(['만루! 투수가 몰렸습니다', '베이스가 꽉 찼습니다!']);
+      else if (gap > 0 && onB + 1 > gap) cap = '역전 주자까지 나가 있습니다!';
+      else if (gap > 0 && onB + 1 === gap) cap = '동점 주자가 나가 있습니다';
+      else if (D.score[1 - D.bat] === D.S.win - 1 && gap > 0) cap = '상대는 매치 포인트! 반드시 점수를 내야 합니다';
+      else if (D.capNext) cap = D.capNext;
+    } else if (nb >= 3 && ns >= 2) cap = pick(['풀카운트 승부!', '3볼 2스트라이크, 숨 막히는 한 구']);
+    else if (ns >= 2 && lv >= 2) cap = '2스트라이크… 몰렸습니다';
+    else if (nb >= 3 && !ns) cap = '3볼 노스트라이크, 투수가 흔들립니다';
+    D.capNext = null;
+    if (cap) caption(b, D, cap);
+  }
+  function caption(b, D, txt) { if (D.cap && D.cap.txt === txt && D.clock - D.cap.t0 < 3) return; D.cap = { txt, t0: D.clock, dur: 2.6 }; sys(b, '📣 ' + txt); }
+  // 연속 기록 (타석 결과마다): 출루·삼진 흐름 자막 (다음 타석 시작 때 표시)
+  function streak(b, D, kind) {
+    const S = D.streak || (D.streak = [{ on: 0, k: 0 }, { on: 0, k: 0 }]), T = S[D.bat];
+    if (kind === 'TO') return;
+    const on = kind === 'H' || kind === 'BB' || kind === 'HR'; T.on = on ? T.on + 1 : 0; T.k = kind === 'K' ? T.k + 1 : 0;
+    if (T.on >= 3) D.capNext = `${T.on}타석 연속 출루! 타선이 불붙었습니다`;
+    else if (T.k >= 2) D.capNext = `${T.k}연속 삼진! 투수가 압도하고 있습니다`;
+  }
   // 타석 위치: 타석마다 좌·우 타석을 무작위로 (오른쪽 타석이면 3루 쪽에 섬)
   const batSpot = D => ({ x: S0.home.x - 23 * (D.side || 1), y: SPOT.bat.y });
   function logPlay(b, D, kind, extra) { const e = { t: +b.time.toFixed(2), inn: D.inning, half: D.half, bat: D.bat, kind, outs: D.outs, score: [...D.score], ...(extra || {}) }; if (D.log.length < 400) D.log.push(e); }
@@ -212,6 +279,7 @@
       const x0 = pu.x + 6, y0 = pu.y - 2, L = hyp(x1 - x0, y1 - y0);
       D.pitch = { t: 0, rel: D.S.t.windup, dur: L / spd, brk, kmh, kname, zone, swing, contact, foul, curve, x0, y0, x1, y1, hit, swingT: -1, done: false };
       D.phase = 'pitch'; D.pt = 0; D.ball = { st: 'hand', x: x0, y: y0, z: 24, vx: 0, vy: 0, vz: 0, bounced: false };
+      tension(b, D); // 화면 전용 (난수 사용 없음)
       b.stats.bsPitch++;
     },
     pitchStep(b, D, dt) {
@@ -375,7 +443,7 @@
         // 태그 아웃
         if (D.clock >= (B.tagT || 0)) for (const t of T) { // 공을 받은 직후(tagDelay)에는 태그 불가: 쥐는 시간
           const r = D.S.tagR + (H.kind ? 0 : H.pad) + (t.kind ? 0 : t.pad) + 2 * (rise(D) - 1);
-          if (hyp(H.x - t.x, H.y - t.y) < r) { if (t === bu) { b.stats.bsTag++; if (!H.kind) b.stats.bsTagP = (b.stats.bsTagP || 0) + 1; return BB.endPlay(b, D, 'T', H.def.name); } BB.runnerOut(b, D, t, H); if (D.phase !== 'live') return; }
+          if (hyp(H.x - t.x, H.y - t.y) < r) { closeCall(b, D, t, false, t.x, t.y); if (t === bu) { b.stats.bsTag++; if (!H.kind) b.stats.bsTagP = (b.stats.bsTagP || 0) + 1; return BB.endPlay(b, D, 'T', H.def.name); } BB.runnerOut(b, D, t, H); if (D.phase !== 'live') return; }
         }
         if (!H.kind) { // 투수: 이동은 평소대로(무작위). 타자가 멀면 타자에 가까운 수비수에게 송구
           H.bsPassCd = (H.bsPassCd || 0) - dt;
@@ -395,6 +463,7 @@
       BB.fieldAI(b, D, dt);
       BB.runAI(b, D, dt);
       if (D.phase !== 'live') return;
+      closeWatch(b, D); // 접전 슬로모션 (화면 전용)
       // 플레이 종료: 타자가 세이프된 뒤 모든 주자가 베이스에 있고 수비가 공을 쥔 채 0.7초 (안전장치: 세이프 후 10초)
       if (D.safeB) {
         const calm = !D.runners.some(r => r.st !== 'on') && B.st === 'held';
@@ -407,7 +476,7 @@
     batterSafe(b, D, k) {
       const o = runnerAt(D, k);
       if (o) { if (D.safeN > 0) return false; o.st = 'run'; o.to = k + 1; }
-      const bu = D.batU; D.safeB = k; D.safeT = D.clock; D.safeN++; D.setT = 0;
+      const bu = D.batU; closeCall(b, D, bu, true, BASES[k].x, BASES[k].y); D.safeB = k; D.safeT = D.clock; D.safeN++; D.setT = 0;
       for (const r of D.runners) if (r !== o && r.st === 'run' && r.to === k && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; } // 그 베이스로 뛰던 주자는 되돌아감
       b.text(bu.x, bu.y - 60, '세이프!', '#9fffb8', 11); sys(b, `${bu.def.name} ${k}루 세이프 — 플레이 계속`);
       return true;
@@ -564,12 +633,13 @@
           const inc = B.st === 'throw' && B.thr && hyp(B.thr.x1 - P.x, B.thr.y1 - P.y) < 34 && (B.thr.dur - B.thr.t) + 0.1 < d / sp; // 다음 베이스로 공이 먼저 도착
           if (prog < 0.6 && inc && d / sp > (B.thr.dur - B.thr.t) * 1.25 * r.aggr && BB.backOK(b, D, r)) { r.st = 'back'; b.stats.bsBack++; continue; }
           if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) {
+            closeCall(b, D, r, true, r.x, r.y);
             if (r.to === 4) { BB.score(b, D, r); if (D.phase !== 'live') return; continue; }
             r.base = r.to; r.st = 'on'; const s = baseSpot(r.base); void from; void s;
           }
           continue;
         }
-        if (r.st === 'back') { const P = BASES[r.base]; if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) r.st = 'on'; }
+        if (r.st === 'back') { const P = BASES[r.base]; if (BB.moveNpc(D, r, P.x, P.y, 1, dt)) { r.st = 'on'; closeCall(b, D, r, true, r.x, r.y); } }
       }
     },
     score(b, D, r) {
@@ -614,6 +684,7 @@
       else if (kind === 'TO') { big = '타임!'; sub = '다시 타석으로'; col = '#e8eef8'; b.stats.bsTO++; }
       else if (kind !== '3O') { D.outs++; big = { F: '플라이 아웃!', T: '태그 아웃!', K: '삼진 아웃!' }[kind]; sub = kind === 'K' ? `${bu.def.name} 삼진` : `${arg || ''} → ${bu.def.name} 아웃`; col = '#ff9a8a'; sys(b, `${bu.def.name} ${big} (${D.outs}아웃)`); }
       else { big = '쓰리 아웃!'; col = '#ff9a8a'; }
+      streak(b, D, kind);
       logPlay(b, D, kind, { arg: typeof arg === 'number' || typeof arg === 'string' ? arg : undefined, playT: +D.playT.toFixed(2) });
       D.balls = 0; D.strikes = 0; D.pitch = null; D.side = Math.random() < 0.5 ? 1 : -1; D.safeB = 0; D.relK = 0;
       if (B && B.st !== 'gone') { B.st = 'dead'; B.holder = null; }
@@ -745,8 +816,10 @@
       const C = b.cam, V = b.bsbView || { x: 0, y: 112, w: 360, h: 410 };
       ctx.save(); ctx.translate(C.x, C.y); ctx.scale(1 / C.k, 1 / C.k); // 화면 좌표 (카메라 해제)
       ctx.imageSmoothingEnabled = false; ctx.textBaseline = 'middle';
+      drawTense(ctx, b, D, V);
       drawBoard(ctx, b, D, V.x + 4, V.y + 2);
       drawMini(ctx, b, D, V.x + V.w - 70, V.y + 2);
+      drawCaption(ctx, b, D, V);
       const M = D.msg;
       if (M) {
         const t = M.t, inn = Math.min(1, t / 0.16), out = t > M.dur - 0.3 ? Math.max(0, (M.dur - t) / 0.3) : 1, a = inn * out, cy = V.y + V.h * 0.42, h = 50 * easeOut(inn);
@@ -977,6 +1050,31 @@
     const cx = x0 + 90, cy = y0 + 40; // 주자 다이아몬드
     for (let k = 1; k <= 3; k++) { const px = cx + (k === 1 ? 7 : k === 3 ? -7 : 0), py = cy - (k === 2 ? 7 : 0); ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI / 4); ctx.fillStyle = runnerAt(D, k) || (D.pend && D.pend.k === k) ? '#ffe27a' : 'rgba(255,255,255,0.2)'; ctx.fillRect(-3, -3, 6, 6); ctx.restore(); }
   }
+  // 긴장 연출 (화면 좌표): 접전 슬로모션·긴장 투구 때 가장자리 어둡게 + 배지
+  function drawTense(ctx, b, D, V) {
+    const L = slowOn(D), T = D.tense, pitching = (D.phase === 'pitch' || D.phase === 'pause') && T && T.lv;
+    let a = 0;
+    if (L) a = 0.55; else if (pitching) a = (T.lv >= 2 ? 0.36 : 0.22) * (0.8 + 0.2 * Math.sin(D.clock * 9));
+    if (a > 0) {
+      const g = 28, x0 = V.x, y0 = V.y, w = V.w, h = V.h; ctx.fillStyle = '#000000';
+      for (let i = 0; i < g; i += 2) { ctx.globalAlpha = a * (1 - i / g) * 0.5; ctx.fillRect(x0, y0 + i, w, 2); ctx.fillRect(x0, y0 + h - i - 2, w, 2); ctx.fillRect(x0 + i, y0, 2, h); ctx.fillRect(x0 + w - i - 2, y0, 2, h); }
+      ctx.globalAlpha = 1;
+    }
+    const tag = L ? '접전!' : pitching ? T.tag : '';
+    if (tag) { const x = V.x + 4 + 108 + 6, y = V.y + 10, hot = !!L || T.lv >= 2, blink = hot && Math.floor(D.clock * 6) % 2;
+      ctx.font = `bold 9px ${FONT}`; ctx.textAlign = 'left'; const w = ctx.measureText(tag).width + 10;
+      ctx.fillStyle = hot ? (blink ? '#ff5a4a' : '#c8302a') : 'rgba(14,16,24,0.9)'; ctx.fillRect(x, y - 7, w, 14);
+      ctx.fillStyle = hot ? '#ffffff' : '#ffe27a'; ctx.fillText(tag, x + 5, y); }
+  }
+  // 실황 자막: 화면 아래쪽 띠 (왼쪽에서 밀려 들어옴)
+  function drawCaption(ctx, b, D, V) {
+    const C = D.cap; if (!C) return; const t = D.clock - C.t0; if (t > C.dur || t < 0) return;
+    const a = Math.min(1, t / 0.2) * Math.min(1, (C.dur - t) / 0.4), y = V.y + V.h - 22, sx = (1 - Math.min(1, t / 0.25)) * 30;
+    ctx.font = `bold 10px ${FONT}`; ctx.textAlign = 'left'; const txt = '📣 ' + C.txt, w = Math.min(V.w - 16, ctx.measureText(txt).width + 18);
+    ctx.globalAlpha = 0.85 * a; ctx.fillStyle = '#0e1018'; ctx.fillRect(V.x + 8 - sx, y - 9, w, 18);
+    ctx.globalAlpha = a; ctx.fillStyle = '#ffe27a'; ctx.fillRect(V.x + 8 - sx, y - 9, 3, 18);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(txt, V.x + 15 - sx, y + 1); ctx.globalAlpha = 1;
+  }
   function drawMini(ctx, b, D, x0, y0) { // 미니맵: 구장 + 공 + 선수
     const f = fieldCanvas(), sx = 118, sy = 176, sw = 643, sh = 864, k = 66 / sw, h = sh * k;
     ctx.fillStyle = 'rgba(14,16,24,0.82)'; ctx.fillRect(x0 - 1, y0 - 1, 68, h + 2);
@@ -999,7 +1097,9 @@
     const V = view || { x: 0, y: 112, w: 360, h: 410 }; b.bsbView = V; b._bsbCam = true;
     let cx, cy, k, fast = false;
     const R = D.hr, hrCam = R && D.ball && (D.ball.st === 'hrfly' || (R.outT >= 0 && D.clock - R.outT < 0.9));
-    if (hrCam) { // 홈런 타구: 공을 빠르게 따라가 펜스 너머로 사라지는 것까지 보여줌
+    const SL = slowOn(D);
+    if (SL && !hrCam) { cx = SL.x; cy = SL.y - 16; k = 1.55; fast = true; } // 접전: 베이스를 당겨 봄
+    else if (hrCam) { // 홈런 타구: 공을 빠르게 따라가 펜스 너머로 사라지는 것까지 보여줌
       const q = D.ball.st === 'hrfly' ? hrPos(R, Math.min(1, R.k + 0.12)) : hrPos(R, 1);
       cx = q.x; cy = q.y - q.z * 0.5; k = 0.95; fast = true;
     } else if (D.phase === 'live' || D.halt || (D.phase === 'after' && b.cam && b.cam.live)) {
@@ -1056,5 +1156,12 @@
 
   STAGE_HOOKS.push(BB);
   if (window.StageExt4 && window.StageExt4.FX_HOOKS) window.StageExt4.FX_HOOKS.push(BB);
-  window.BASEBALL = { BB, updateCam, jumpLift, BASES, SPOT, FPOS, S: S0, cine, drawCineCanvas };
+  // 화면 진행 속도 배율 (시뮬레이션 결과와 무관): 접전 슬로모션, 긴장 높은 투구의 와인드업
+  function timeK(b) {
+    const D = b && b.bsb; if (!D || !D.on || b.over) return 1;
+    const L = slowOn(D); if (L) { const T = D.clock - L.t0; return T < 0.06 ? 1 - (1 - SLOW.k) * T / 0.06 : SLOW.k; }
+    if (D.phase === 'pitch' && D.tense && D.tense.lv && D.pitch && D.pitch.t < D.pitch.rel) return SLOW.tenseK[D.tense.lv];
+    return 1;
+  }
+  window.BASEBALL = { BB, updateCam, timeK, jumpLift, BASES, SPOT, FPOS, S: S0, cine, drawCineCanvas };
 })();

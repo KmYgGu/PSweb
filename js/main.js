@@ -469,8 +469,9 @@
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (RP.on) RP.frame(dt);
     else if (battle) {
-      battle.updateVisual(dt);
-      acc += dt * speed;
+      const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
+      battle.updateVisual(dt * tk);
+      acc += dt * speed * tk;
       let n = 0;
       seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
       updateHud(dt);
@@ -608,10 +609,11 @@
       if (this.banner > 0) { this.banner -= dt; if (this.banner <= 0) { $('#rpBanner').classList.add('hidden'); this.play(true); } }
       else if (this.playing && !this.drag) {
         const end = this.stopAt != null ? this.stopAt : this.range[1];
-        this.acc += dt * this.spd; let n = 0;
+        const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션 (실전과 같게)
+        this.acc += dt * this.spd * tk; let n = 0;
         const mute = this.spd > 2 || this.acc > STEP * 8; if (mute) Sfx.hold(true); // 고배속(×2 초과)·밀린 프레임 몰아 돌리기: 소리 폭주 방지
         try { while (this.acc >= STEP && n < 400) { if (battle.time >= end - 1e-9) { this.pause(); if (this.stopAt != null) { this.stopAt = null; toast('하이라이트 끝 — ★로 다시 보기'); } break; } this.step1(); this.acc -= STEP; n++; } } finally { if (mute) Sfx.hold(false); }
-        battle.updateVisual(dt * this.spd);
+        battle.updateVisual(dt * this.spd * tk);
       }
       updateHud(dt * (this.playing ? this.spd : 1)); this.ui();
     },
