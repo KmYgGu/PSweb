@@ -42,6 +42,12 @@
   const HX = S0.home.x, HY = S0.home.y, rel = (dx, dy) => [HX + dx, HY + dy]; // 홈 기준 좌표
   const SPOT = { bat: { x: HX - 23, y: HY + 2 }, pit: { x: S0.mound.x, y: S0.mound.y }, batSub: { x: HX - 76, y: HY + 48 }, pitSub: { x: S0.mound.x + 50, y: S0.mound.y + 26 } };
   const FPOS = { C: rel(0, 36), '1B': rel(169, -174), '2B': rel(75, -263), SS: rel(-75, -263), '3B': rel(-169, -174), LF: rel(-185, -420), CF: rel(0, -504), RF: rel(185, -420) };
+  // 타자에 맞춘 수비 위치: 장타자(공격력 높음)면 내야·외야가 뒤로, 약한 타자면 앞으로 당김 (포수 제외). 타자는 반 이닝 동안 같으므로 그 동안 고정
+  function fp(D, pos) {
+    const p = FPOS[pos], u = D && D.batU; if (pos === 'C' || !u) return p;
+    const k = clamp(((u.st && u.st.atk) || 32) / 16 - 2, -1, 1), dep = pos === 'LF' || pos === 'CF' || pos === 'RF' ? 46 : 20, dx = p[0] - HX, dy = p[1] - HY, L = hyp(dx, dy) || 1;
+    const q = clampField(p[0] + dx / L * dep * k, p[1] + dy / L * dep * k, 0); return [q.x, q.y];
+  }
   const ORDER = ['C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
   const COVER = { C: rel(0, 14), '1B': [BASES[1].x + 6, BASES[1].y - 2], '2B': [BASES[2].x + 6, BASES[2].y + 2], SS: rel(-55, -213), '3B': [BASES[3].x - 6, BASES[3].y - 2] };
   const sprayOf = (x, y) => Math.atan2(x - S0.home.x, S0.home.y - y); // 0 = 2루 방향, + = 1루 쪽
@@ -184,21 +190,23 @@
       BB.flushPend(b, D); D.hr = null; D.jmp = null; // 플레이 볼: 지난 플레이에서 세이프된 자리에 주자 등장
       BB.clearAilments(b, D);
       const pu = D.pitU, bu = D.batU, ps = pu.st, bs = bu.st, nSk = (pu.skills || []).length;
-      const brk = Math.random() < clamp(0.12 + 0.07 * nSk, 0.12, 0.6);         // 변화구 확률 ~ 스킬 수
+      // 볼카운트 읽기: 3볼 = 투수는 존에 넣고 타자는 기다림 / 2스트라이크 = 투수는 유인구(변화구·존 밖), 타자는 존 밖도 커트 / 타자 유리 카운트 = 노려 침
+      const nb = D.balls, ns = D.strikes, full = nb >= 3, two = ns >= 2, ahead = nb > ns && !full;
+      const brk = Math.random() < clamp((0.12 + 0.07 * nSk) * (two && !full ? 1.4 : full ? 0.5 : 1), 0.08, 0.7); // 변화구 확률 ~ 스킬 수 · 카운트
       const fast = (230 + ps.atk * 4.2) * 1.2, spd = brk ? fast * 0.8 : fast;          // 직구 속도 ~ 공격력
       const kmh = Math.round((118 + ps.atk * 0.85) * (brk ? 0.83 : 1));
-      const zone = Math.random() < (brk ? 0.52 : 0.6);
-      const swing = Math.random() < (zone ? 0.82 : 0.28);
+      const zone = Math.random() < clamp((brk ? 0.52 : 0.6) + (full ? 0.12 : 0) + (nb === 2 && !ns ? 0.06 : 0) - (two && !full ? 0.12 : 0), 0.3, 0.9);
+      const swing = Math.random() < (full && !ns ? (zone ? 0.55 : 0.06) : two ? (zone ? 0.93 : 0.34) : ahead ? (zone ? 0.88 : 0.18) : (zone ? 0.82 : 0.28));
       let cp = D.S.contact.base + (bs.def || 0) * 0.005 + Math.min(bs.range || 50, 140) * 0.0011 - (ps.atk - 30) * 0.004 - (brk ? 0.07 : 0); // 타격 확률 ~ 방어력·사거리
       if (!zone) cp *= D.S.contact.out; cp = clamp(cp, D.S.contact.min, D.S.contact.max);
-      const contact = swing && Math.random() < cp, foul = contact && Math.random() < D.S.contact.foul;
+      const contact = swing && Math.random() < cp, foul = contact && Math.random() < D.S.contact.foul + (two && !zone ? 0.18 : two ? 0.06 : 0); // 2스트라이크: 존 밖 공은 커트(파울)로 버팀
       const kinds = ['커브', '슬라이더', '체인지업', '포크'], kname = brk ? kinds[Math.floor(Math.random() * kinds.length)] : '직구';
       const curve = brk ? (Math.random() < 0.5 ? -1 : 1) * rand(10, 20) : rand(-2, 2);
       const x1 = S0.home.x + (zone ? rand(-4, 4) : (Math.random() < 0.5 ? -1 : 1) * rand(9, 15)), y1 = S0.home.y - 2;
       let hit = null;
       if (contact && !foul) { // 타구: 방향·종류·비거리 (비거리 ~ 공격력)
         const r = Math.random(), typ = r < 0.42 ? 'ground' : r < 0.72 ? 'line' : 'fly';
-        const pow = (150 + bs.atk * 7) * D.S.hitK * rand(0.6, 1.25) * (typ === 'fly' ? 1.15 : typ === 'line' ? 1 : 0.55);
+        const pow = (150 + bs.atk * 7) * D.S.hitK * rand(0.6, 1.25) * (typ === 'fly' ? 1.15 : typ === 'line' ? 1 : 0.55) * (ahead && zone ? 1.08 : two ? 0.92 : 1); // 노려 친 공은 멀리, 2스트라이크 커트 스윙은 약하게
         hit = { typ, a: rand(-0.72, 0.72), dist: pow };
       } else if (foul) hit = { typ: 'foul', a: (Math.random() < 0.5 ? -1 : 1) * rand(0.95, 1.6), dist: rand(90, 200) * D.S.hitK };
       const x0 = pu.x + 6, y0 = pu.y - 2, L = hyp(x1 - x0, y1 - y0);
@@ -246,8 +254,8 @@
     },
     startLive(b, D) {
       D.phase = 'live'; D.playT = 0; D.hitType = D.ball.typ; D.safeB = 0; D.safeT = 0; D.safeN = 0; D.relK = 0; D.setT = 0; b.stats.bsHit++; BB.clearAilments(b, D, false);
-      for (const n of D.fielders) { n.rt = 0.12 + (n.pos === 'C' ? 0.2 : 0); n.recv = null; }
-      for (const r of D.runners) { r.st = 'on'; r.aggr = rand(0.85, 1.3); }
+      for (const n of D.fielders) { n.rt = 0.12 + (n.pos === 'C' ? 0.2 : 0); n.recv = null; n.sx = n.x; n.sy = n.y; } // sx/sy: 타격 순간 위치 (포구 난도 = 뛰어간 거리)
+      for (const r of D.runners) { r.st = 'on'; r.aggr = rand(0.9, 1.5); }
       for (const u of b.u) u.bsV = null;
       sys(b, `${D.batU.def.name} 타격! (${{ ground: '땅볼', line: '라인드라이브', fly: '뜬공' }[D.ball.typ]})`);
     },
@@ -351,7 +359,9 @@
           if (!B.bounced && B.z < 36 && d < D.S.catchR + 4 * (rise(D) - 1)) {
             if (B.tried && B.tried.includes(n.id)) continue; (B.tried || (B.tried = [])).push(n.id);
             D.jmp = { id: n.id, t0: D.clock, typ: B.typ, d }; // 포구 시도 기록 (점프 연출의 착지용, 판정과 무관)
-            if (Math.random() < (D.S.catchP[B.typ] ?? 0.7) * Math.min(1.25, 0.85 + 0.15 * rise(D))) { BB.give(b, D, n); b.stats.bsFly++; b.text(n.x, n.y - 50, '잡았다!', '#ffe27a', 10); return BB.endPlay(b, D, 'F', n.def.name); }
+            // 포구 난도: 제자리 근처(정면 타구)면 쉽고, 멀리 뛰어가 잡을수록·빠른 타구일수록 어려움
+            const run = hyp(n.x - (n.sx ?? n.x), n.y - (n.sy ?? n.y)), fast = hyp(B.vx, B.vy) > 380 ? 0.08 : 0, ease = 1.3 - 0.42 * clamp(run / 200, 0, 1) - fast;
+            if (Math.random() < clamp((D.S.catchP[B.typ] ?? 0.7) * Math.min(1.25, 0.85 + 0.15 * rise(D)) * ease, 0.15, 0.97)) { BB.give(b, D, n); b.stats.bsFly++; b.text(n.x, n.y - 50, '잡았다!', '#ffe27a', 10); return BB.endPlay(b, D, 'F', n.def.name); }
             B.bounced = true; B.vx *= 0.25; B.vy *= 0.25; B.vz = 80; n.stun = 0.35; b.stats.bsDrop++; b.text(n.x, n.y - 50, '놓쳤다!', '#c8d0e0', 10); continue; // 포구 실패: 공을 떨어뜨림
           }
           if (B.bounced && B.z < 18 && d < D.S.pickR + 3 * (rise(D) - 1)) { BB.give(b, D, n); break; }
@@ -370,7 +380,7 @@
         if (!H.kind) { // 투수: 이동은 평소대로(무작위). 타자가 멀면 타자에 가까운 수비수에게 송구
           H.bsPassCd = (H.bsPassCd || 0) - dt;
           const TT = BB.targets(b, D), t = BB.pickChase(H, TT);
-          if (t && H.bsPassCd <= 0 && !H.blocked('blocksAct')) { const d0 = hyp(H.x - t.x, H.y - t.y); if (d0 > D.S.keepR) { const L = BB.leadPass(D, H, TT, 0); if (L && L.gap < L.hold - 50) BB.throwTo(b, D, H, L.f, L.q); else H.bsPassCd = 0.3; } }
+          if (t && H.bsPassCd <= 0 && !H.blocked('blocksAct')) { const d0 = hyp(H.x - t.x, H.y - t.y); if (d0 > D.S.keepR) { const L = BB.leadPass(D, H, TT, 0); if (L && L.gap < L.hold - 30) BB.throwTo(b, D, H, L.f, L.q); else H.bsPassCd = 0.3; } }
         }
       }
       // 타자: 베이스를 밟으면 안타 (1·2·3루 어디든)
@@ -485,7 +495,7 @@
       if (Math.abs(dx) > 2) n.face = dx > 0 ? 1 : -1; n.back = dy < -Math.abs(dx) * 0.6;
       return d - st < 1.5;
     },
-    fieldersHome(D, dt) { for (const n of D.fielders) if (n.stun <= 0) BB.moveNpc(D, n, FPOS[n.pos][0], FPOS[n.pos][1], 0.7, dt); for (const r of D.runners) { const s = baseSpot(r.base); BB.moveNpc(D, r, s.x, s.y, 0.8, dt); } },
+    fieldersHome(D, dt) { for (const n of D.fielders) if (n.stun <= 0) { const c = fp(D, n.pos); BB.moveNpc(D, n, c[0], c[1], 0.7, dt); } for (const r of D.runners) { const s = baseSpot(r.base); BB.moveNpc(D, r, s.x, s.y, 0.8, dt); } },
     fieldAI(b, D, dt) {
       const B = D.ball, H = B.st === 'held' ? B.holder : null, T = BB.targets(b, D);
       const busy = new Set();
@@ -493,11 +503,11 @@
         busy.add(H); H.passCd = (H.passCd || 0) - dt;
         if (H.rt <= 0 && H.stun <= 0) {
           const t = BB.pickChase(H, T);
-          if (t) {
+          if (t) { // 송구 기준 완화 (v2026.11.11): 주자를 잡을 수 있는 송구(차이 30 미만)면 더 과감히
             const d0 = hyp(H.x - t.x, H.y - t.y);
             if (d0 < D.S.keepR) BB.moveNpc(D, H, t.x, t.y, 0.62, dt);
-            else { const L = H.passCd <= 0 ? BB.leadPass(D, H, T, 0.55) : null; if (L && L.gap < L.hold - 40) BB.throwTo(b, D, H, L.f, L.q); else { const P = BB.predict(D, t, 0.3); BB.moveNpc(D, H, P.x, P.y, 0.55, dt); } }
-          } else BB.moveNpc(D, H, COVER[H.pos] ? COVER[H.pos][0] : FPOS[H.pos][0], COVER[H.pos] ? COVER[H.pos][1] : FPOS[H.pos][1], 0.6, dt);
+            else { const L = H.passCd <= 0 ? BB.leadPass(D, H, T, 0.55) : null; if (L && L.gap < L.hold - 22 + (L.t.kind && L.gap < 30 ? 15 : 0)) BB.throwTo(b, D, H, L.f, L.q); else { const P = BB.predict(D, t, 0.3); BB.moveNpc(D, H, P.x, P.y, 0.55, dt); } }
+          } else { const c = COVER[H.pos] || fp(D, H.pos); BB.moveNpc(D, H, c[0], c[1], 0.6, dt); }
         }
       }
       // 송구 받는 수비수: 공 도착 지점으로
@@ -517,7 +527,7 @@
       for (const n of D.fielders) { // 나머지: 베이스 커버 / 수비 위치
         if (n.rt > 0) { n.rt -= dt; continue; }
         if (busy.has(n) || n.stun > 0) continue;
-        const c = COVER[n.pos] || FPOS[n.pos]; BB.moveNpc(D, n, c[0], c[1], 0.65, dt);
+        const c = COVER[n.pos] || fp(D, n.pos); BB.moveNpc(D, n, c[0], c[1], 0.65, dt);
       }
     },
     // 수비 쪽이 다음 베이스에 공을 가져가는 데 걸리는 시간 (주자 판단용, 대략)
@@ -623,7 +633,7 @@
         banner(D, `${D.inning}회${D.half ? '말' : '초'}`, `${D.bat ? '2P' : '1P'} ${teamName(b, D.bat)} 공격`, TEAM_COL[D.bat], 1.4);
         BB.place(b, D); D.phase = 'setup'; D.pt = 0; D.setupDur = 1.4; D.ball = null; return;
       }
-      BB.place(b, D); for (const n of D.fielders) { n.x = FPOS[n.pos][0]; n.y = FPOS[n.pos][1]; n.vx = n.vy = 0; n.recv = null; }
+      BB.place(b, D); D.batU = role(b, D.bat); for (const n of D.fielders) { const c = fp(D, n.pos); n.x = c[0]; n.y = c[1]; n.vx = n.vy = 0; n.recv = null; }
       for (const r of D.runners) { const s = baseSpot(r.base); r.x = s.x; r.y = s.y; r.vx = r.vy = 0; }
       BB.newPitch(b, D);
     },
@@ -1032,6 +1042,17 @@
     u.boost *= Math.pow(0.08, dt); u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
     if (u.dead) u.deadT += dt; u.moving = false;
   };
+
+  // 공을 치기 전(준비·투구·볼 판정·홈런 정지·플레이 종료 연출)에는 서로 절대 공격할 수 없음:
+  //  피해·고정 피해(자기·아군 피해 포함, 예: 육군보병 수류탄 자폭), 상대가 거는 해로운 상태이상, 넉백·끌어오기 전부 무효 (예약 타이머·투사체·스테이지 훅 경로 포함)
+  const held = b => { const D = b.bsb; return !!(D && D.on && !D.halt && D.phase !== 'live' && !b.over); };
+  window.BSB_HELD = held; // 듀얼리스트 턴 진행·라미아 개전 산개 등 캐릭터 파일의 스텝 훅도 이 판정으로 멈춤
+  const foe = (s, t) => s && t && s !== t && s.team !== t.team;
+  const _dmg = Pp.damage; Pp.damage = function (src, tgt, amt, o) { if (held(this) && src && tgt) return 0; return _dmg.call(this, src, tgt, amt, o); };
+  const _fix = Pp.fixedDamage; Pp.fixedDamage = function (src, tgt, amt, o) { if (held(this) && src && tgt) return 0; return _fix.call(this, src, tgt, amt, o); };
+  const _st = Pp.applyStatus; Pp.applyStatus = function (tgt, id, dur, src, o) { const d = STATUS_DEFS[id]; if (held(this) && d && !d.positive && foe(src, tgt)) return null; return _st.call(this, tgt, id, dur, src, o); };
+  const _kb = Pp.knockback; Pp.knockback = function (tgt, ...a) { if (held(this)) return; return _kb.call(this, tgt, ...a); };
+  const _pl = Pp.pull; Pp.pull = function (tgt, ...a) { if (held(this)) return; return _pl.call(this, tgt, ...a); };
 
   STAGE_HOOKS.push(BB);
   if (window.StageExt4 && window.StageExt4.FX_HOOKS) window.StageExt4.FX_HOOKS.push(BB);

@@ -802,8 +802,7 @@
     step(b, dt) {
       for (const u of b.u) {
         if (!u.duel) continue;
-        tick(b, u, dt);
-        updateEffects(b, u, dt);
+        if (!(window.BSB_HELD && window.BSB_HELD(b))) { tick(b, u, dt); updateEffects(b, u, dt); } // 야구장: 공을 치기 전엔 턴 진행·카드 사용·몬스터 공격 정지
         checkExodia(b, u);
         for (const p of u.duel.pops) p.t += dt;
         u.duel.pops = u.duel.pops.filter(p => p.t < p.dur);

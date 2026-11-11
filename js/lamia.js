@@ -226,7 +226,7 @@
         if (u.def.id !== ID) continue;
         cleanup(b, u);
         const s = standOf(u); if (s) { s.maxHp = u.maxHp; s.hp = u.hp; } else if (u.lmStand) u.lmStand = null;
-        if (opening(b, u)) { const ex = dt * (OPEN.cd - 1) * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= ex; // 쿨타임 1.6배 빠르게
+        if (opening(b, u) && !(window.BSB_HELD && window.BSB_HELD(b))) { // 야구장: 공을 치기 전엔 개전 산개·쿨타임 가속 없음 const ex = dt * (OPEN.cd - 1) * u.mult('cdRate'); for (let i = 0; i < u.skillT.length; i++) u.skillT[i] -= ex; // 쿨타임 1.6배 빠르게
           if (!u.lmOpened && b.time >= OPEN.first) { const e = mainFoe(b, u), i = u.skills.findIndex(k => k.id === 'lmSpread');
             if (e && i >= 0 && !u.lmSp && !u.lmLev && !u.lmCircle && !u.stunned && !u.statuses.some(x => x.id === 'lmFrozen' || x.id === 'stun')) { u.lmOpened = true; // 개전 즉시 산개
               b.text(u.x, u.y - 78, '절대 계산!', '#fff4c0', 11); SKILLS.lmSpread.use(u, e, b, u.skills[i]); u.skillT[i] = u.skills[i].cd; } } }
