@@ -131,6 +131,11 @@
     okFace: '............/...xxxxxx.../..xzzzzzzx../..xzxzxzxx../..xzxzxzxx../..xzzzzzzx../..xxxxxxxx../...xxxxxx..y/....xxxx..y./.........y../..y.y..y..../...y.y......',
     okBarrage: '.xxxx......./xzzzzx....../xzxzxx..xxxx/xxxxxx.xzzzz/.xxxx..xzxzx/.......xxxxx/.xxxx...xxxx/xzzzzx....../xzxzxx..y.y./xxxxxx...y../.xxxx...y.y./............',
     okWarp: 'xx........xx/xz.y.y.y.xzx/xx........xx/............/k.k.k.k.k.k./.k.k.k.k.k.k/k.k.k.k.k.k./............/....xxxx..../...xzzzzx.../...xzzzzx.../...xxxxxx...',
+    // 죠스케 (js/josuke.js)
+    jsRestore: 'g....m....g./.g...m...g../..g..m..g.../............/mmm.nnnn.mmm/....nNNn..../....nNNn..../....nnnn..../............/..g..m..g.../.g...m...g../g....m....g.',
+    jsFix: '............/..mmm..mmm../.mmmmmmmmmm./.mmmmwwmmmm./.mmmmwwmmmm./.mmwwwwwwmm./.mmwwwwwwmm./..mmmwwmmm../...mmwwmm.../....mmmm..../.....mm...../............',
+    jsShard: '............/...mmmmmm.../..m......m../.m........m./.m........m./.m.....n..m./.m....nNn.../.m...nNNNn../.m........../mwm........./.mw........./..m.........',
+    jsComb: '...hhhhhh.../.hhhhhhhhh../hhhhhhhhhh../..hhhhhhhh../...ssssss.../...ssssss.../............/.YYYYYYYYYY./.YYYYYYYYYY./.Y.Y.Y.Y.Y../.Y.Y.Y.Y.Y../............',
     // 듀얼리스트 (유희·카이바·구울즈): 드로우 / 몬스터 / 마법 / 함정
     dlDraw: '..y........./.yyy......../yyyyy......./..y.wwwwwww./..y.wnnnnnw./....wnNNNnw./....wnNYNnw./....wnNNNnw./....wnnnnnw./....wnnnnnw./....wwwwwww./............',
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
