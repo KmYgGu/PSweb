@@ -136,6 +136,14 @@
     jsFix: '............/..mmm..mmm../.mmmmmmmmmm./.mmmmwwmmmm./.mmmmwwmmmm./.mmwwwwwwmm./.mmwwwwwwmm./..mmmwwmmm../...mmwwmm.../....mmmm..../.....mm...../............',
     jsShard: '............/...mmmmmm.../..m......m../.m........m./.m........m./.m.....n..m./.m....nNn.../.m...nNNNn../.m........../mwm........./.mw........./..m.........',
     jsComb: '...hhhhhh.../.hhhhhhhhh../hhhhhhhhhh../..hhhhhhhh../...ssssss.../...ssssss.../............/.YYYYYYYYYY./.YYYYYYYYYY./.Y.Y.Y.Y.Y../.Y.Y.Y.Y.Y../............',
+    // 메가톤맨 죠나단 죠죠 (js/jonathan.js)
+    jjCoward: '............/y...y...y.../.y...y...y../..y...y...y./...yy..yy..y/..y...y...y./.y...y...y../y...y...y.../............/.xxxxxxxxxx./.xzzzzzzzzx./.xxxxxxxxxx.',
+    jjHate: '.....r....../....rrr...../...r.r.r..../.....r....../..ssssssss../.ss.k..k.ss./.ss..kk..ss./.ssssssssss./.sss.kk.sss./.ss.k..k.ss./..ssssssss../............',
+    jjSpeedwagon: '............/....NNNN..../...NNNNNN.../...NNNNNN.../...nnnnnn.../lwlwlwlwlwlw/wgggggggggw./.lwlwlwlwlw./............/..YYYYYYYY../..YsssssY.../...ssrsss...',
+    jjScarlet: '....rrrr..../...roooor.../..roooooor../..rossssor../..rsssssor../..rssssssr../...rssssr.../....rrrr..../.r...rr...r./..r..rr..r../...r.rr.r.../....r..r....',
+    jjWater: '............/.....yy...../....y..y..../...y.yy.y.../....y..y..../.....yy...../............/cc..cc..cc../.cccc.cccc.c/C..CC..CC..C/.CC..CC..CC./............',
+    jjSilver: '....l.l.l.../...lllllll../...lwlwlwl../...lllllll../..llwwwwll../..lllllll.../...lllll..y./....lll..yy./.........y../........yyy./.........y../........y...',
+    jjHeart: '.y........y./..y......y../...YY..YY.../..YyyYYyyY../..YyyyyyyY../..YyyyyyyY../...YyyyyY.../....YyyY..../.....YY...../..y......y../.y........y./............',
     // 듀얼리스트 (유희·카이바·구울즈): 드로우 / 몬스터 / 마법 / 함정
     dlDraw: '..y........./.yyy......../yyyyy......./..y.wwwwwww./..y.wnnnnnw./....wnNNNnw./....wnNYNnw./....wnNNNnw./....wnnnnnw./....wnnnnnw./....wwwwwww./............',
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
