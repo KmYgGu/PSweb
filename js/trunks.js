@@ -22,8 +22,8 @@
   function voice(b, u, txt, color, size) { b.hooks.onVoice && b.hooks.onVoice(u, txt, null); if (color) b.text(u.x, u.y - 74 - u.pad * 2, txt.length > 14 ? txt.slice(0, 13) + '…' : txt, color, size || 9); }
   const D = {
     trough: { failK: 1.3, failCd: 1.5, passLife: 0.6 },
-    fridge: { life: 12, w: 18, h: 14, drink: 1.0, cd: 4, heal: 0.08, poisonDur: 4, poisonPow: 6, weights: [0.45, 0.35, 0.2] },
-    sword: { dur: 5, mult: 1.8, reach: 16, throwDist: 220, throwT: 1.0, throwH: 54, throwK: 1.0 },
+    fridge: { life: 12, w: 18, h: 14, drink: 1.0, cd: 4, heal: 0.08, healMin: 0.3, poisonDur: 4, poisonPow: 6, poisonMax: 3 }, // 음료 3종은 냉장고마다 하나씩 (꺼낸 뒤 12초에 걸쳐 회복 ×1→×0.3, 독 ×1→×3)
+    sword: { dur: 5, mult: 1.8, reach: 16, throwDist: 220, throwT: 1.0, throwH: 54, throwK: 1.0, swingT: 1.2 },
     ignore: { dur: 2.5, hop: 0.4 },
     masenko: { spd: 420, mult: 1.3, life: 1.2, r: 9 },
   };
@@ -32,22 +32,27 @@
   // ---------- 상태: 음료수 마시는 중 (정지·무적, 끝나면 효과) ----------
   STATUS_DEFS.trDrink = { name: '음료수', color: '#bfe8ff', positive: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true,
     onApply(u) { u.action = null; },
-    onExpire(u, b, s) { drinkEffect(b, u, s.trKind, s.src); } };
+    onExpire(u, b, s) { drinkEffect(b, u, s.trKind, s.src, s.bl); if (s.bl && !s.bl.dead && s.bl.life > 0 && !s.bl.stock.length) { s.bl.life = 0; b.smoke(s.bl.x + s.bl.w / 2, s.bl.y, '#d8e8f0', 8); b.hooks.onSystem && b.hooks.onSystem('냉장고가 텅 비었습니다!'); } } };
+  STATUS_DEFS.trGrabbed = { name: '붙잡힘', color: '#ffb0a0', noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
+  STATUS_DEFS.trSwinging = { name: '자이언트 스윙', color: '#ffe0a0', positive: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
   const KIND_NAME = ['회복 음료', '쿨타임 음료', '독 음료'];
-  function drinkEffect(b, u, k, src) {
+  const ageK = bl => bl ? clamp((bl.age || 0) / D.fridge.life, 0, 1) : 0; // 냉장고를 꺼낸 뒤 지난 비율 (0 → 1)
+  function drinkEffect(b, u, k, src, bl) {
     if (u.dead || b.over) return;
-    if (k === 0) { b.heal(u, u.maxHp * D.fridge.heal); b.text(u.x, u.y - 70, '꿀꺽! 회복', '#9cf0a0', 9); }
+    const age = ageK(bl);
+    if (k === 0) { b.heal(u, u.maxHp * D.fridge.heal * (1 - (1 - D.fridge.healMin) * age)); b.text(u.x, u.y - 70, age > 0.5 ? '꿀꺽… 미지근해' : '꿀꺽! 회복', '#9cf0a0', 9); }
     else if (k === 1) { const L = []; u.skills.forEach((s, i) => { if (!s.hidden && u.skillT[i] > 0.5) L.push(i); });
       if (L.length) { const i = L[Math.floor(Math.random() * L.length)]; u.skillT[i] = 0; b.text(u.x, u.y - 70, `꿀꺽! ${u.skills[i].name} 준비`, '#bfe8ff', 8); }
       else { b.heal(u, u.maxHp * D.fridge.heal * 0.5); b.text(u.x, u.y - 70, '꿀꺽!', '#bfe8ff', 9); } }
-    else { b.applyStatus(u, 'poison', D.fridge.poisonDur, src && src !== u ? src : u, { power: D.fridge.poisonPow }); b.text(u.x, u.y - 70, '우웩! 독이다!', '#b8f08a', 10);
+    else { b.applyStatus(u, 'poison', D.fridge.poisonDur, src && src !== u ? src : u, { power: Math.round(D.fridge.poisonPow * (1 + (D.fridge.poisonMax - 1) * age)) }); b.text(u.x, u.y - 70, age > 0.5 ? '우웩! 상했어!' : '우웩! 독이다!', '#b8f08a', 10);
       for (const bl of b.buildings) if (bl.trFridge && !bl.dead) { bl.life = 0; b.smoke(bl.x + bl.w / 2, bl.y + bl.h / 2 - 10, '#d8e8f0', 12); b.hooks.onSystem && b.hooks.onSystem('냉장고가 사라졌습니다!'); } }
     b.stats['trDrink' + k] = (b.stats['trDrink' + k] || 0) + 1;
   }
-  function startDrink(b, u, owner) {
-    const w = D.fridge.weights, r = Math.random(), k = r < w[0] ? 0 : r < w[0] + w[1] ? 1 : 2;
-    const s = b.applyStatus(u, 'trDrink', D.fridge.drink, owner, { noResistScale: true }); if (!s) return;
-    s.trKind = k; s.src = owner; u.trDrinkCd = b.time + D.fridge.cd; b.text(u.x, u.y - 58, `${KIND_NAME[k]}…`, '#e8f4ff', 8);
+  function startDrink(b, u, owner, bl) {
+    if (!bl || !bl.stock.length) return;
+    const k = bl.stock.splice(Math.floor(Math.random() * bl.stock.length), 1)[0]; // 남은 음료 중 무작위 하나 (같은 음료 두 번 없음)
+    const s = b.applyStatus(u, 'trDrink', D.fridge.drink, owner, { noResistScale: true }); if (!s) { bl.stock.push(k); return; }
+    s.trKind = k; s.src = owner; s.bl = bl; u.trDrinkCd = b.time + D.fridge.cd; b.text(u.x, u.y - 58, `${KIND_NAME[k]}…`, '#e8f4ff', 8);
   }
 
   // ---------- 피해 훅: 트랭크스루~ / 무시 / 음료수 무적 ----------
@@ -56,7 +61,6 @@
   Battle.prototype.damage = function (src, tgt, amt, o = {}) {
     if (tgt && tgt.status && tgt.status('trDrink') && src && src !== tgt) return 0; // 마시는 중: 무적
     if (isT(tgt) && src && src !== tgt && src.team !== tgt.team && !tgt.dead && !this.over && !o.dot && !o.reflected) {
-      if (tgt.buff('trIgnored')) return 0; // 무시: 상대는 트랭크스를 신경 쓰지 않음
       if (isRangedHit(o)) {
         const i = slotOf(tgt, 'trTrough');
         if (i >= 0 && tgt.skillT[i] <= 0) { // 트랭크스루~: 그냥 지나감
@@ -73,7 +77,14 @@
     }
     return oDmg.call(this, src, tgt, amt, o);
   };
-  const oFixed = Battle.prototype.fixedDamage; Battle.prototype.fixedDamage = function (src, tgt, amt, o) { if (tgt && tgt.status && tgt.status('trDrink') && src !== tgt) return 0; if (isT(tgt) && tgt.buff('trIgnored') && src && src.team !== tgt.team) return 0; return oFixed.call(this, src, tgt, amt, o); };
+  const oFixed = Battle.prototype.fixedDamage; Battle.prototype.fixedDamage = function (src, tgt, amt, o) { if (tgt && tgt.status && tgt.status('trDrink') && src !== tgt) return 0; return oFixed.call(this, src, tgt, amt, o); };
+  // 무시 중 방방 뛰다가(공중) 맞으면 날아감. 땅에 있을 땐 그냥 보통 피격
+  const oDmg2 = Battle.prototype.damage; Battle.prototype.damage = function (src, tgt, amt, o = {}) {
+    const hop = isT(tgt) && tgt.buff('trIgnored') && tgt.air && tgt.air.trHop && !tgt.dead;
+    const r = oDmg2.call(this, src, tgt, amt, o);
+    if (hop && r > 0 && !tgt.dead && !this.over && src && src.team !== tgt.team) { launchAway(this, tgt, src, 160, null, 0); this.stats.trHopHit = (this.stats.trHopHit || 0) + 1; }
+    return r;
+  };
   // 무시: 상대는 트랭크스에게 평타를 하지 않고, 몸도 부딪히지 않고 지나감
   const oCol = Battle.prototype.collide; Battle.prototype.collide = function (a, c) { if ((isT(a) && a.buff('trIgnored') && c.team !== a.team) || (isT(c) && c.buff('trIgnored') && a.team !== c.team)) return; return oCol.call(this, a, c); };
 
@@ -99,47 +110,63 @@
       this.stats.trSlash = (this.stats.trSlash || 0) + 1;
     });
   };
-  function swordEnd(u) { if (u.trSw && u.trSw.base != null) u.st.range = u.trSw.base; u.trSw = null; u.buffs = u.buffs.filter(x => x.type !== 'trSword'); }
-  function swordThrow(b, u, e) {
-    b.text(e.x, e.y - 70, '무효!', '#e8e8ff', 10); b.ring(e.x, e.y - 18, 3, 22, 0.25, '#ffffff');
-    swordEnd(u); u.action = null; u.push = null;
-    const a = angTo(e, u), q = b.clampPos(u.x + Math.cos(a) * D.sword.throwDist, u.y + Math.sin(a) * D.sword.throwDist, u.pad, u);
+  // 날아가기: 회전하며 dist 만큼 날아가 착지 (무시 중 공중 피격 · 자이언트 스윙 뒤 던지기 공통)
+  function launchAway(b, u, from, dist, dmgSrc, dmgK) {
+    const a = from ? angTo(from, u) : (u.facing > 0 ? Math.PI : 0), q = b.clampPos(u.x + Math.cos(a) * dist, u.y + Math.sin(a) * dist, u.pad, u);
+    u.action = null; u.push = null; u.buffs = u.buffs.filter(x => x.type !== 'trIgnored');
     u.air = { t: 0, dur: D.sword.throwT, h: D.sword.throwH, spin: true, fling: { x0: u.x, y0: u.y, x1: q.x, y1: q.y } };
     voice(b, u, '갸아아아아악!', '#ff9a8a', 12);
-    b.later(D.sword.throwT, () => { if (u.dead || b.over) return; b.damage(e, u, (e.st.atk || 30) * D.sword.throwK, { element: 'blunt', delivery: 'melee', noCrit: true, color: '#ffd0c8' }); b.dust(u.x, u.y); b.shake(2); });
+    if (dmgSrc) b.later(D.sword.throwT, () => { if (u.dead || b.over) return; b.damage(dmgSrc, u, (dmgSrc.st.atk || 30) * dmgK, { element: 'blunt', delivery: 'melee', noCrit: true, color: '#ffd0c8' }); b.dust(u.x, u.y); b.shake(2); });
+  }
+  function swordEnd(u) { if (u.trSw && u.trSw.base != null) u.st.range = u.trSw.base; u.trSw = null; u.buffs = u.buffs.filter(x => x.type !== 'trSword'); }
+  // 세 번째 참격: 상대가 막고 트랭크스를 붙잡음 → 자이언트 스윙 한 바퀴(1.2초) → 던짐
+  function swordThrow(b, u, e) {
+    b.text(e.x, e.y - 70, '무효!', '#e8e8ff', 10); b.ring(e.x, e.y - 18, 3, 22, 0.25, '#ffffff');
+    swordEnd(u); u.action = null; u.push = null; u.air = null;
+    b.applyStatus(u, 'trGrabbed', D.sword.swingT + 0.1, e, { noResistScale: true }); b.applyStatus(e, 'trSwinging', D.sword.swingT, e, { noResistScale: true });
+    u.trSwing = { e, t: 0, a0: angTo(e, u) }; b.text(e.x, e.y - 84, '붙잡았다!', '#ffe0a0', 11); voice(b, u, '어, 어라…?', '#ffd0c8', 9);
     b.stats.trThrown = (b.stats.trThrown || 0) + 1;
+  }
+  function swingStep(b, u, dt) {
+    const S = u.trSwing, e = S.e; S.t += dt;
+    if (u.dead || b.over || !e || e.dead || !b.u.includes(e)) { u.trSwing = null; u.statuses = u.statuses.filter(x => x.id !== 'trGrabbed'); return; }
+    const k = Math.min(1, S.t / D.sword.swingT), a = S.a0 + TAU * (k * k * (3 - 2 * k)), R = 26 + e.pad + u.pad; // 천천히 → 빠르게 → 천천히 한 바퀴
+    u.x = e.x + Math.cos(a) * R; u.y = e.y + Math.sin(a) * R * 0.7; u.kx = u.ky = 0; e.facing = Math.cos(a) >= 0 ? 1 : -1;
+    if (Math.random() < dt * 20) b.dust(u.x, u.y);
+    if (k >= 1) { u.trSwing = null; u.statuses = u.statuses.filter(x => x.id !== 'trGrabbed'); e.statuses = e.statuses.filter(x => x.id !== 'trSwinging');
+      b.shock(e.x, e.y - 18, 4, 30, '#ffe0a0', 0.3, 3); launchAway(b, u, e, D.sword.throwDist, e, D.sword.throwK); }
   }
 
   // ---------- 스킬 ----------
   SKILLS.trTrough = { desc: '쿨타임이 차 있으면 상대의 원거리 공격이 아무 피격 효과 없이 그냥 몸을 지나갑니다(투사체는 계속 날아감). 쿨타임 중에 원거리 공격을 맞으면 똑같이 외치지만 "거짓말?!" 하며 피해 ×1.3(1.5초에 한 번).', canUse: () => false, use() {} };
 
-  SKILLS.trFridge = { desc: '호이포이 캡슐로 근처에 냉장고(부서지지 않는 장애물, 12초)를 꺼내고 음료수를 마십니다. 음료수는 무작위로 A 체력 8% 회복(45%) / B 쿨타임 중인 스킬 하나 초기화(35%) / C 독 4초, 마시는 순간 냉장고가 사라짐(20%). 누구든(상대 포함) 냉장고에 부딪히면 4초에 한 번 마시며, 마시는 1초 동안 정지·무적.',
+  SKILLS.trFridge = { desc: '호이포이 캡슐로 근처에 냉장고(부서지지 않는 장애물, 12초)를 꺼내고 음료수를 마십니다. 냉장고에는 음료가 종류별로 하나씩(A 체력 회복 / B 쿨타임 중인 스킬 하나 초기화 / C 독 4초) 들어 있고 마실 때마다 남은 것 중 무작위. 꺼낸 뒤 시간이 지날수록 회복량은 줄고(최대 8% → 2.4%) 독 피해는 늘어남(최대 3배). 독을 마시거나 다 마시면 냉장고가 사라집니다. 누구든(상대 포함) 냉장고에 부딪히면 4초에 한 번 마시며, 마시는 1초 동안 정지·무적.',
     canUse: (u, e, d, b) => !b.buildings.some(bl => bl.trFridge && !bl.dead && bl.life > 0) && b.time > 3 && d > 60,
     use(u, e0, b, s) {
       const F = D.fridge; let x = u.x + u.facing * 30, y = u.y; let q = b.clampPos(x, y, 14, u);
       if (b.blockAt(q.x, q.y - 4, 16)) q = b.clampPos(u.x - u.facing * 30, u.y, 14, u);
-      const bl = { x: q.x - F.w / 2, y: q.y - F.h / 2 - 4, w: F.w, h: F.h, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, cracks: [[], [], []], rubble: [], windows: [], solid: true, life: F.life, trFridge: true, owner: u, draw: drawFridge, t0: b.time };
+      const bl = { x: q.x - F.w / 2, y: q.y - F.h / 2 - 4, w: F.w, h: F.h, hp: 1e9, maxHp: 1e9, dead: false, hitT: 0, cracks: [[], [], []], rubble: [], windows: [], solid: true, life: F.life, trFridge: true, owner: u, draw: drawFridge, t0: b.time, age: 0, stock: [0, 1, 2] };
       b.buildings.push(bl); for (const o of b.u) if (!o.dead && !o.airborne && o !== u) b.resolveBuildings(o, true);
       b.smoke(q.x, q.y - 10, '#e8f0f8', 10); b.ring(q.x, q.y - 6, 3, 24, 0.35, '#e8f0f8'); b.text(q.x, q.y - 46, '펑!', '#e8f0f8', 9);
       voice(b, u, '음료수도 많이 있으니까, 원한다면 드세요.', '#e8f0ff', 8);
-      startDrink(b, u, u); b.stats.trFridge = (b.stats.trFridge || 0) + 1;
+      startDrink(b, u, u, bl); b.stats.trFridge = (b.stats.trFridge || 0) + 1;
     } };
 
-  SKILLS.trSword = { desc: '5초 동안 검 모드: 평타가 검 참격(ATK×1.8, 사거리 +16). 세 번째 참격은 상대가 무효화하고 트랭크스를 붙잡아 220px 던집니다(1초 공중, 착지 때 상대 ATK×1.0 피해). 그 전에 시간이 끝나거나, 세 번째 순간 상대가 해로운 상태이상에 걸려 있으면 던지기 없음.',
+  SKILLS.trSword = { desc: '5초 동안 검 모드: 평타가 검 참격(ATK×1.8, 사거리 +16). 세 번째 참격은 상대가 무효화하고 트랭크스를 붙잡아 자이언트 스윙으로 한 바퀴(1.2초) 돌린 뒤 220px 던집니다(1초 회전 비행, 착지 때 상대 ATK×1.0 피해). 그 전에 시간이 끝나거나, 세 번째 순간 상대가 해로운 상태이상에 걸려 있으면 던지기 없음.',
     canUse: (u, e, d) => e && !e.dead && d < 160 && !u.buff('trSword'),
     use(u, e0, b, s) { const S = { ...D.sword, ...s };
       u.buffs.push({ type: 'trSword', name: '검', t: S.dur, nodispel: true }); u.trSw = { n: 0, base: u.st.range }; u.st.range += S.reach; u.atkT = Math.min(u.atkT, 0.2);
       voice(b, u, '20년 후의 미래에는 너 같은 건 존재하지 않아...', '#d8f0ff', 8); b.glow(u.x, u.y - 20, 26, '#bfe6ff', 0.4); b.stats.trSword = (b.stats.trSword || 0) + 1;
     } };
 
-  SKILLS.trIgnore = { desc: '상대의 공격 사거리 안에서 사용. 2.5초 동안 상대는 트랭크스를 무시합니다(평타를 하지 않고 몸도 그냥 지나감, 상대의 피해 무효). 그 동안 트랭크스는 제자리에서 방방 뛰며 무작위로 외칩니다.',
+  SKILLS.trIgnore = { desc: '상대의 공격 사거리 안에서 사용. 2.5초 동안 상대는 트랭크스를 무시합니다(평타를 하지 않고 몸도 그냥 지나감). 트랭크스는 제자리에서 방방 뛰며 무작위로 외칩니다. 점프 중엔 공중 상태(근접 공격은 빗나가고 원거리는 반드시 맞음), 땅에 있을 땐 보통 상태이며, 점프 중에 맞으면 "갸아아아아악!" 하고 날아가 무시가 끝납니다.',
     canUse: (u, e, d) => e && !e.dead && !e.summon && d <= e.reach + 10 && !u.buff('trIgnored'),
     use(u, e0, b, s) { const I = { ...D.ignore, ...s }; let t = 0, hop = 0;
       u.buffs.push({ type: 'trIgnored', name: '무시당함', t: I.dur, nodispel: true });
       voice(b, u, IGNORE_LINES[Math.floor(Math.random() * IGNORE_LINES.length)], '#ffb8d8', 9);
       const e = foeOf(b, u); if (e) b.text(e.x, e.y - 66, '(무시)', '#c8c8d0', 9);
       u.action = { type: 'trIgnore', step(dt) { t += dt; hop -= dt; u.moving = false;
-        if (hop <= 0 && !u.air) { hop = I.hop; u.air = { t: 0, dur: 0.32, h: 12, noLand: true }; }
+        if (hop <= 0 && !u.air) { hop = I.hop; u.air = { t: 0, dur: 0.32, h: 12, noLand: true, trHop: true }; } // 점프 = 공중 상태(근접 회피·원거리 필중), 땅 = 보통
         if (t >= I.dur) u.action = null; } };
       b.stats.trIgnore = (b.stats.trIgnore || 0) + 1;
     } };
@@ -173,11 +200,12 @@
     match: () => false,
     step(b, dt) {
       if (b.over) return;
-      for (const bl of b.buildings) { if (!bl.trFridge || bl.dead || bl.life <= 0) continue;
+      for (const bl of b.buildings) { if (!bl.trFridge || bl.dead || bl.life <= 0) continue; bl.age = (bl.age || 0) + dt; if (!bl.stock.length) continue;
         for (const u of b.u) { if (u.dead || u.airborne || u.hidden || u.status('trDrink') || (u.trDrinkCd || 0) > b.time) continue;
           const qx = clamp(u.x, bl.x, bl.x + bl.w), qy = clamp(u.y - 4, bl.y, bl.y + bl.h); if (Math.hypot(u.x - qx, u.y - 4 - qy) > 13 + u.pad) continue;
-          startDrink(b, u, bl.owner); if (u.team !== bl.owner.team) b.text(u.x, u.y - 70, '음료수 발견!', '#e8f4ff', 9); } }
+          startDrink(b, u, bl.owner, bl); if (u.team !== bl.owner.team) b.text(u.x, u.y - 70, '음료수 발견!', '#e8f4ff', 9); } }
       for (const u of b.u) if (isT(u) && u.trSw && !u.buff('trSword')) swordEnd(u); // 검 모드 시간 끝: 사거리 원래대로
+      for (const u of b.u) if (u.trSwing) swingStep(b, u, dt);
     },
     drawOver(ctx, b) {
       for (const u of b.u) { if (u.dead || u.hidden) continue; const z = b.airZ(u), s = u.status('trDrink');
