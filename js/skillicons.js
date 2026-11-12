@@ -144,6 +144,13 @@
     jjWater: '............/.....yy...../....y..y..../...y.yy.y.../....y..y..../.....yy...../............/cc..cc..cc../.cccc.cccc.c/C..CC..CC..C/.CC..CC..CC./............',
     jjSilver: '....l.l.l.../...lllllll../...lwlwlwl../...lllllll../..llwwwwll../..lllllll.../...lllll..y./....lll..yy./.........y../........yyy./.........y../........y...',
     jjHeart: '.y........y./..y......y../...YY..YY.../..YyyYYyyY../..YyyyyyyY../..YyyyyyyY../...YyyyyY.../....YyyY..../.....YY...../..y......y../.y........y./............',
+    // 디오 브란도 (js/dio.js)
+    dioSplit: '....CCCC..../..CCcCCcCC../.CcCCwCCcCC./.CCcCwCCCcC./CCCCw.wCCCCC/CcCw...wCcCC/CCw.....wCCC/.w.......w../..c.....c.../.c.......c../c.........c./............',
+    dioFreeze: '.....C....../..C..C..C.../...C.C.C..../....CCC...../CCCCCwCCCCC./....CCC...../...C.C.C..../..C..C..C.../.....C....../............/.c.c.c.c.c../............',
+    dioMonkey: '....yyyy..../..yy....yy../.y........y./y..........y/............/...nnnnnn.../..nsssssssn./..nsksskssn./..nssssssn../...nsrrsn.../....nnnn..../............',
+    dioWry: 'r.....r...../.r...r....../..r.r...YY../...r...YYYY./..r.r..YssY./.r...r.YYYY./r.....r.yy../......xxxxx./.....xxxxxx./......xxxxx./.......x..x./.......x..x.',
+    dioRipper: '............/..ss......../.srs.wwwwwww/..ss......../............/..ss......../.srs.wwwwwww/..ss......../............/.......C.C.C/............/............',
+    dioExtract: '.....R....../.....R....../....rRr...../....rrr...../...rrrrr..../..rrrwrrr.../..rrwrrrr.../..rrrrrrr.../...rrrrr..../....rrr...../.p..p..p..../p.p.p.p.p...',
     // 듀얼리스트 (유희·카이바·구울즈): 드로우 / 몬스터 / 마법 / 함정
     dlDraw: '..y........./.yyy......../yyyyy......./..y.wwwwwww./..y.wnnnnnw./....wnNNNnw./....wnNYNnw./....wnNNNnw./....wnnnnnw./....wnnnnnw./....wwwwwww./............',
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
