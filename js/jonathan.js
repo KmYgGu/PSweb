@@ -8,7 +8,7 @@
  *                           피스가 어떤 공격이든 한 번이라도 맞으면 스트리트 파이트 관중처럼 날아가며 공격 중단 (모자도 떨어짐)
  *  4. 초강력 드라이브 비색 파문추! : 해로운 상태이상에 걸려 있으면 현재 체력을 조금 소비하고 일정 시간 받는 피해 감소(방어력 상승)
  *  5. 물속의 초강력 파문!  : 죠나단이 물속에 있을 때만. 물을 타고 퍼지는 파문 — 맞은 상대의 산소 게이지를 0으로 (오리 방수 패시브는 면역)
- *  6. 은색의 초강력 파문법! : (반격 슬롯, 쿨타임이 차 있을 때 자동) 상대의 근접 공격(몸 충돌 포함)을 무효화하고 그 상대를 감전
+ *  6. 은색의 초강력 파문법! : (반격 슬롯, 쿨타임이 차 있을 때 자동) 상대의 근접 공격(몸 충돌 포함)을 무효화하고 그 상대를 마비
  *  7. 나와라 하트파워!    : 제자리에서 힘을 모으며 '나와라 하트파워!, 저놈을 쓰러트려라!' — 이 동안 맞으면 러시 시간이 늘어남.
  *                           이어서 '이야앗! 나와라 혈액 비트! 황금색의 파문질주!' → 상대가 있던 곳까지 달려가(비추적) 러시.
  *                           모으는 동안 최대 체력 10% 이상 피해를 받았으면 러시 시작 때 상대를 띄워 기절시켜 러시가 전부 맞음
@@ -28,7 +28,7 @@
     sw: { intro: 2.6, outSpd: 480, spin: 1.1, tick: 0.2, r: 24, mult: 0.32, backSpd: 560, backMult: 0.6, leave: 0.6 },
     scarlet: { cost: 0.06, dur: 5, taken: 0.6 },
     water: { spd: 360, life: 1.1, mult: 1.3 },
-    silver: { shock: 1.0 },
+    silver: { para: 2.5 },
     heart: { charge: 2.0, run: 900, runMax: 0.9, rush: 1.0, perHit: 0.35, maxAdd: 1.4, gap: 0.09, mult: 0.24, launchK: 0.10 },
   };
   // 한국어 조사: 받침 있으면 '이', 없으면 '가'
@@ -38,7 +38,6 @@
   const harmful = u => u.statuses.some(s => { const d = STATUS_DEFS[s.id]; return d && !d.positive; });
   const inWater = (b, u) => !!(u.zone && (u.zone.id === 'water' || u.zone.water) && !u.airborne && !u.air);
   const cdCount = u => u.skills.reduce((n, s, i) => n + (!s.hidden && u.skillT[i] > 0.05 ? 1 : 0), 0);
-  if (!STATUS_DEFS.mcShock) STATUS_DEFS.mcShock = { name: '감전', color: '#9ff0ff', tint: '#c8faff', tintA: 0.45, particle: '#e8ffff', blocksAct: true, spdMul: 0.35, onApply(u) { u.action = null; } };
 
   // ---------- 그림: 피스 (16x16 도트, 모자 쓴 / 벗은 두 장) ----------
   const SW_BODY = ['....YYYYYYYY....', '....YSESSESY....', '....SSrSSSSS....', '.....SSmmSS.....', '...ccTTTTTTcc...', '..cccTTTTTTccc..', '..SccccTTccccS..', '..SccccTTccccS..', '...cccccccccc...',
@@ -86,7 +85,7 @@
       if (i >= 0 && tgt.skillT[i] <= 0 && !tgt.blocked('blocksAct')) { // 은색의 초강력 파문법!
         tgt.skillT[i] = tgt.skills[i].cd; this.hooks.onSkill && this.hooks.onSkill(tgt, tgt.skills[i].name, null);
         this.text(tgt.x, tgt.y - 62, '은색 파문!', '#e8f0ff', 11); this.ring(tgt.x, tgt.y - 18, 4, 30, 0.3, '#e8f0ff'); this.zap(src.x, src.y - 20);
-        if (!src.dead && !src.summon) this.applyStatus(src, 'mcShock', tgt.skills[i].shock || D.silver.shock, tgt);
+        if (!src.dead && !src.summon) this.applyStatus(src, 'paralysis', tgt.skills[i].para || D.silver.para, tgt); // 마비 (상태이상 '마비': 약 1초마다 0.4초씩 굳음)
         this.stats.jjSilver = (this.stats.jjSilver || 0) + 1; return 0;
       }
     }
@@ -191,7 +190,7 @@
       b.ring(u.x, u.y, 4, 30, 0.35, HAMON); b.stats.jjWater = (b.stats.jjWater || 0) + 1; } };
 
   // 6. 은색의 초강력 파문법! (반격: 피해 훅에서 처리, 직접 시전하지 않음)
-  SKILLS.jjSilver = { desc: '쿨타임이 차 있으면, 상대의 근접 공격(몸 충돌 포함) 한 번을 자동으로 무효화하고 그 상대를 1초 감전(행동 불가·감속)시킵니다.', canUse: () => false, use() {} };
+  SKILLS.jjSilver = { desc: '쿨타임이 차 있으면, 상대의 근접 공격(몸 충돌 포함) 한 번을 자동으로 무효화하고 그 상대를 2.5초 마비(약 1초마다 0.4초씩 굳음)시킵니다.', canUse: () => false, use() {} };
 
   // 7. 나와라 하트파워!
   SKILLS.jjHeart = { desc: '2초 동안 힘을 모으며 "나와라 하트파워!, 저놈을 쓰러트려라!" — 이 동안 맞을 때마다 러시 시간 +0.35초(최대 +1.4). 이어서 "이야앗! 나와라 혈액 비트! 황금색의 파문질주!" 하며 상대가 있던 곳까지 달려가(비추적) 1초 러시(0.07초마다 ATK×0.28). 모으는 동안 최대 체력 10% 이상 피해를 받았으면 러시 시작 때 상대를 띄워 기절시켜 러시가 전부 맞습니다.',
@@ -255,7 +254,7 @@
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { light: 0.85, dark: 1.15 },
     skills: [
-      { id: 'jjSilver', name: '은색의 초강력 파문법!', cd: 14, shock: 0.8 },
+      { id: 'jjSilver', name: '은색의 초강력 파문법!', cd: 14, para: 2.5 },
       { id: 'jjScarlet', name: '초강력 드라이브 비색 파문추!', cd: 12 },
       { id: 'jjWater', name: '물속의 초강력 파문!', cd: 7 },
       { id: 'jjHeart', name: '나와라 하트파워!', cd: 18 },
@@ -263,7 +262,7 @@
       { id: 'jjSpeedwagon', name: '암흑가의 천사 피스', cd: 15 },
       { id: 'jjHate', name: '정말 미워!', cd: 14 },
     ],
-    passiveDesc: '파문 전사. 은색의 초강력 파문법은 직접 쓰지 않고, 쿨타임이 차 있을 때 상대의 근접 공격을 받으면 자동으로 막고 감전시킵니다.',
+    passiveDesc: '파문 전사. 은색의 초강력 파문법은 직접 쓰지 않고, 쿨타임이 차 있을 때 상대의 근접 공격을 받으면 자동으로 막고 마비시킵니다.',
     sprite: { // 16x16 절차적 도트 (직접 그림): 남색 머리, 넓은 어깨, 파란 상의·흰 스카프·금색 벨트
       pal: { H: '#22305a', h: '#4a5a8a', S: '#f2c9a0', E: '#2a2230', m: '#8a4038', B: '#3a4a8a', W: '#e8e4d8', A: '#e8c050', L: '#2a2a3a', D: '#3a2a20' },
       rows: { 0: '.....HHHHHH.....', 1: '....HHHHHHHH....', 2: '...HHHhHHHHHH...', 3: '...HHSSSSSSHH...', 4: '....SSESSESS....', 5: '....SSSSSSSS....', 6: '.....SSmmSS.....', 7: '..BBBWWWWWWBBB..',

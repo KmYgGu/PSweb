@@ -17,7 +17,7 @@
   const isDio = u => !!(u && u.def && u.def.id === ID);
   const slotOf = (u, id) => u.skills.findIndex(s => s.id === id);
   const D = {
-    freeze: { r: 70, airR: 150, dur: 1.0, airDur: 2.6 },
+    freeze: { r: 70, airR: 150, dur: 1.0, airDur: 2.6, splitDelay: 0.9 }, // splitDelay: 공중 빙결 뒤 얼음 쪼개기까지 뜸 (초)
     split: { mult: 2.2, fly: 1.0, h: 48, near: 90, far: 210 },
     monkey: { dur: 0.55, h: 44, over: 46 },
     regen: { k: 0.5, rate: 0.06, min: 3, tick: 0.5 },
@@ -59,7 +59,7 @@
 
   // ---------- 스킬 ----------
   // 1. 기화 냉동법
-  SKILLS.dioFreeze = { desc: "'빈약! 빈약! 빈약!' 주변(반경 70) 상대를 1.4초 빙결(이동·행동 불가). 공중에 떠 있던 상대(반경 150)는 그 높이에 얼어붙은 채 2.6초 매달려 있고, 곧바로 얼음 쪼개기로 이어집니다.",
+  SKILLS.dioFreeze = { desc: "'빈약! 빈약! 빈약!' 주변(반경 70) 상대를 1.4초 빙결(이동·행동 불가). 공중에 떠 있던 상대(반경 150)는 그 높이에 얼어붙은 채 2.6초 매달려 있고, 0.9초 뜸을 들인 뒤 얼음 쪼개기로 이어집니다.",
     canUse: (u, e, d, b) => b.foes(u).some(o => !o.hidden && !o.summon && !o.status('dioFrozen') && (o.airborne ? dist(u, o) < D.freeze.airR + o.pad : dist(u, o) < D.freeze.r + o.pad + u.pad)),
     use(u, e0, b, s) { const F = { ...D.freeze, ...s }; let air = false;
       voice(b, u, '빈약! 빈약! 빈약!', ICE, 11);
@@ -71,7 +71,7 @@
           b.applyStatus(o, 'dioFrozen', F.airDur, u, { noResistScale: true }); o.dioIceAir = true; air = true;
           b.text(o.x, o.y - 80 - z, '공중 빙결!', ICE, 11); b.stats.dioAirFreeze = (b.stats.dioAirFreeze || 0) + 1; }
         else if (!o.airborne && dist(u, o) < F.r + o.pad + u.pad) { b.applyStatus(o, 'dioFrozen', F.dur, u); b.stats.dioFreeze = (b.stats.dioFreeze || 0) + 1; } }
-      if (air) { const i = slotOf(u, 'dioSplit'); if (i >= 0) u.skillT[i] = 0; } // 공중 빙결 → 얼음 쪼개기 바로 준비
+      if (air) { const i = slotOf(u, 'dioSplit'); if (i >= 0) u.skillT[i] = D.freeze.splitDelay; } // 공중 빙결 → 얼어붙은 모습을 잠깐 보여 준 뒤 얼음 쪼개기
     } };
 
   // 2. 얼음 쪼개기
