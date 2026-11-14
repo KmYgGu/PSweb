@@ -10,6 +10,7 @@
  * 그리기·카메라는 전투 상태를 바꾸지 않고 Math.random 도 부르지 않음 (그리는 동안 잠깐 바꾸는 u.lookUp·u.facing 은 바로 되돌림) */
 const DirectPlay = (() => {
   const EXCLUDE = new Set([]); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u 부터 직접 플레이)
+  const FRONT = { a0: 1.6, dist: 1.1, h: 30, zoom: 0.15 }; // 정면 시점 뒤로 빼기: 시작 각(rad), 거리 +110%, 높이 +30, 화면 ×0.85
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
   const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
   const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
@@ -260,13 +261,21 @@ const DirectPlay = (() => {
     if (!md && S.ov === 0) S.oY = S.oP = S.oH = S.oX = S.oY2 = null;
     C.yaw = yaw; C.pitch = pitch;
     const fx = Math.cos(C.yaw), fy = Math.sin(C.yaw), rx = -fy, ry = fx;
-    C.x = S.px - fx * CAM.dist - rx * CAM.side; C.y = S.py - fy * CAM.dist - ry * CAM.side; C.z = camH;
+    // 정면 쪽으로 돌렸을 때만 뒤로·위로·넓게 (약 92°부터 180°까지 smoothstep, 측면까지는 그대로). 덮어쓰는 시점(야구·농구 고정·추적·공중·교실)에서는 끔
+    const pq = clamp((Math.abs(wrap(S.userYaw)) - FRONT.a0) / (Math.PI - FRONT.a0), 0, 1), pk = pq * pq * (3 - 2 * pq) * (1 - (S.ov || 0)); S.pullK = pk;
+    let dist = CAM.dist * (1 + FRONT.dist * pk); camH += FRONT.h * pk;
+    if (pk > 0) { const A = b.play || AR, m = 6; let lim = 1e9; // 경기장 벽 밖으로 나가지 않게 (늘어난 만큼만 줄임)
+      const bx = S.px - rx * CAM.side, by = S.py - ry * CAM.side;
+      if (fx > 1e-3) lim = Math.min(lim, (bx - A.x - m) / fx); else if (fx < -1e-3) lim = Math.min(lim, (bx - A.x - A.w + m) / fx);
+      if (fy > 1e-3) lim = Math.min(lim, (by - A.y - m) / fy); else if (fy < -1e-3) lim = Math.min(lim, (by - A.y - A.h + m) / fy);
+      dist = Math.max(CAM.dist, Math.min(dist, lim)); }
+    C.x = S.px - fx * dist - rx * CAM.side; C.y = S.py - fy * dist - ry * CAM.side; C.z = camH;
     if (S.posK > 0) { // 고정 시점 위치 (야구 타석·마운드): 목표 위치(없으면 평소 위치)를 따라가며 섞음
       if (md) { const tx = md.cx != null ? md.cx : C.x, ty = md.cy != null ? md.cy : C.y, kk = S.posKK || 1; S.oX = S.oX == null ? tx : S.oX + (tx - S.oX) * kk; S.oY2 = S.oY2 == null ? ty : S.oY2 + (ty - S.oY2) * kk; }
       if (S.oX != null) { C.x += (S.oX - C.x) * S.posK; C.y += (S.oY2 - C.y) * S.posK; } }
     const cp = Math.cos(C.pitch), sp = Math.sin(C.pitch);
     C.F = [cp * fx, cp * fy, -sp]; C.R = [rx, ry, 0]; C.U = [sp * fx, sp * fy, cp];
-    S.zm = (S.zm || 1) + (((md && md.zm) || 1) - (S.zm || 1)) * (1 - Math.exp(-6 * dt)); let f = CAM.f * S.zm; if (b.zoom) { const z = b.zoom; f *= 1 + z.k * 1.5 * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); }
+    S.zm = (S.zm || 1) + (((md && md.zm) || 1) - (S.zm || 1)) * (1 - Math.exp(-6 * dt)); let f = CAM.f * S.zm * (1 - FRONT.zoom * (S.pullK || 0)); if (b.zoom) { const z = b.zoom; f *= 1 + z.k * 1.5 * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); }
     C.f = f; C.cx = W / 2; C.cy = view.y + view.h * 0.66;
     if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA, q = t * 60; C.cx += Math.round(Math.sin(q * 1.7) * k); C.cy += Math.round(Math.cos(q * 2.3) * k); }
   }
