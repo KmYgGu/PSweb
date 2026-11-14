@@ -822,6 +822,12 @@
       for (const u of b.u) if (u.duel && u.duel.lsword) drawLightSwords(ctx, b, u.duel.lsword);
     },
     drawOver(ctx, b) {
+      V3 = b._v3dStand || null;
+      try { DUEL_OVER(ctx, b); } finally { V3 = null; }
+    },
+  });
+  function DUEL_OVER(ctx, b) {
+    {
       for (const u of b.u) {
         if (!u.duel) continue;
         const D = u.duel;
@@ -836,8 +842,8 @@
       if (b.duelSpirits) for (const s of b.duelSpirits) drawSpirit(ctx, b, s);
       if (b.duelPops) b.duelPops.forEach(p => drawPop(ctx, b, p.u, p, 0));
       if (b.duelFx) for (const f of b.duelFx) { if (f.type === 'fist') drawFist(ctx, f); else if (f.type === 'exodia') drawExodia(ctx, b, f); }
-    },
-  });
+    }
+  }
 
   // 상단 UI 위 오버레이: 몬스터 몸체만 (카드 팝업·이름·광채·효과 제외)
   STAGE_HOOKS.push({ match: () => false, drawAboveUI(ctx, b) {
@@ -873,7 +879,9 @@
     if (p.line && i === 0) { ctx.font = 'bold 9px "Galmuri11", "Malgun Gothic", sans-serif'; ctx.strokeText(p.line, x, y - 18); ctx.fillStyle = '#fff6c0'; ctx.fillText(p.line, x, y - 18); }
     ctx.restore();
   }
+  let V3 = null; // 직접 플레이 3D: drawOver 동안 몬스터(정령)를 세울 물체 목록으로 (b._v3dStand)
   function drawSpirit(ctx, b, s, bodyOnly) {
+    if (V3) { const sp0 = s.spr && DuelSprites.get(s.spr), L = V3; L.push({ x: s.x, y: s.y, w: (sp0 ? sp0.w * sp0.s : 20) + 30, h: (sp0 ? sp0.h * sp0.s : 20) + 30, draw: c => { const v = V3; V3 = null; try { drawSpirit(c, b, s, bodyOnly); } finally { V3 = v; } } }); return; }
     const k = s.t / s.dur, a = (k < 0.15 ? k / 0.15 : k > 0.75 ? (1 - k) / 0.25 : 1);
     const sp = s.spr && DuelSprites.get(s.spr);
     ctx.save(); ctx.globalAlpha = a * 0.92; ctx.translate(Math.round(s.x), Math.round(s.y + (1 - Math.min(1, k * 5)) * 8));

@@ -2461,7 +2461,10 @@ const Render = (() => {
   }
   // o.v3d: 직접 플레이 모드의 바닥 그림 (js/direct.js 가 원근으로 눕혀 그림). 캐릭터·기본 건물·글자·K.O.·줌/흔들림은 빼고 그림 (3D 쪽에서 따로)
   function draw(ctx, b, o) {
-    const V = !!(o && o.v3d), LC = V && o.lift ? o.lift : ctx; // LC: 직접 플레이에서 세워 그릴 것(물체·기믹·위층 이펙트·입자)을 따로 받는 그림 (js/direct.js 가 덩어리별로 세움)
+    const V = !!(o && o.v3d), LC = V && o.lift ? o.lift : ctx;
+    // RT(k): 직접 플레이가 그림 단위(k = 이펙트·훅)마다 그릴 곳을 고름 (큰 이펙트 → 바닥에 눕힘, js/direct.js). b._v3dStand: 훅이 세울 물체를 넣는 목록 ({ x, y, w?, h?, draw })
+    const RT = V && o.route ? o.route : () => LC;
+    if (b) b._v3dStand = V && o.stand ? o.stand : null; // LC: 직접 플레이에서 세워 그릴 것(물체·기믹·위층 이펙트·입자)을 따로 받는 그림 (js/direct.js 가 덩어리별로 세움)
     if (b && window.BattleVFX) BattleVFX.begin(b);
     const sid = b ? b.stageId : 'arena';
     if (!floors[sid]) floors[sid] = makeFloor(sid);
@@ -2481,7 +2484,7 @@ const Render = (() => {
     for (const f of b.visualFx) drawFx(ctx, f, 0);
     drawWater(ctx, b);
     if (b.stage.circle && !b.stage.circle.hidden) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
-    if (b.balls.length) drawBalls(ctx, b.balls);
+    if (b.balls.length && !(V && o.stand)) drawBalls(ctx, b.balls); // 직접 플레이: 공은 3D 로 따로
     if (b.iceSegs.length) drawIceWalls(ctx, b);
     if (b.stage.pads) drawPads(ctx, b, b.time);
     for (const bl of b.buildings) if (bl.dead) drawRubble(ctx, bl);
@@ -2521,16 +2524,18 @@ const Render = (() => {
       else drawBuilding(LC, it.bl);
     }
     LC.globalAlpha = 1;
-    for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(LC, b);
+    for (const h of STAGE_HOOKS) if (h.drawOver) { const c = RT(h); h.drawOver(c, b); c.globalAlpha = 1; }
+    if (V && o.route) o.route(null);
     LC.globalAlpha = 1;
     if (!V) for (const u of b.u) drawBarrier(ctx, u, b);
     for (const f of b.fx) { if (f.type === 'wire') drawWireFx(ctx, f, b); else if (f.type === 'garrote') drawGarrote(ctx, f, b); }
     if (!V) for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
     for (const p of b.proj) if (!(V && o.noProj && p.kind !== 'wire')) drawProj(ctx, p); // noProj: 투사체는 direct.js 가 공중에 세워 그림
     { const ctx = LC; // 위층 이펙트·입자 (직접 플레이에선 세워 그릴 그림으로)
-    for (const f of b.fx) drawFx(ctx, f, 1);
-    for (const f of b.visualFx) drawFx(ctx, f, 1);
-    if (window.BattleVFX) BattleVFX.drawExtras(ctx, b, 1);
+    for (const f of b.fx) drawFx(RT(f), f, 1);
+    for (const f of b.visualFx) drawFx(RT(f), f, 1);
+    if (window.BattleVFX) BattleVFX.drawExtras(RT('vfxExtras'), b, 1);
+    if (V && o.route) o.route(null);
     for (const p of b.parts) {
       if (window.BattleVFX && BattleVFX.particle(ctx, p)) continue;
       const a = clamp(p.life / p.max, 0, 1);
@@ -2543,8 +2548,10 @@ const Render = (() => {
       } else ctx.fillRect(Math.round(p.x - p.size / 2), Math.round(p.y - p.size / 2), Math.ceil(p.size), Math.ceil(p.size));
     }
     ctx.globalAlpha = 1;
-    for (const h of STAGE_HOOKS) h.drawTop && h.drawTop(ctx, b); // 최상단 레이어 (아이돌 무대 관객/중계 화면 등; 글자 HUD 아래)
+    for (const h of STAGE_HOOKS) if (h.drawTop) { const c = RT(h); h.drawTop(c, b); c.globalAlpha = 1; } // 최상단 레이어 (아이돌 무대 관객/중계 화면 등; 글자 HUD 아래)
+    if (V && o.route) o.route(null);
     ctx.globalAlpha = 1; }
+    b._v3dStand = null;
     if (V) { ctx.restore(); return; } // 글자·말풍선·K.O. 는 3D 화면에서 세워서 그림
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const t of b.texts) if (t.bubble) { // 말풍선 (캐릭터를 따라감, 화면 안으로 보정)

@@ -220,9 +220,9 @@
       if (thumb) { for (const d of K.dolls) CLAW.drawDoll(ctx, b, d, true); return; }
       CLAW.drawCraneShadow(ctx, b);
     },
-    drawOver(ctx, b) { const K = b.claw; if (!K) return; for (const d of K.dolls) if (d.grab) CLAW.drawDoll(ctx, b, d); CLAW.drawCrane(ctx, b); },
+    drawOver(ctx, b) { const K = b.claw; if (!K || b._v3dStand) return; for (const d of K.dolls) if (d.grab) CLAW.drawDoll(ctx, b, d); CLAW.drawCrane(ctx, b); }, // 직접 플레이(b._v3dStand): 크레인은 js/direct.js 가 3D 로
     drawTop(ctx, b) {
-      const K = b.claw; if (!K) return;
+      const K = b.claw; if (!K || b._v3dStand) return; // 직접 플레이: 유리 반사광·GET 글자 생략
       ctx.save(); // 유리 반사광
       ctx.globalAlpha = 0.07; ctx.fillStyle = '#ffffff';
       for (const [x0, w] of [[40, 26], [84, 8], [230, 30], [282, 10]]) { ctx.beginPath(); ctx.moveTo(AR.x + x0, AR.y + 30); ctx.lineTo(AR.x + x0 + w, AR.y + 30); ctx.lineTo(AR.x + x0 + w - 120, AR.y + AR.h - 6); ctx.lineTo(AR.x + x0 - 120, AR.y + AR.h - 6); ctx.closePath(); ctx.fill(); }

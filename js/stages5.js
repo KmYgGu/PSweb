@@ -259,11 +259,12 @@
       const D = b.soc; if (!D) return;
       const B = D.ball; if (!B) return;
       const drop = B.z, k = Math.floor(B.roll / 4);
+      if (b._v3dStand) b._v3dStand.push({ x: B.x, y: B.y, w: 30, h: 60, draw: c => { c.imageSmoothingEnabled = false; c.drawImage(ballSprite(Math.abs(k)), Math.round(B.x - 6.5), Math.round(B.y - 6.5 - 4 - drop), 13, 13); } }); // 직접 플레이: 공은 세움 (그림자만 바닥)
       ctx.save();
       ctx.globalAlpha = 0.35 * (1 - Math.min(0.6, drop / 60)); ctx.fillStyle = '#000';
       ctx.beginPath(); ctx.ellipse(B.x, B.y + 1, B.r * (1 - drop / 140), B.r * 0.45, 0, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(ballSprite(Math.abs(k)), Math.round(B.x - 6.5), Math.round(B.y - 6.5 - 4 - drop), 13, 13);
+      if (!b._v3dStand) ctx.drawImage(ballSprite(Math.abs(k)), Math.round(B.x - 6.5), Math.round(B.y - 6.5 - 4 - drop), 13, 13);
       ctx.restore();
     },
     drawTop(ctx, b) {

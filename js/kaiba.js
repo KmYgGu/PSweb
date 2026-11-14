@@ -551,6 +551,11 @@
       for (const u of b.u) if (u.action && u.action.type === 'kRide' && !u.dead) drawSpr(ctx, 'xzCannon', u.x, u.y + 8, u.facing, 1.1, 1);
     },
     drawOver(ctx, b) {
+      V3 = b._v3dStand || null; try { KAIBA_OVER(ctx, b); } finally { V3 = null; }
+    },
+  });
+  function KAIBA_OVER(ctx, b) {
+    {
       for (const f of b.kfx || []) {
         if (f.type === 'ebeam') drawEpicBeam(ctx, f, b.time);
         else if (f.type === 'charge') drawCharge(ctx, f, b.time);
@@ -572,14 +577,15 @@
         if (D.kPhant) { ctx.save(); ctx.globalAlpha = 0.25 + 0.12 * Math.sin(b.time * 6); ctx.strokeStyle = '#dff2ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 22, 22, 30, 0, 0, TAU); ctx.stroke(); ctx.restore(); drawSpr(ctx, 'phantasm', u.x - u.facing * 6, u.y - 34, u.facing, 1, 0.35); }
         if (D.kGirl) drawSpr(ctx, 'blueGirl', u.x + u.facing * 16, u.y - 2, u.facing, 1, 0.9);
       }
-    },
-  });
+    }
+  }
   STAGE_HOOKS.push({ match: () => false, drawAboveUI(ctx, b) { // 상단 UI 위: 몬스터 몸체 스프라이트만
     for (const f of b.kfx || []) if (f.type === 'jump') { const k = f.t / f.dur, x = f.sx + (f.tx - f.sx) * k, y = f.sy + (f.ty - f.sy) * k - 4 * f.h * k * (1 - k); drawSpr(ctx, f.spr, x, y, f.tx >= f.sx ? 1 : -1, 1, 1); }
     for (const p of b.kproj || []) if (p.type === 'yz') drawSpr(ctx, 'yzDragon', p.x, p.y + 4, Math.cos(p.ang) >= 0 ? 1 : -1, 1, p.pause > 0 ? 0.6 : 1);
     for (const u of b.u) { const D = u.duel; if (!D || u.dead) continue; if (D.kPhant) drawSpr(ctx, 'phantasm', u.x - u.facing * 6, u.y - 34, u.facing, 1, 0.35); if (D.kGirl) drawSpr(ctx, 'blueGirl', u.x + u.facing * 16, u.y - 2, u.facing, 1, 0.9); }
   } });
-  function drawSpr(ctx, id, x, y, face, k = 1, a = 1) { const sp = DuelSprites.get(id); if (!sp) return; const sc = sp.s * k, w = sp.w * sc, h = sp.h * sc; ctx.save(); ctx.globalAlpha *= a; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(face < 0 ? -1 : 1, 1); ctx.imageSmoothingEnabled = false; ctx.drawImage(sp.c, Math.round(-w / 2), Math.round(-h), w, h); ctx.restore(); }
+  let V3 = null; // 직접 플레이 3D: drawOver 동안 몬스터 그림을 세울 물체 목록으로 (b._v3dStand)
+  function drawSpr(ctx, id, x, y, face, k = 1, a = 1) { const sp = DuelSprites.get(id); if (!sp) return; const sc = sp.s * k, w = sp.w * sc, h = sp.h * sc; if (V3) { const L = V3; V3 = null; L.push({ x, y, w: w + 10, h: h + 30, draw: c => drawSpr(c, id, x, y, face, k, a) }); V3 = L; return; } ctx.save(); ctx.globalAlpha *= a; ctx.translate(Math.round(x), Math.round(y)); ctx.scale(face < 0 ? -1 : 1, 1); ctx.imageSmoothingEnabled = false; ctx.drawImage(sp.c, Math.round(-w / 2), Math.round(-h), w, h); ctx.restore(); }
   // 픽셀 광선: 바깥 빛 → 중간 → 흰 심 + 가장자리 픽셀 조각
   function drawBeam(ctx, x, y, ca, sa, L, w, col, col2, a, t) {
     ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(Math.atan2(sa, ca)); ctx.globalAlpha = Math.max(0, a);
