@@ -441,7 +441,10 @@
         for (const f of A.fall) { const p = clamp(f.t / f.dur, 0, 1); if (f.t < -0.0001) continue; const S = D.slam.size; // 그림자 예고
           ctx.save(); ctx.globalAlpha = 0.18 + 0.4 * p; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(f.x + S / 2, f.y + S - 2, S * (0.35 + 0.35 * p), S * (0.16 + 0.14 * p), 0, 0, TAU); ctx.fill();
           ctx.globalAlpha = 0.5 * p; ctx.strokeStyle = '#ffd890'; ctx.setLineDash([2, 2]); ctx.strokeRect(f.x + 0.5, f.y + 0.5, S - 1, S - 1); ctx.restore(); }
-        if (A.exit) drawDoorShape(ctx, P_(b), A.exit.side, A.exit.c, 1, A.exit.closeT >= 0 ? clamp(1 - A.exit.closeT / 0.5, 0, 1) : 1, A.exit.closeT >= 0 ? clamp(1 - (A.exit.closeT - 0.6) / 0.6, 0, 1) : 1);
+        if (A.door) A.door._v3 = !!b._v3d; // 직접 플레이: 외벽 문은 세운 문(drawDoor 가 바닥에 그리지 않음)
+        if (b._v3d && A.door && !A.door.dead) { const bl = A.door, horiz = bl.side === 'top' || bl.side === 'bottom'; door3(b._v3d, bl.P, bl.side, horiz ? bl.x + bl.w / 2 : bl.y + bl.h / 2, clamp(bl.t / 0.3, 0, 1), 0, clamp((D.door.life - bl.t) / 0.6, 0, 1), bl.hp / bl.maxHp); }
+        if (A.exit && b._v3d) door3(b._v3d, P_(b), A.exit.side, A.exit.c, 1, A.exit.closeT >= 0 ? clamp(1 - A.exit.closeT / 0.5, 0, 1) : 1, A.exit.closeT >= 0 ? clamp(1 - (A.exit.closeT - 0.6) / 0.6, 0, 1) : 1, 1);
+        else if (A.exit) drawDoorShape(ctx, P_(b), A.exit.side, A.exit.c, 1, A.exit.closeT >= 0 ? clamp(1 - A.exit.closeT / 0.5, 0, 1) : 1, A.exit.closeT >= 0 ? clamp(1 - (A.exit.closeT - 0.6) / 0.6, 0, 1) : 1);
       }
     },
     drawOver(ctx, b) {
@@ -522,7 +525,20 @@
     else { ctx.fillRect(Math.round(R.x), Math.round(R.y), R.w, Math.round(R.h * k)); ctx.fillStyle = '#a8703c'; ctx.fillRect(Math.round(R.x + 3), Math.round(R.y + 2), 2, Math.max(0, Math.round(R.h * k) - 4)); if (k > 0.5) { ctx.fillStyle = '#e8c060'; ctx.fillRect(Math.round(R.x + R.w / 2), Math.round(R.y + R.h * k - 6), 2, 2); } }
     ctx.restore();
   }
+  function door3(V, P, side, c, alpha, open, fade, hpR) { // 직접 플레이: 외벽에 선 나무 문 (문틀 + 어두운 틈 + 열림만큼 밀린 문짝), 고정 세로 판
+    const w = D.door.w, H = 44, hw = w / 2 + 3;
+    const [x1, y1, x2, y2] = side === 'top' ? [c - hw, P.y + 1, c + hw, P.y + 1] : side === 'bottom' ? [c + hw, P.y + P.h - 1, c - hw, P.y + P.h - 1] : side === 'left' ? [P.x + 1, c + hw, P.x + 1, c - hw] : [P.x + P.w - 1, c - hw, P.x + P.w - 1, c + hw];
+    const a = alpha * (fade ?? 1); if (a <= 0.01) return;
+    V.wall({ x1, y1, x2, y2, h: H, draw: (x, L) => { x.globalAlpha = a;
+      x.fillStyle = '#3a2414'; x.fillRect(0, 0, L, H); x.fillStyle = '#0c0a10'; x.fillRect(3, 3, L - 6, H - 3); // 문틀 + 열린 틈 (어둠)
+      const k = 1 - (open || 0) * 0.85, dw = (L - 6) * k;
+      x.fillStyle = '#8a5a32'; x.fillRect(3, 3, dw, H - 3); x.fillStyle = '#a8703c'; x.fillRect(6, 6, Math.max(0, dw - 6), 2); x.fillRect(6, H * 0.55, Math.max(0, dw - 6), 2);
+      x.strokeStyle = '#6a4224'; x.lineWidth = 1; x.strokeRect(7.5, 10.5, Math.max(0, dw - 9), H * 0.35); x.strokeRect(7.5, H * 0.6, Math.max(0, dw - 9), H * 0.3);
+      if (k > 0.5) { x.fillStyle = '#e8c060'; x.beginPath(); x.arc(3 + dw - 5, H * 0.55, 1.8, 0, TAU); x.fill(); }
+      if (hpR < 0.66) { x.strokeStyle = '#2a1a0c'; x.beginPath(); x.moveTo(L * 0.4, H * 0.3); x.lineTo(L * 0.5, H * 0.45); x.lineTo(L * 0.42, H * 0.6); if (hpR < 0.33) { x.moveTo(L * 0.6, H * 0.2); x.lineTo(L * 0.66, H * 0.4); } x.stroke(); } } });
+  }
   function drawDoor(ctx, bl) {
+    if (bl._v3) return; // 직접 플레이: drawUnder 에서 세운 문으로 그림
     const horiz = bl.side === 'top' || bl.side === 'bottom', c = horiz ? bl.x + bl.w / 2 : bl.y + bl.h / 2;
     const appear = clamp(bl.t / 0.3, 0, 1), fade = clamp((D.door.life - bl.t) / 0.6, 0, 1);
     drawDoorShape(ctx, bl.P, bl.side, c, appear, 0, fade);

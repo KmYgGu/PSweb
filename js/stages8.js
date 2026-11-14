@@ -370,6 +370,15 @@
     V.stand({ x: tx, y: ty, w: ts.dw + 40, h: ts.dh + 80, draw: c => { c.save(); c.translate(tx + sh, ty); if (facing) Sprites.draw(c, ts, 0, false); else drawBack(c, D.teacher, ts); c.restore();
       if (D.phase === 'warn') { c.save(); c.fillStyle = '#fff'; c.strokeStyle = '#333'; c.lineWidth = 1.5; c.beginPath(); c.arc(tx + 22, ty - 62, 9, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#d33'; c.font = `bold 12px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('!', tx + 22, ty - 61); c.restore(); } } });
     V.box({ x0: tx - 22, y0: ty + 3, z0: 0, x1: tx + 22, y1: ty + 13, z1: 20, col: '#7a5530' }); // 교탁 (선생님 앞)
+    { const top = D.C.top, wy = 146, WH = 64; // 앞벽(칠판·창문) = 선생님 뒤 세로 벽. 바닥에 눕혀 그린 벽·칠판은 교단·바닥색으로 덮음
+      V.floor(c => { c.fillStyle = '#3a2e22'; c.fillRect(AR.x, AR.y, AR.w, wy - AR.y); c.fillStyle = '#9a7a52'; c.fillRect(AR.x, wy, AR.w, top - wy); c.fillStyle = 'rgba(0,0,0,0.12)'; c.fillRect(AR.x, top - 4, AR.w, 4); });
+      V.wall({ x1: AR.x, y1: wy, x2: AR.x + AR.w, y2: wy, h: WH, draw: x => { x.translate(-AR.x, -AR.y + 4);
+        x.fillStyle = '#d9d2b8'; x.fillRect(AR.x, AR.y - 4, AR.w, WH); x.fillStyle = '#8a6a44'; x.fillRect(AR.x, AR.y + WH - 12, AR.w, 8);
+        x.fillStyle = '#6b4a2a'; x.fillRect(48, AR.y + 6, 264, 46); x.fillStyle = '#2f5a3c'; x.fillRect(52, AR.y + 10, 256, 38); // 칠판
+        x.fillStyle = 'rgba(255,255,255,0.55)'; x.font = `9px ${FONT}`; x.textAlign = 'left'; x.textBaseline = 'alphabetic'; x.fillText('1 + 1 = 2   오늘의 학습: 평화', 62, AR.y + 26); x.fillText('숙제: 싸우지 않기', 62, AR.y + 40);
+        x.fillStyle = '#efe6d0'; x.fillRect(60, AR.y + 52, 18, 3);
+        x.fillStyle = '#a9c8e6'; x.fillRect(AR.x + 4, AR.y + 10, 30, 36); x.fillRect(AR.x + AR.w - 34, AR.y + 10, 30, 36); // 창문
+        x.fillStyle = '#e8e2d0'; x.fillRect(AR.x + 18, AR.y + 10, 2, 36); x.fillRect(AR.x + AR.w - 20, AR.y + 10, 2, 36); } }); }
     for (const s of D.studs) {
       const sp = Sprites.get(s.def), sx = s.x, sy = s.y, bob = T && !facing ? Math.max(0, Math.sin(T * 3 + s.ph)) * -1 : 0;
       const face = s.row === 'L' ? 1 : s.row === 'R' ? -1 : (sx < 180 ? 1 : -1), up = tFacing || s.row === 'B'; // 2D: 위(선생님 쪽)를 보면 뒷모습

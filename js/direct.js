@@ -426,6 +426,142 @@ const DirectPlay = (() => {
     }
     if (clipped) ctx.restore();
   }
+  // ---------- 스테이지별 하늘(천장)·외곽 벽 (화면 전용, 스테이지마다 오프스크린 캔버스에 한 번만 그려 캐시) ----------
+  const hh1 = n => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); }; // 결정적 해시 (시뮬 난수 안 씀)
+  const ENV = { // sky: 파노라마 종류, wall: 외곽 벽 무늬(null = 벽 없음), wh: 벽 높이, ground: 경기장 밖 바닥색, fog: 지평선 안개색
+    arena: { sky: 'dusk', wall: 'stone', wh: 34, ground: '#2a2420', fog: '120,90,110' },
+    island: { sky: 'day', wall: null, ground: '#2a7ab0', fog: '170,210,235' },
+    city: { sky: 'city', wall: 'concrete', wh: 30, ground: '#3a3a40', fog: '150,170,190' },
+    ballInterior: { sky: 'capsule', wall: 'capsule', wh: 40, ground: '#202024', fog: '60,30,34' },
+    ballPit: { sky: 'play', wall: 'padded', wh: 34, ground: '#d8d0e8', fog: '230,220,240' },
+    iceCave: { sky: 'cave', wall: 'ice', wh: 34, ground: '#0e1824', fog: '20,40,60' },
+    trampoline: { sky: 'gym', wall: 'gymmat', wh: 36, ground: '#30343c', fog: '60,66,80' },
+    race: { sky: 'day', wall: 'tire', wh: 18, ground: '#3a6a2a', fog: '170,210,235' },
+    tower: { sky: 'high', wall: 'glass', wh: 22, ground: '#7a96b4', fog: '190,215,235' },
+    street: { sky: 'night', wall: 'brick', wh: 44, ground: '#1a1a20', fog: '30,30,50' },
+    subway: { sky: 'tunnel', wall: 'tile', wh: 50, ground: '#141418', fog: '20,20,24' },
+    idol: { sky: 'concert', wall: 'curtain', wh: 50, ground: '#0a0810', fog: '30,10,40' },
+    diving: { sky: 'day', wall: 'pooltile', wh: 26, ground: '#cfd8e0', fog: '190,225,245' },
+    soccer: { sky: 'stadium', wall: 'adboard', wh: 18, ground: '#2a6a2a', fog: '150,190,220' },
+    fastfood: { sky: 'diner', wall: 'interior', wh: 56, ground: '#2a2026', fog: '80,50,40' },
+    claw: { sky: 'arcade', wall: 'glasscase', wh: 40, ground: '#1a1028', fog: '50,20,70' },
+    bey: { sky: 'arenaNight', wall: 'steel', wh: 24, ground: '#101418', fog: '30,34,50' },
+    bbq: { sky: 'evening', wall: 'iron', wh: 16, ground: '#3a2a20', fog: '200,120,90' },
+    classroom: { sky: 'classroom', wall: 'classwall', wh: 60, ground: '#3a2e22', fog: '120,110,90' },
+    snake: { sky: 'night', wall: null, ground: '#14121c', fog: '20,18,28' },
+  };
+  const envOf = b => ENV[b.stageId] || ENV.arena;
+  const skyC = {}, wallC = {};
+  const PW = 1024, PHh = 256; // 파노라마 (360도 = PW 픽셀, 아래 끝 = 지평선)
+  function grad(x, stops) { const g = x.createLinearGradient(0, 0, 0, PHh); stops.forEach(([t, c]) => g.addColorStop(t, c)); x.fillStyle = g; x.fillRect(0, 0, PW, PHh); }
+  function lightsRows(x, col, glow) { // 실내 천장: 지평선 쪽일수록 작고 촘촘한 조명 줄 (원근 흉내)
+    for (let r = 0; r < 5; r++) { const y = 30 + r * r * 9 + r * 18, sz = 1 - r * 0.17, gap = 64 * sz;
+      for (let i = 0; i * gap < PW; i++) { const lx = i * gap + (r % 2) * gap / 2; x.fillStyle = glow; x.fillRect(lx - 14 * sz, y - 4 * sz, 28 * sz + 8, 8 * sz + 6); x.fillStyle = col; x.fillRect(lx - 10 * sz, y - 2 * sz, 20 * sz + 4, 4 * sz + 2); } }
+  }
+  function skyline(x, base, win, hmax) { for (let i = 0, px = 0; px < PW; i++) { const w = 18 + hh1(i) * 30, h = 20 + hh1(i + 50) * hmax; x.fillStyle = base; x.fillRect(px, PHh - h, w, h);
+    if (win) for (let wy = PHh - h + 5; wy < PHh - 4; wy += 7) for (let wx = px + 3; wx < px + w - 3; wx += 6) if (hh1(i * 31 + wx * 7 + wy) > 0.55) { x.fillStyle = win; x.fillRect(wx, wy, 2, 3); }
+    px += w + 1; } }
+  function clouds(x, col, n, y0, y1) { for (let i = 0; i < n; i++) { const cx = hh1(i + 3) * PW, cy = y0 + hh1(i + 7) * (y1 - y0), r = 10 + hh1(i + 11) * 18; x.fillStyle = col;
+    for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(cx + (k - 2) * r * 0.7, cy + Math.abs(k - 2) * 2, r * (1 - Math.abs(k - 2) * 0.18), r * 0.45, 0, 0, TAU); x.fill(); } } }
+  function stars(x, n, y1) { for (let i = 0; i < n; i++) { x.fillStyle = `rgba(255,255,255,${0.3 + hh1(i + 5) * 0.6})`; x.fillRect(hh1(i) * PW, hh1(i + 99) * y1, 1.5, 1.5); } }
+  function mountains(x, col, amp, base) { x.fillStyle = col; x.beginPath(); x.moveTo(0, PHh); for (let px = 0; px <= PW; px += 16) x.lineTo(px, PHh - base - amp * (0.5 + 0.5 * Math.sin(px / PW * TAU * 3 + 1) * Math.sin(px / PW * TAU * 7)) - hh1(px) * 6); x.lineTo(PW, PHh); x.fill(); }
+  function makeSky(k) {
+    const c = document.createElement('canvas'); c.width = PW; c.height = PHh; const x = c.getContext('2d');
+    switch (k) {
+      case 'dusk': grad(x, [[0, '#1c1838'], [0.55, '#6a3c6a'], [0.85, '#e0805a'], [1, '#f0b070']]); stars(x, 60, 90);
+        x.fillStyle = 'rgba(255,220,150,0.9)'; x.beginPath(); x.arc(300, PHh - 18, 16, 0, TAU); x.fill(); mountains(x, '#3a2440', 40, 6); mountains(x, '#2a1a30', 22, 0); break;
+      case 'day': grad(x, [[0, '#3a7ad0'], [0.7, '#8cc4f0'], [1, '#d8eefa']]); x.fillStyle = 'rgba(255,250,220,0.95)'; x.beginPath(); x.arc(700, 70, 14, 0, TAU); x.fill(); clouds(x, 'rgba(255,255,255,0.85)', 14, 60, 210); break;
+      case 'city': grad(x, [[0, '#4a86d0'], [0.75, '#a8d0f0'], [1, '#e0eef8']]); clouds(x, 'rgba(255,255,255,0.8)', 8, 40, 140); skyline(x, '#7a8aa0', null, 60); skyline(x, '#5a6a80', 'rgba(255,240,180,0.5)', 36); break;
+      case 'night': grad(x, [[0, '#060814'], [0.7, '#141a34'], [1, '#2a2a4a']]); stars(x, 160, 200); x.fillStyle = '#f0f0d8'; x.beginPath(); x.arc(200, 60, 10, 0, TAU); x.fill(); skyline(x, '#0c0e1a', '#ffd870', 70); break;
+      case 'evening': grad(x, [[0, '#2a2050'], [0.5, '#8a4a7a'], [0.85, '#f08a50'], [1, '#ffc070']]); x.fillStyle = 'rgba(255,200,120,0.95)'; x.beginPath(); x.arc(520, PHh - 10, 22, 0, TAU); x.fill(); clouds(x, 'rgba(255,160,140,0.45)', 8, 80, 200); mountains(x, '#3a2a3a', 26, 0); break;
+      case 'high': grad(x, [[0, '#2a6ac8'], [0.75, '#9ad0f4'], [1, '#f0f8ff']]); x.fillStyle = 'rgba(255,250,220,0.95)'; x.beginPath(); x.arc(400, 50, 14, 0, TAU); x.fill(); clouds(x, 'rgba(255,255,255,0.95)', 40, PHh - 30, PHh - 4); break;
+      case 'stadium': grad(x, [[0, '#3a7ad0'], [0.75, '#9ccaf0'], [1, '#d8eefa']]); clouds(x, 'rgba(255,255,255,0.8)', 8, 40, 120);
+        x.fillStyle = '#3a4250'; x.fillRect(0, PHh - 46, PW, 46); for (let i = 0; i < 1400; i++) { x.fillStyle = ['#e85a5a', '#5a8ae8', '#f0e070', '#f0f0f0', '#5ac87a'][i % 5]; x.fillRect(hh1(i) * PW, PHh - 44 + hh1(i + 7) * 40, 2, 2); }
+        for (let i = 0; i < 4; i++) { const tx = 128 + i * 256; x.fillStyle = '#5a6270'; x.fillRect(tx - 2, PHh - 110, 4, 64); x.fillStyle = '#fffbe0'; x.fillRect(tx - 14, PHh - 118, 28, 10); } break;
+      case 'arenaNight': grad(x, [[0, '#04060c'], [0.8, '#101828'], [1, '#202a40']]); x.fillStyle = '#1a2030'; x.fillRect(0, PHh - 40, PW, 40);
+        for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(200,210,255,${0.2 + hh1(i) * 0.4})`; x.fillRect(hh1(i + 1) * PW, PHh - 38 + hh1(i + 2) * 36, 2, 2); }
+        for (let i = 0; i < 6; i++) { const tx = 85 + i * 170, g = x.createLinearGradient(0, 40, 0, PHh); g.addColorStop(0, 'rgba(255,250,220,0.35)'); g.addColorStop(1, 'rgba(255,250,220,0)'); x.fillStyle = g; x.beginPath(); x.moveTo(tx - 6, 40); x.lineTo(tx + 6, 40); x.lineTo(tx + 50, PHh); x.lineTo(tx - 50, PHh); x.fill(); x.fillStyle = '#fffbe0'; x.fillRect(tx - 10, 36, 20, 6); } break;
+      case 'concert': grad(x, [[0, '#020104'], [0.8, '#120a1c'], [1, '#2a1030']]);
+        for (let i = 0; i < 10; i++) { const tx = 50 + i * 102, col = ['255,120,220', '120,200,255', '255,230,120', '170,120,255'][i % 4], g = x.createLinearGradient(0, 0, 0, PHh); g.addColorStop(0, `rgba(${col},0.5)`); g.addColorStop(1, `rgba(${col},0)`);
+          x.fillStyle = g; x.beginPath(); x.moveTo(tx - 4, 0); x.lineTo(tx + 4, 0); x.lineTo(tx + 40 + (i % 3 - 1) * 40, PHh); x.lineTo(tx - 40 + (i % 3 - 1) * 40, PHh); x.fill(); }
+        x.fillStyle = '#1a1420'; x.fillRect(0, 0, PW, 14); for (let i = 0; i < PW; i += 32) { x.fillStyle = '#ffe9a0'; x.fillRect(i + 12, 12, 8, 4); } break;
+      case 'cave': grad(x, [[0, '#04080e'], [0.7, '#0e1a2a'], [1, '#1c3048']]);
+        for (let i = 0; i < 90; i++) { const ix = hh1(i) * PW, il = 10 + hh1(i + 3) * 50, iw = 3 + hh1(i + 5) * 6; x.fillStyle = `rgba(170,220,250,${0.25 + hh1(i + 9) * 0.35})`; x.beginPath(); x.moveTo(ix - iw, 0); x.lineTo(ix + iw, 0); x.lineTo(ix, il); x.fill(); }
+        for (let i = 0; i < 40; i++) { x.fillStyle = 'rgba(120,200,255,0.5)'; x.fillRect(hh1(i + 40) * PW, 60 + hh1(i + 41) * 150, 2, 2); } mountains(x, '#0a141f', 30, 0); break;
+      case 'capsule': grad(x, [[0, '#c83a3a'], [0.45, '#a82a2a'], [0.5, '#1a1a1e'], [0.56, '#e8e8ec'], [1, '#b8b8c0']]); lightsRows(x, '#fff8e8', 'rgba(255,240,200,0.25)'); break;
+      case 'play': grad(x, [[0, '#f0e0f8'], [1, '#c8e0f8']]); lightsRows(x, '#ffffff', 'rgba(255,255,200,0.35)');
+        for (let i = 0; i < 40; i++) { x.fillStyle = ['#ff7a8a', '#7ac8ff', '#ffe07a', '#8aff9a'][i % 4]; x.beginPath(); x.moveTo(i * 26, 0); x.lineTo(i * 26 + 26, 0); x.lineTo(i * 26 + 13, 22); x.fill(); } break; // 깃발 장식
+      case 'gym': grad(x, [[0, '#2a2e36'], [1, '#5a606c']]); for (let i = 0; i < PW; i += 40) { x.fillStyle = '#3a4048'; x.fillRect(i, 0, 3, PHh); } lightsRows(x, '#f8fbff', 'rgba(220,235,255,0.3)'); break;
+      case 'tunnel': grad(x, [[0, '#08080a'], [0.8, '#1a1a20'], [1, '#2a2a30']]); for (let i = 0; i < PW; i += 48) { x.fillStyle = '#121216'; x.fillRect(i, 0, 6, PHh); } lightsRows(x, '#fff0c8', 'rgba(255,230,170,0.22)'); break;
+      case 'diner': grad(x, [[0, '#3a2a24'], [1, '#7a5a44']]); lightsRows(x, '#fff0c0', 'rgba(255,220,150,0.3)'); x.fillStyle = '#c83a30'; x.fillRect(0, PHh - 12, PW, 12); x.fillStyle = '#ffd23a'; for (let i = 0; i < PW; i += 20) x.fillRect(i, PHh - 7, 10, 2); break;
+      case 'arcade': grad(x, [[0, '#0a0614'], [1, '#2a1440']]); for (let i = 0; i < 12; i++) { x.strokeStyle = ['#ff4ad0', '#4ae0ff', '#ffe04a'][i % 3]; x.lineWidth = 3; x.globalAlpha = 0.7; x.beginPath(); x.moveTo(i * 86, 30 + (i % 3) * 30); x.lineTo(i * 86 + 60, 30 + (i % 3) * 30); x.stroke(); }
+        x.globalAlpha = 1; for (let i = 0; i < 20; i++) { const ax = i * 52; x.fillStyle = '#1a1028'; x.fillRect(ax, PHh - 60, 40, 60); x.fillStyle = ['#ff4ad0', '#4ae0ff', '#ffe04a', '#8aff6a'][i % 4]; x.globalAlpha = 0.6; x.fillRect(ax + 6, PHh - 54, 28, 20); x.globalAlpha = 1; } break; // 오락기 줄
+      case 'classroom': grad(x, [[0, '#d8d2c0'], [1, '#ece6d4']]); lightsRows(x, '#ffffff', 'rgba(255,255,240,0.5)'); break;
+      default: grad(x, [[0, '#0b0c14'], [1, '#2a2e42']]);
+    }
+    return c;
+  }
+  function drawSky(ctx, b, hz) {
+    const E = envOf(b), pano = skyC[E.sky] || (skyC[E.sky] = makeSky(E.sky));
+    const k = C.f / (PW / TAU), tw = PW * k, th = PHh * k, phF = Math.atan2(C.F[1], C.F[0]), s = (C.F[0] * C.R[1] - C.F[1] * C.R[0]) > 0 ? 1 : -1;
+    ctx.save(); ctx.fillStyle = sampleTop(pano, E.sky); ctx.fillRect(0, 0, W, Math.max(0, hz - th + 1));
+    ctx.translate(C.cx, 0); ctx.scale(s, 1); ctx.imageSmoothingEnabled = true;
+    let x0 = -phF * C.f; x0 = ((x0 % tw) + tw) % tw - tw; while (x0 > -W) x0 -= tw;
+    for (let x = x0; x < W; x += tw) ctx.drawImage(pano, x, hz - th, tw, th);
+    ctx.restore();
+  }
+  const TOPC = { dusk: '#1c1838', day: '#3a7ad0', city: '#4a86d0', night: '#060814', evening: '#2a2050', high: '#2a6ac8', stadium: '#3a7ad0', arenaNight: '#04060c', concert: '#020104', cave: '#04080e', capsule: '#c83a3a', play: '#f0e0f8', gym: '#2a2e36', tunnel: '#08080a', diner: '#3a2a24', arcade: '#0a0614', classroom: '#d8d2c0' };
+  function sampleTop(p, k) { return TOPC[k] || '#0b0c14'; }
+  // 외곽 벽 무늬: 64 단위 폭 반복 조각 (TR 배율)
+  const TW = 64;
+  function makeWall(kind, h) {
+    const c = document.createElement('canvas'); c.width = TW * TR; c.height = Math.ceil(h * TR); const x = c.getContext('2d'); x.scale(TR, TR);
+    const R = (col, a, b2, w, hh) => { x.fillStyle = col; x.fillRect(a, b2, w, hh); };
+    switch (kind) {
+      case 'stone': R('#5a5450', 0, 0, TW, h); for (let r = 0; r * 8 < h; r++) for (let i = -1; i < 5; i++) { const bx = i * 16 + (r % 2) * 8; R(hh1(r * 9 + i) > 0.5 ? '#6a645e' : '#625c56', bx + 1, r * 8 + 1, 14, 6); } R('#7a746c', 0, 0, TW, 3); break;
+      case 'concrete': R('#8a8a90', 0, 0, TW, h); R('#9a9aa0', 0, 0, TW, 3); R('#6a6a70', 31, 0, 2, h); R('rgba(255,90,140,0.6)', 8, h * 0.4, 18, 5); R('rgba(90,200,255,0.5)', 40, h * 0.55, 14, 4); R('#e8c840', 0, h - 5, TW, 3); break;
+      case 'capsule': R('#e8e8ec', 0, 0, TW, h); R('#c83a3a', 0, 0, TW, h * 0.45); R('#1a1a1e', 0, h * 0.45, TW, 4); x.fillStyle = '#f8f8fa'; x.beginPath(); x.arc(32, h * 0.45 + 2, 6, 0, TAU); x.fill(); R('#9a9aa2', 0, h - 3, TW, 3); break;
+      case 'padded': for (let i = 0; i < 4; i++) { R(['#ff7a8a', '#7ac8ff', '#ffe07a', '#8ae89a'][i], i * 16, 0, 16, h); R('rgba(255,255,255,0.35)', i * 16 + 2, 2, 3, h - 4); R('rgba(0,0,0,0.12)', i * 16 + 15, 0, 1, h); } break;
+      case 'gymmat': R('#2a5aa8', 0, 0, TW, h); for (let i = 0; i < 4; i++) R('#24508f', i * 16 + 15, 0, 1, h); R('#e8e8e8', 0, h * 0.5, TW, 2); R('#1a3a70', 0, h - 4, TW, 4); break;
+      case 'tire': for (let i = 0; i < 4; i++) { x.fillStyle = i % 2 ? '#e83a3a' : '#f0f0f0'; x.fillRect(i * 16, 0, 16, h); x.fillStyle = '#1a1a1a'; for (let r = 0; r * 6 < h; r++) { x.beginPath(); x.ellipse(i * 16 + 8, r * 6 + 3, 7, 2.6, 0, 0, TAU); x.fill(); } } break;
+      case 'glass': R('rgba(170,220,250,0.35)', 0, 0, TW, h); R('#c8d0d8', 0, 0, TW, 3); R('#8a929a', 0, 0, 3, h); R('#8a929a', 32, 0, 3, h); R('rgba(255,255,255,0.5)', 8, 5, 2, h - 8); break;
+      case 'brick': R('#5a2a22', 0, 0, TW, h); for (let r = 0; r * 6 < h; r++) for (let i = -1; i < 6; i++) R(hh1(r * 7 + i) > 0.5 ? '#8a3a2e' : '#7a3428', i * 12 + (r % 2) * 6 + 1, r * 6 + 1, 10, 4); R('rgba(120,255,200,0.55)', 10, h * 0.35, 20, 3); R('rgba(255,120,220,0.5)', 36, h * 0.5, 16, 3); break; // 낙서
+      case 'tile': R('#e8ecee', 0, 0, TW, h); for (let r = 0; r * 6 < h; r++) R('rgba(0,0,0,0.08)', 0, r * 6, TW, 1); for (let i = 0; i < TW; i += 8) R('rgba(0,0,0,0.06)', i, 0, 1, h); R('#2f7ad0', 0, h * 0.3, TW, 6); R('#e8c840', 0, h * 0.3 + 6, TW, 2); R('#3a3a40', 0, h - 4, TW, 4); break;
+      case 'curtain': R('#1a0a20', 0, 0, TW, h); for (let i = 0; i < TW; i += 8) { const g = x.createLinearGradient(i, 0, i + 8, 0); g.addColorStop(0, '#2a0e30'); g.addColorStop(0.5, '#4a1a50'); g.addColorStop(1, '#2a0e30'); x.fillStyle = g; x.fillRect(i, 0, 8, h); } R('#1a1a1e', 20, h - 22, 24, 22); R('#3a3a40', 26, h - 18, 12, 12); R('#ffd86a', 0, 0, TW, 2); break; // 커튼 + 스피커
+      case 'pooltile': R('#f2f4f6', 0, 0, TW, h); for (let r = 0; r * 8 < h; r++) for (let i = 0; i < 8; i++) if ((r + i) % 2) R('#dce6ee', i * 8, r * 8, 8, 8); R('#2a7ab8', 0, h - 6, TW, 3); R('#3ea2d2', 0, 2, TW, 2); break;
+      case 'adboard': R('#1a1a24', 0, 0, TW, h); { const col = ['#e83a3a', '#3a8ae8', '#f0c83a', '#3ac87a'][0]; R(col, 2, 2, 28, h - 4); R('#3a8ae8', 34, 2, 28, h - 4); R('rgba(255,255,255,0.85)', 8, h / 2 - 1, 16, 2); R('rgba(255,255,255,0.85)', 40, h / 2 - 1, 16, 2); } break;
+      case 'interior': R('#f0e6d0', 0, 0, TW, h); R('#c83a30', 0, h - 14, TW, 10); R('#ffd23a', 0, h - 15, TW, 1); R('#8fd0f0', 10, 8, 44, h * 0.45); R('#e8e2d0', 31, 8, 2, h * 0.45); R('rgba(255,255,255,0.5)', 14, 10, 3, h * 0.4); R('#5a4a3a', 0, h - 4, TW, 4); break;
+      case 'glasscase': R('rgba(180,220,255,0.18)', 0, 0, TW, h); R('#c8a0f0', 0, 0, TW, 3); R('#8a60c0', 0, h - 4, TW, 4); R('#8a60c0', 0, 0, 3, h); R('rgba(255,255,255,0.45)', 10, 6, 2, h - 12); R('rgba(255,255,255,0.3)', 16, 6, 1, h - 12); break;
+      case 'steel': R('#3a4250', 0, 0, TW, h); R('#5a6474', 0, 0, TW, 3); for (let i = 0; i < TW; i += 16) { R('#2a3240', i, 0, 2, h); R('#8a94a4', i + 6, h * 0.5, 3, 3); } R('#ffd23a', 0, h - 4, TW, 2); break;
+      case 'iron': R('#2a2624', 0, 0, TW, h); R('#4a4440', 0, 0, TW, 2); for (let i = 0; i < TW; i += 8) R('#1a1614', i, 0, 2, h); R('rgba(255,120,40,0.35)', 0, h - 4, TW, 4); break;
+      case 'classwall': R('#d9d2b8', 0, 0, TW, h); R('#8a6a44', 0, h - 8, TW, 8); R('#a9c8e6', 12, 10, 40, 28); R('#e8e2d0', 31, 10, 2, 28); R('#e8e2d0', 12, 23, 40, 2); R('rgba(255,255,255,0.5)', 15, 12, 3, 24); R('#7d8c9a', 0, h - 18, TW, 10); break; // 창문 + 사물함
+      default: R('#2f3447', 0, 0, TW, h);
+    }
+    return c;
+  }
+  function drawEnvWalls(ctx, b) {
+    const E = envOf(b); if (!E.wall) return;
+    const h = E.wh || CAM.wallH, key = E.wall + h, tex = wallC[key] || (wallC[key] = makeWall(E.wall, h));
+    const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h;
+    const sides = [[[x0, y0], [x1, y0], C.y > y0], [[x1, y0], [x1, y1], C.x < x1], [[x1, y1], [x0, y1], C.y < y1], [[x0, y1], [x0, y0], C.x > x0]];
+    for (const [a, c, vis] of sides) if (vis) texWall(ctx, a[0], a[1], c[0], c[1], h, tex, 16);
+  }
+  // 고정 세로 벽: 두 바닥 끝점 + 높이. 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀, 카메라 바로 앞(near 근처) 조각은 건너뜀 (번져 보이는 것 방지)
+  function texWall(ctx, ax0, ay0, bx0, by0, h, tex, seg, alpha = 1) {
+    const L = Math.hypot(bx0 - ax0, by0 - ay0); if (L < 1) return;
+    const N = Math.max(1, Math.ceil(L / seg)), sh = h * TR;
+    if (alpha < 1) ctx.globalAlpha = alpha;
+    for (let k = 0; k < N; k++) {
+      const t0 = k / N, t1 = (k + 1) / N, ax = ax0 + (bx0 - ax0) * t0, ay = ay0 + (by0 - ay0) * t0, bx = ax0 + (bx0 - ax0) * t1, by = ay0 + (by0 - ay0) * t1;
+      if (cam(ax, ay, 0)[2] < CAM.near + 8 || cam(bx, by, 0)[2] < CAM.near + 8) continue;
+      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl) continue;
+      const len = (t1 - t0) * L * TR, sx = ((k * L / N) * TR) % tex.width, sw = Math.min(len, tex.width - sx);
+      ctx.save(); ctx.transform((bb.x - a.x) / len, (bb.y - a.y) / len, (a.x - tl.x) / sh, (a.y - tl.y) / sh, tl.x, tl.y);
+      ctx.drawImage(tex, sx, 0, sw, sh, 0, 0, sw + 0.6, sh); if (sw < len - 0.5) ctx.drawImage(tex, 0, 0, len - sw, sh, sw, 0, len - sw + 0.6, sh);
+      ctx.restore();
+    }
+    if (alpha < 1) ctx.globalAlpha = 1;
+  }
   // 얼음 동굴: 시뮬의 얼음벽 구간(b.iceSegs: hp·hitT·dead)을 그대로 비춤. 금 = 깎인 hp, 부딪힘 = 작은 얼음 조각, hp 0 = 구간이 산산조각 → 크레바스(시뮬대로 영구)
   const iceVis = new WeakMap(), hsh = (a, k) => { const v = Math.sin(a * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 화면 전용 해시 (시뮬 난수 안 씀)
   function iceSegPts(sg) { const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h;
@@ -464,6 +600,10 @@ const DirectPlay = (() => {
   }
   function drawWalls(ctx, b) {
     if (b.iceSegs && b.iceSegs.length) return drawIceWalls3(ctx, b);
+    if (ENV[b.stageId]) drawEnvWalls(ctx, b); else drawPlainWalls(ctx, b);
+    drawCircleWall(ctx, b);
+  }
+  function drawPlainWalls(ctx, b) {
     const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h, h = CAM.wallH;
     const sides = [ // [시작, 끝, 안쪽에서 보이나]
       [[x0, y0], [x1, y0], C.y > y0, '#2f3447'], [[x1, y0], [x1, y1], C.x < x1, '#262a3a'],
@@ -477,6 +617,8 @@ const DirectPlay = (() => {
       const p = proj(a[0], a[1], h), q = proj(c[0], c[1], h);
       if (p && q) { ctx.strokeStyle = '#4a5272'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); }
     }
+  }
+  function drawCircleWall(ctx, b) {
     const CI = b.stage.circle;
     if (CI && !CI.hidden) { // 원형 경기장: 반투명 원형 벽 (안쪽 면만)
       const r = b.circleR(), N = 56, hh = 22;
@@ -671,14 +813,20 @@ const DirectPlay = (() => {
     const cw = Math.ceil(L * TR) + 2, ch = Math.ceil(h * TR) + 2, B = poolC(mpool, i, cw, ch);
     B.x.setTransform(TR, 0, 0, TR, 0, 0);
     B.x.save(); try { m.draw(B.x, L); } catch (e) { console.warn('[direct] wall draw', e); } finally { B.x.restore(); }
-    const N = clamp(Math.ceil(L / 20), 1, 24), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t];
+    const N = clamp(Math.ceil(L / 16), 1, 48), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t];
+    // 카메라와 내 캐릭터 사이를 가로막는 벽은 반투명 (벽 양쪽에 카메라·캐릭터가 나뉘고, 캐릭터가 벽 길이 안쪽)
+    const U = S.P, dx = m.x2 - m.x1, dy = m.y2 - m.y1, sd = (px, py) => dx * (py - m.y1) - dy * (px - m.x1);
+    let al = 1; if (U) { const tU = ((U.x - m.x1) * dx + (U.y - m.y1) * dy) / (L * L); if (sd(C.x, C.y) * sd(U.x, U.y) < 0 && tU > -0.1 && tU < 1.1) al = 0.3; }
+    ctx.save(); ctx.globalAlpha *= al;
     for (let k = 0; k < N; k++) {
       const t0 = k / N, t1 = (k + 1) / N, [ax, ay] = P(t0), [bx, by] = P(t1);
-      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl || a.s > 12 || bb.s > 12) continue;
+      if (cam(ax, ay, 0)[2] < CAM.near + 8 || cam(bx, by, 0)[2] < CAM.near + 8) continue; // 카메라 바로 앞·뒤 조각은 건너뜀 (번짐 방지)
+      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl) continue;
       const sw = (t1 - t0) * L * TR, sx = t0 * L * TR, sh = h * TR;
       ctx.save(); ctx.transform((bb.x - a.x) / sw, (bb.y - a.y) / sw, (a.x - tl.x) / sh, (a.y - tl.y) / sh, tl.x, tl.y);
       ctx.drawImage(B.c, sx, 0, sw + 0.6, sh, 0, 0, sw + 0.6, sh); ctx.restore();
     }
+    ctx.restore();
   }
 
   function groundZ(b, u) { // 스테이지 지형 높이 (다이빙 존 계단·다이빙대 위 등). 훅이 groundZ(b, u) 를 주면 사용
@@ -692,15 +840,14 @@ const DirectPlay = (() => {
     ctx.imageSmoothingEnabled = false;
     // 하늘(천장) + 바깥 바닥
     const hz = C.cy - C.f * Math.tan(C.pitch);
-    const g = ctx.createLinearGradient(0, 0, 0, Math.max(1, hz)); g.addColorStop(0, '#0b0c14'); g.addColorStop(1, '#2a2e42');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, Math.max(0, hz)); ctx.fillStyle = '#14121c'; ctx.fillRect(0, Math.max(0, hz), W, H);
+    const EV = envOf(b); drawSky(ctx, b, hz); ctx.fillStyle = EV.ground; ctx.fillRect(0, Math.max(0, hz), W, H); // 스테이지별 하늘(천장) 파노라마 + 경기장 밖 바닥색
     S.wrap = b.stageId === 'snake'; drawFloorTex(b); const cells = unitCells(b); drawFloor(ctx);
-    const fh = S.wrap ? 150 : 70, fog = ctx.createLinearGradient(0, hz, 0, hz + fh); fog.addColorStop(0, S.wrap ? 'rgba(20,18,28,1)' : 'rgba(20,22,34,0.75)'); fog.addColorStop(1, 'rgba(20,22,34,0)'); // 뱀꼬리: 먼 바닥은 안개로
+    const fh = S.wrap ? 150 : 70, fog = ctx.createLinearGradient(0, hz, 0, hz + fh); fog.addColorStop(0, `rgba(${EV.fog},${S.wrap ? 1 : 0.75})`); fog.addColorStop(1, `rgba(${EV.fog},0)`); // 뱀꼬리: 먼 바닥은 안개로
     ctx.fillStyle = fog; ctx.fillRect(0, hz, W, fh);
     if (!S.wrap) drawWalls(ctx, b); // 뱀꼬리 맵은 외곽 벽 없음
     if (b.claw && b.claw.crane) drawCraneTop(ctx, b.claw.crane, false); // 크레인 위쪽 구조 (모두보다 높음 → 먼저)
     // 깊이 정렬 (먼 것부터)
-    const P = player(b), E = focus(b, P), items = [];
+    const P = player(b), E = focus(b, P), items = []; S.P = P;
     for (const u of b.u) { if (u.hidden || u.def.noDraw) continue; const c = cam(u.x, u.y, 0); if (c[2] > CAM.near + 2) items.push({ z: c[2], u }); }
     for (const bl of b.buildings) if (!bl.dead && !bl.draw) { const c = cam(bl.x + bl.w / 2, bl.y + bl.h / 2, 0); items.push({ z: c[2] + Math.min(bl.w, bl.h) * 0.3, bl }); }
     for (const p of b.proj) { if (p.kind === 'wire') continue; const c = cam(p.x, p.y, PH); if (c[2] > CAM.near) items.push({ z: c[2], p });
@@ -725,7 +872,7 @@ const DirectPlay = (() => {
       if (it.big) { drawBig(ctx, it.big); continue; }
       if (it.flat) { drawFlat(ctx, it.flat, fi++); continue; }
       if (it.beam) { drawBeam3(ctx, it.beam, mi++); continue; }
-      if (it.box) { const q = it.box; ctx.save(); ctx.globalAlpha = q.a == null ? 1 : q.a; box3(ctx, q.x0, q.y0, q.z0, q.x1, q.y1, q.z1, q.col); ctx.restore(); continue; }
+      if (it.box) { const q = it.box; if (C.x > q.x0 - 4 && C.x < q.x1 + 4 && C.y > q.y0 - 4 && C.y < q.y1 + 4 && C.z < q.z1 + 4) continue; /* 카메라가 상자 안이면 그리지 않음 (화면 가득 번짐 방지) */ ctx.save(); ctx.globalAlpha = q.a == null ? 1 : q.a; box3(ctx, q.x0, q.y0, q.z0, q.x1, q.y1, q.z1, q.col); ctx.restore(); continue; }
       if (it.wall) { drawWall3(ctx, it.wall, mi++); continue; }
       if (it.ball) { drawBall(ctx, it.ball); continue; }
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
