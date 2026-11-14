@@ -138,26 +138,40 @@
       }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 뼈 줄 = 바닥에 고정된 세로 판, 블래스터 = 머리뼈는 제자리(높이 14)에 세움 + 광선은 3D 띠
       for (const O of objs(b)) { if (O.t < 0) continue;
+        if (V && O.k === 'bone') { const P = O.p, X = O.axis === 'x';
+          V.wall({ x1: X ? P : O.c0, y1: X ? O.c0 : P, x2: X ? P : O.c1, y2: X ? O.c1 : P, h: 16, draw: (c, L) => { c.fillStyle = O.blue ? '#5a9aff' : '#f4f4f8';
+            for (let q = O.c0; q < O.c1; q += 7) { if (O.gh && q > O.gy && q < O.gy + O.gh) continue; const lx = q - O.c0; c.fillRect(lx - 1, 4, 3, 12); c.fillRect(lx - 2, 3, 5, 2); } } });
+          continue; }
+        if (V && O.k !== 'bone') { const ca = Math.cos(O.ang), sa = Math.sin(O.ang);
+          V.beam({ x1: O.x, y1: O.y, x2: O.x + ca * 520, y2: O.y + sa * 520, z: 14, w: 34, draw: (c, L) => gaster(c, { ...O, x: 0, y: 14, ang: 0 }, b, 1) });
+          V.stand({ x: O.x, y: O.y, w: 50, h: 60, draw: c => gaster(c, O, b, 2) }); continue; }
         if (O.k === 'bone') { ctx.save(); ctx.fillStyle = O.blue ? '#5a9aff' : '#f4f4f8'; const P = Math.round(O.p);
           for (let c = O.c0; c < O.c1; c += 7) { if (O.gh && c > O.gy && c < O.gy + O.gh) continue;
             if (O.axis === 'x') { ctx.fillRect(P - 1, c - 14, 3, 12); ctx.fillRect(P - 2, c - 15, 5, 2); } // 서 있는 뼈
             else { ctx.fillRect(c - 1, P - 12, 3, 12); ctx.fillRect(c - 2, P - 13, 5, 2); } }
           ctx.restore(); }
-        else { const open = O.t >= O.tele, k = clamp(O.t / O.tele, 0, 1); ctx.save();
-          if (!open) { ctx.globalAlpha = 0.25 + 0.3 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); ctx.setLineDash([]); }
-          else { const f = 1 - clamp((O.t - O.tele) / O.fire, 0, 1); if (!(window.BattleVFX && BattleVFX.gasterBeam(ctx, O.x, O.y - 14, O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520, 22 * f + 4, '#a8e8ff', 0.9 * f + 0.1, b.time))) { ctx.globalAlpha = 0.9 * f + 0.1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 22 * f + 4; ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); } }
-          ctx.globalAlpha = 1; ctx.translate(Math.round(O.x), Math.round(O.y - 14)); ctx.rotate(O.ang);
+        else gaster(ctx, O, b, 0); }
+      SANS_BARS(ctx, b);
+    },
+  });
+  function gaster(ctx, O, b, part) { // part: 0 = 전부, 1 = 조준선·광선만, 2 = 머리뼈만
+    { const open = O.t >= O.tele, k = clamp(O.t / O.tele, 0, 1); ctx.save();
+          if (part !== 2) { if (!open) { ctx.globalAlpha = 0.25 + 0.3 * k; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); ctx.setLineDash([]); }
+          else { const f = 1 - clamp((O.t - O.tele) / O.fire, 0, 1); if (!(window.BattleVFX && BattleVFX.gasterBeam(ctx, O.x, O.y - 14, O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520, 22 * f + 4, '#a8e8ff', 0.9 * f + 0.1, b.time))) { ctx.globalAlpha = 0.9 * f + 0.1; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 22 * f + 4; ctx.beginPath(); ctx.moveTo(O.x, O.y - 14); ctx.lineTo(O.x + Math.cos(O.ang) * 520, O.y - 14 + Math.sin(O.ang) * 520); ctx.stroke(); } } }
+          if (part !== 1) { ctx.globalAlpha = 1; ctx.translate(Math.round(O.x), Math.round(O.y - 14)); ctx.rotate(O.ang);
           ctx.fillStyle = '#f4f4f8'; ctx.fillRect(-12, -8, 14, 16); ctx.fillRect(2, -7, 6, open ? 4 : 6); ctx.fillRect(2, open ? 3 : 1, 6, open ? 4 : 6);
-          ctx.fillStyle = '#20202a'; ctx.fillRect(-6, -6, 4, 4); ctx.fillRect(-6, 2, 4, 4); ctx.fillStyle = open ? '#7af0ff' : '#ffffff'; ctx.fillRect(-5, -5, 2, 2); ctx.restore(); } }
+          ctx.fillStyle = '#20202a'; ctx.fillRect(-6, -6, 4, 4); ctx.fillRect(-6, 2, 4, 4); ctx.fillStyle = open ? '#7af0ff' : '#ffffff'; ctx.fillRect(-5, -5, 2, 2); } ctx.restore(); }
+  }
+  function SANS_BARS(ctx, b) {
       for (const u of b.u) { if (!isSans(u) || u.dead || u.hidden || !u.sn) continue; const Z = u.sn;
         const w = 28, x0 = Math.round(u.x - w / 2), y0 = Math.round(u.y + u.ky - b.airZ(u) - 66);
         ctx.save(); ctx.fillStyle = 'rgba(16,14,22,0.75)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 5);
         ctx.fillStyle = Z.sleep > 0 ? '#5a6a90' : Z.st < 30 ? '#ffd060' : '#f0f0f8'; ctx.fillRect(x0, y0, Math.round(w * clamp(Z.st, 0, ST.max) / ST.max), 3);
         if (Z.sleep > 0) { ctx.fillStyle = '#e0e8ff'; ctx.font = '8px ' + (window.FONT || 'sans-serif'); ctx.textAlign = 'center'; ctx.fillText('Zz', u.x + 12 + Math.sin(b.time * 3) * 2, y0 - 3); }
         ctx.restore(); }
-    },
-  });
+  }
 
   CHARACTERS.push({
     id: ID, name: '샌즈', fullName: '샌즈', gender: 'male', color: '#4a7ad0',

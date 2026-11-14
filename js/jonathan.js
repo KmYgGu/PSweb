@@ -232,21 +232,26 @@
       for (const u of b.u) if (u.jjLift && b.time - u.jjLift.t0 > u.jjLift.dur) u.jjLift = null;
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 스피드왜건·날아가는 스피드왜건을 제자리(높이 z)에 세움 + 그림자
+      const st = (x, y, z, w, h, fn) => { if (V) { V.stand({ x, y, z, w, h, draw: fn }); } else { ctx.save(); ctx.translate(0, -z); fn(ctx); ctx.restore(); } };
       for (const w of b.u) { if (!isSW(w)) continue; const S = w.summon, intro = S.ph === 'intro';
-        drawSW(ctx, w.x, w.y + (intro ? Math.sin(b.time * 8) * 0.8 : 0), w.facing, !S.hatOut, 0, Math.min(1, (b.time - S.t0) / 0.25));
-        if (S.hat && !S.hat.done) drawSaw(ctx, S.hat.x, S.hat.y, S.hat.rot, S.hat.ph === 'spin' ? 1.25 : 1); }
-      if (b.jjFly) for (const f of b.jjFly) { const k = f.t / 0.9; drawSW(ctx, f.x, f.y - Math.sin(k * Math.PI) * 46, f.face, f.hat, f.spin * f.t, 1 - k * k); }
-      for (const u of b.u) { if (!isJ(u) || u.dead || u.hidden) continue; const A = u.action, z = b.airZ(u);
-        if (A && A.type === 'jjCharge') { const k = 0.5 + 0.5 * Math.sin(b.time * 18); ctx.save(); ctx.globalAlpha = 0.25 + 0.25 * k; ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 18 - z, 16 + 3 * k, 24 + 3 * k, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
-        if (A && A.type === 'jjRush') for (let i = 0; i < 5; i++) { const ph = b.time * 41 + i * 1.9, along = 12 + 18 * (0.5 + 0.5 * Math.sin(ph)), side = Math.sin(ph * 1.7 + i) * 9;
-          ctx.fillStyle = '#3a2a1a'; ctx.fillRect(Math.round(u.x + u.facing * along) - 3, Math.round(u.y - 22 - z + side) - 3, 6, 6); ctx.fillStyle = i % 2 ? GOLD : '#f2c9a0'; ctx.fillRect(Math.round(u.x + u.facing * along) - 2, Math.round(u.y - 22 - z + side) - 2, 4, 4); }
-        if (u.buff('jjScarlet')) { ctx.save(); ctx.globalAlpha = 0.3 + 0.15 * Math.sin(b.time * 10); ctx.strokeStyle = '#ff5a3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x, u.y - 18 - z, 20 + u.pad, 0, TAU); ctx.stroke(); ctx.restore(); }
-      }
-      for (const u of b.u) if (u.jjLift && !u.dead) { const k = Math.min(1, (b.time - u.jjLift.t0) / 0.2); ctx.save(); ctx.globalAlpha = 0.5 * k; ctx.fillStyle = GOLD; ctx.beginPath(); ctx.ellipse(u.x, u.y + 2, 14, 4, 0, 0, TAU); ctx.fill(); ctx.restore(); }
+        st(w.x, w.y, 0, 90, 110, c => drawSW(c, w.x, w.y + (intro ? Math.sin(b.time * 8) * 0.8 : 0), w.facing, !S.hatOut, 0, Math.min(1, (b.time - S.t0) / 0.25)));
+        if (S.hat && !S.hat.done) { const H = S.hat, k = H.ph === 'spin' ? 1.25 : 1; if (V) { V.shadow(H.x, H.y + 16, 8 * k, 0.2); V.flat({ x: H.x, y: H.y + 16, z: 16, r: 20 * k + 4, draw: c => drawSaw(c, H.x, H.y + 16, H.rot, k) }); } else drawSaw(ctx, H.x, H.y, H.rot, k); } } // 모자 톱 = 위에서 본 원판 → 몸 높이(16)에 뜬 수평 원반
+      if (b.jjFly) for (const f of b.jjFly) { const k = f.t / 0.9; if (V) V.shadow(f.x, f.y, 10, 0.25); st(f.x, f.y, Math.sin(k * Math.PI) * 46, 90, 110, c => drawSW(c, f.x, f.y, f.face, f.hat, f.spin * f.t, 1 - k * k)); }
+      const V3 = b._v3d; // 직접 플레이: 캐릭터마다 따로 그 발 위치에 세움 (여러 캐릭터 그림이 한 판으로 묶이지 않게)
+      for (const u of b.u) { if (!isJ(u) || u.dead || u.hidden) continue; if (V3) V3.stand({ x: u.x, y: u.y, w: 110, h: 150 + b.airZ(u), draw: c => JJ_U(c, b, u) }); else JJ_U(ctx, b, u); }
+      for (const u of b.u) if (u.jjLift && !u.dead) { const k = Math.min(1, (b.time - u.jjLift.t0) / 0.2), f = ctx => { ctx.save(); ctx.globalAlpha = 0.5 * k; ctx.fillStyle = GOLD; ctx.beginPath(); ctx.ellipse(u.x, u.y + 2, 14, 4, 0, 0, TAU); ctx.fill(); ctx.restore(); }; if (V3) V3.floor(f); else f(ctx); } // 바닥 빛
     },
   });
   // 띄워진 상대: 그림 높이(airZ)만 올림 — 기절 중이라 이동·행동은 없음, 투사체 높이 판정에도 반영
   const oAirZ = Battle.prototype.airZ; Battle.prototype.airZ = function (u) { const z = oAirZ.call(this, u); return u.jjLift ? z + 22 * Math.min(1, (this.time - u.jjLift.t0) / 0.2) : z; };
+
+  function JJ_U(ctx, b, u) { const A = u.action, z = b.airZ(u);
+        if (A && A.type === 'jjCharge') { const k = 0.5 + 0.5 * Math.sin(b.time * 18); ctx.save(); ctx.globalAlpha = 0.25 + 0.25 * k; ctx.strokeStyle = GOLD; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 18 - z, 16 + 3 * k, 24 + 3 * k, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
+        if (A && A.type === 'jjRush') for (let i = 0; i < 5; i++) { const ph = b.time * 41 + i * 1.9, along = 12 + 18 * (0.5 + 0.5 * Math.sin(ph)), side = Math.sin(ph * 1.7 + i) * 9;
+          ctx.fillStyle = '#3a2a1a'; ctx.fillRect(Math.round(u.x + u.facing * along) - 3, Math.round(u.y - 22 - z + side) - 3, 6, 6); ctx.fillStyle = i % 2 ? GOLD : '#f2c9a0'; ctx.fillRect(Math.round(u.x + u.facing * along) - 2, Math.round(u.y - 22 - z + side) - 2, 4, 4); }
+        if (u.buff('jjScarlet')) { ctx.save(); ctx.globalAlpha = 0.3 + 0.15 * Math.sin(b.time * 10); ctx.strokeStyle = '#ff5a3a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x, u.y - 18 - z, 20 + u.pad, 0, TAU); ctx.stroke(); ctx.restore(); }
+  }
 
   CHARACTERS.push({
     id: ID, name: '죠나단', fullName: '메가톤맨 죠나단 죠죠', gender: 'male', color: '#3a5aa8',

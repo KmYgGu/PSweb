@@ -176,20 +176,26 @@
       }
     },
     drawOver(ctx, b) {
-      for (const u of b.u) {
-        const O = u.orb;
-        if (O) {
+      function drawOrb(ctx, O, b) {
           ctx.save();
           O.trail.forEach(([x, y], i) => { ctx.globalAlpha = 0.08 * i; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(x, y, (3 + i * 0.5) * MB_SIZE, 0, TAU); ctx.fill(); });
           const g = ctx.createRadialGradient(O.x, O.y, 1, O.x, O.y, 11 * MB_SIZE); g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#e0b0ff'); g.addColorStop(1, 'rgba(150,60,220,0)');
           ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.beginPath(); ctx.arc(O.x, O.y, 11 * MB_SIZE, 0, TAU); ctx.fill();
           ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(O.x, O.y, 6 * MB_SIZE, b.time * 5, b.time * 5 + 4); ctx.stroke();
           ctx.restore();
-        }
+      }
+      for (const u of b.u) {
+        const O = u.orb;
+        if (O && b._v3d) { // 직접 플레이: 구슬(+잔상)을 제자리(몸 높이 18)에 세움
+          const V = b._v3d, d = O.trail.reduce((m, [x]) => Math.max(m, Math.abs(x - O.x)), 0);
+          V.shadow(O.x, O.y + 18, 6); V.stand({ x: O.x, y: O.y + 18, w: d * 2 + 30 * MB_SIZE, h: 60 * MB_SIZE + 30, draw: c => drawOrb(c, O, b) });
+        } else if (O) drawOrb(ctx, O, b);
         const s = u.status('seal');
         if (s && !u.dead) drawLock(ctx, u.x, u.y - 86 - b.airZ(u) - u.pad * 2.2, s.t < 0.5 ? s.t / 0.5 : 1);
         if (u.status('control') && !u.dead) { // 조종 실
-          const m = u.status('control').src || b.enemy(u); ctx.save(); ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 10); ctx.strokeStyle = '#d890ff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+          const m = u.status('control').src || b.enemy(u);
+          if (b._v3d && m) { b._v3d.beam({ x1: m.x, y1: m.y, x2: u.x, y2: u.y, z1: 30, z2: 20, w: 4, draw: (c, L) => { c.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 10); c.strokeStyle = '#d890ff'; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); } }); continue; } // 직접 플레이: 조종 실 = 3D 띠
+          ctx.save(); ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 10); ctx.strokeStyle = '#d890ff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
           ctx.beginPath(); ctx.moveTo(m.x, m.y - 30); ctx.lineTo(u.x, u.y - 20); ctx.stroke(); ctx.restore();
         }
       }

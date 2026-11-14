@@ -135,6 +135,9 @@
     u.mc.ric = u.mc.ric.filter(r => !r.dead);
   }
 
+  function mcRic(ctx, r) { ctx.save(); ctx.strokeStyle = '#ffe9a0'; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); r.trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y - 18) : ctx.moveTo(x, y - 18)); ctx.lineTo(r.x, r.y - 18); ctx.stroke();
+    ctx.globalAlpha = 1; ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(r.x) - 1, Math.round(r.y - 18) - 1, 3, 3); ctx.restore();
+  }
   function drawAxeIcon(ctx, x, y, a) { ctx.save(); ctx.translate(Math.round(x), Math.round(y)); ctx.rotate(a);
     ctx.fillStyle = '#6a4428'; ctx.fillRect(-7, -1, 14, 2); ctx.fillStyle = '#8a8f9c'; ctx.fillRect(3, -6, 5, 12); ctx.fillStyle = '#e0e6f0'; ctx.fillRect(7, -6, 1, 12); ctx.fillStyle = '#a02020'; ctx.fillRect(4, -1, 2, 2); ctx.restore(); }
 
@@ -151,16 +154,20 @@
       }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 도끼 = 제자리(높이 z)에 세움 + 그림자, 전자기장 선 = 손(18)→도끼(10) 3D 띠, 도탄 = 몸 높이에 세움
       for (const u of b.u) { if (!u.mc) continue; const Mc = u.mc, A = Mc.axe;
-        if (A.state === 'spin' || (A.state === 'back' && A.emT > 0)) { // 전자기장 선
+        if (V && (A.state === 'spin' || (A.state === 'back' && A.emT > 0))) { const x0 = u.x - u.facing * 6;
+          V.beam({ x1: x0, y1: u.y, x2: A.x, y2: A.y, z1: 18, z2: 10, w: 14, draw: (c, L) => { c.strokeStyle = '#9ff0ff'; c.globalAlpha = 0.5 + 0.4 * Math.sin(b.time * 50); c.lineWidth = 1.5; c.beginPath(); c.moveTo(0, 0);
+            for (let i = 1; i < 8; i++) { const j = Math.sin(b.time * 60 + i * 2.3) * 4; c.lineTo(L * i / 8, -j); } c.lineTo(L, 0); c.stroke(); c.globalAlpha = 0.25; c.lineWidth = 5; c.stroke(); } }); }
+        else if (A.state === 'spin' || (A.state === 'back' && A.emT > 0)) { // 전자기장 선
           ctx.save(); ctx.strokeStyle = '#9ff0ff'; ctx.globalAlpha = 0.5 + 0.4 * Math.sin(b.time * 50); ctx.lineWidth = 1.5; ctx.beginPath();
           const x0 = u.x - u.facing * 6, y0 = u.y - 18, x1 = A.x, y1 = A.y - 10, n = 8; ctx.moveTo(x0, y0);
           for (let i = 1; i < n; i++) { const k = i / n, j = Math.sin(b.time * 60 + i * 2.3) * 4; ctx.lineTo(x0 + (x1 - x0) * k + j, y0 + (y1 - y0) * k - j); } ctx.lineTo(x1, y1); ctx.stroke();
           ctx.globalAlpha = 0.25; ctx.lineWidth = 5; ctx.stroke(); ctx.restore(); }
-        if (A.state !== 'hand') { const z = A.state === 'ground' ? 3 : 12, sp = A.state === 'ground' ? 0.6 : A.spin;
+        if (A.state !== 'hand' && V) { const z = A.state === 'ground' ? 3 : 12, sp = A.state === 'ground' ? 0.6 : A.spin; V.shadow(A.x, A.y + 1, 7); V.stand({ x: A.x, y: A.y, z, w: 50, h: 60, draw: c => drawAxeIcon(c, A.x, A.y, sp) }); }
+        else if (A.state !== 'hand') { const z = A.state === 'ground' ? 3 : 12, sp = A.state === 'ground' ? 0.6 : A.spin;
           ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(A.x, A.y + 1, 7, 2.5, 0, 0, TAU); ctx.fill(); ctx.restore(); drawAxeIcon(ctx, A.x, A.y - z, sp); }
-        for (const r of Mc.ric) { ctx.save(); ctx.strokeStyle = '#ffe9a0'; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.beginPath(); r.trail.forEach(([x, y], i) => i ? ctx.lineTo(x, y - 18) : ctx.moveTo(x, y - 18)); ctx.lineTo(r.x, r.y - 18); ctx.stroke();
-          ctx.globalAlpha = 1; ctx.fillStyle = '#fff4c0'; ctx.fillRect(Math.round(r.x) - 1, Math.round(r.y - 18) - 1, 3, 3); ctx.restore(); }
+        for (const r of Mc.ric) if (V) { const d = r.trail.reduce((m, [x]) => Math.max(m, Math.abs(x - r.x)), 0); V.stand({ x: r.x, y: r.y, w: d * 2 + 20, h: 50, draw: c => mcRic(c, r) }); } else mcRic(ctx, r);
         if (u.dead || u.hidden) continue;
         if (u.def.id !== ID && !(u.schCopy && /^mc/.test(u.schCopy.id))) continue; // 흡수 중에만 탄창 표시
         // 탄창 UI (머리 위)

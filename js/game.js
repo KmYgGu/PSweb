@@ -2609,5 +2609,5 @@ const Render = (() => {
     try { for (const u of L.sort((a, c) => a.y - c.y)) { c2.filter = TS && u !== TS.owner ? 'grayscale(1)' : 'none'; drawUnit(c2, u, b); c2.globalAlpha = 1; } c2.filter = TS ? 'grayscale(1)' : 'none'; for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
   const BLD_COL = b => { const s = b.style % 3; return { wall: WALL[s], roof: ROOF[s] }; }; // 직접 플레이 3D 건물 상자 색
-  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon, drawBarrier, drawCounter, drawPips, drawO2, drawKO, BLD_COL, drawProj, swingPose };
+  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon, drawBarrier, drawCounter, drawPips, drawO2, drawKO, BLD_COL, drawProj, swingPose, drawFx };
 })();

@@ -302,7 +302,13 @@
         ctx.restore(); }
     },
     drawOver(ctx, b) { // 크레이지 다이아몬드 (러쉬·고쳐놓기·원상복구 중) + 분노 표시 + 빗질
-      for (const u of b.u) { if (!isJ(u) || u.dead || u.hidden) continue; const J = u.js || {}, z = b.airZ(u), A = u.action;
+      const V = b._v3d; // 직접 플레이: 크레이지 다이아몬드·러쉬 주먹을 그 캐릭터 발 위치에 세움 (화면 한 판으로 잡히지 않게)
+      for (const u of b.u) { if (!isJ(u) || u.dead || u.hidden) continue; const J = u.js || {};
+        if (V) { const reach = J.rush ? u.reach + J.rush.grow : 30; V.stand({ x: u.x, y: u.y, w: reach * 2 + 90, h: 130 + b.airZ(u), draw: c => JS_U(c, b, u) }); } else JS_U(ctx, b, u);
+      }
+    },
+  });
+  function JS_U(ctx, b, u) { const J = u.js || {}, z = b.airZ(u), A = u.action;
         if (J.rush) { const a = J.rush.ang, f = Math.cos(a) >= 0 ? 1 : -1, reach = u.reach + J.rush.grow;
           drawCD(ctx, u.x + Math.cos(a) * 10 - f * 4, u.y - 2 - z + Math.sin(b.time * 40) * 1.5, f, 0.85, 2.4);
           for (let k = 0; k < 6; k++) { const ph = b.time * 37 + k * 1.7, along = 14 + (reach - 12) * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(ph))), side = Math.sin(ph * 1.9 + k) * 9;
@@ -315,9 +321,7 @@
         if (angry(u)) { const x = Math.round(u.x + u.facing * 9), y = Math.round(u.y - 46 - z), s = Math.sin(b.time * 18) > 0 ? 1 : 0; ctx.fillStyle = '#ff3a3a'; // 💢 표시
           ctx.fillRect(x - 4 - s, y - 4, 3, 1); ctx.fillRect(x - 4 - s, y - 4, 1, 3); ctx.fillRect(x + 2 + s, y - 4, 3, 1); ctx.fillRect(x + 4 + s, y - 4, 1, 3);
           ctx.fillRect(x - 4 - s, y + 2, 1, 3); ctx.fillRect(x - 4 - s, y + 4, 3, 1); ctx.fillRect(x + 4 + s, y + 2, 1, 3); ctx.fillRect(x + 2 + s, y + 4, 3, 1); }
-      }
-    },
-  });
+  }
 
   CHARACTERS.push({
     id: ID, name: '죠스케', fullName: '히가시카타 죠스케', gender: 'male', color: '#4a3a7a',

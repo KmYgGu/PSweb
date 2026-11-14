@@ -177,14 +177,17 @@
       }
     },
     drawOver(ctx, b) {
-      for (const u of b.u) { if (u.dead || u.hidden) continue; const z = b.airZ(u);
+      const V3 = b._v3d; // 직접 플레이: 캐릭터마다 따로 그 발 위치에 세움 (여러 캐릭터 그림이 한 판으로 묶이지 않게)
+      for (const u of b.u) { if (u.dead || u.hidden) continue; if (V3) V3.stand({ x: u.x, y: u.y, w: 110, h: 150 + b.airZ(u), draw: c => DIO_U(c, b, u) }); else DIO_U(ctx, b, u); }
+    },
+  });
+
+  function DIO_U(ctx, b, u) { const z = b.airZ(u);
         if (u.dioZombie) { ctx.save(); ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 6); ctx.fillStyle = '#7a2a9a'; ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, 14 + u.pad, 5, 0, 0, TAU); ctx.fill(); ctx.restore();
           const k = Math.max(0, u.hp / u.maxHp); ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(Math.round(u.x) - 10, Math.round(u.y - 50 - z), 20, 2); ctx.fillStyle = '#c88aff'; ctx.fillRect(Math.round(u.x) - 10, Math.round(u.y - 50 - z), Math.round(20 * k), 2); }
         if (u.dioIceAir && u.status('dioFrozen')) { ctx.save(); ctx.globalAlpha = 0.5; ctx.strokeStyle = '#e8faff'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(u.x) - 11 - u.pad, Math.round(u.y - 36 - z - u.pad * 2), 22 + u.pad * 2, 36 + u.pad * 2); ctx.restore(); }
         if (isDio(u) && u.dioRegen > 1 && !harmful(u) && Math.floor(b.time * 4) % 2) { ctx.fillStyle = '#9fe07a'; ctx.fillRect(Math.round(u.x) - 1 + Math.round(Math.sin(b.time * 3) * 8), Math.round(u.y - 40 - z), 2, 2); }
-      }
-    },
-  });
+  }
 
   CHARACTERS.push({
     id: ID, name: '디오', fullName: '디오 브란도', gender: 'male', color: '#d8b030',

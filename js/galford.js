@@ -291,11 +291,13 @@
       }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 강아지를 제자리(떨어지는 높이 z)에 세움 + 그림자
+      const dog = (x, y, z, face, k, al = 1) => { if (V) { V.shadow(x, y, 10 * k, 0.25); V.stand({ x, y, z, w: 70, h: 70, draw: c => { c.save(); c.globalAlpha *= al; drawDog(c, x, y, face, k); c.restore(); } }); } else { ctx.save(); ctx.globalAlpha *= al; drawDog(ctx, x, y - z, face, k); ctx.restore(); } };
       for (const f of b.galFx || []) {
-        if (f.type === 'dogFall') { const k = f.t / f.dur, y = f.y - (1 - k) * 220; drawDog(ctx, f.x, y, f.face, 1); }
-        else if (f.type === 'dogSit') { ctx.save(); ctx.globalAlpha = 1 - f.t / f.dur; drawDog(ctx, f.x, f.y, f.face, 1); ctx.restore(); }
+        if (f.type === 'dogFall') { const k = f.t / f.dur; dog(f.x, f.y, (1 - k) * 220, f.face, 1); }
+        else if (f.type === 'dogSit') dog(f.x, f.y, 0, f.face, 1, 1 - f.t / f.dur);
       }
-      for (const u of b.u) if (u.galDog && !u.dead && u.air) drawDog(ctx, u.x - u.facing * 18, u.y - b.airZ(u) - 4, u.facing, 0.9);
+      for (const u of b.u) if (u.galDog && !u.dead && u.air) dog(u.x - u.facing * 18, u.y, b.airZ(u) + 4, u.facing, 0.9);
       for (const u of b.u) if (u.galShake > 0 && !u.dead) { ctx.save(); ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffffff'; ctx.font = 'bold 12px "Galmuri11", sans-serif'; ctx.fillText('!!', u.x + 12 + rand(-1, 1), u.y - 60 + rand(-1, 1)); ctx.restore(); }
     },
   });

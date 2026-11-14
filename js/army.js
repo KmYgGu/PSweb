@@ -250,11 +250,14 @@
         ctx.save(); ctx.translate(Math.round(x), Math.round(k < 1 ? y : c.y)); ctx.rotate(c.rot + (k < 1 ? c.t * 20 : 0)); ctx.fillStyle = '#d8b050'; ctx.fillRect(-2, -1, 4, 2); ctx.fillStyle = '#fff0a0'; ctx.fillRect(-2, -1, 1, 1); ctx.restore(); }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 수류탄 = 제자리(높이 z)에 세움 + 그림자, 조준선 = 3D 띠
       for (const G of b.arGren || []) { const k = Math.min(1, G.t / G.dur), x = G.sx + (G.tx - G.sx) * k, y = G.sy + (G.ty - G.sy) * k, z = 4 * G.h * k * (1 - k);
+        if (V) { V.shadow(x, y, 3, 0.3); V.stand({ x, y, z, w: 20, h: 40, draw: ctx => { const z = 0; ctx.fillStyle = '#4a5a30'; ctx.fillRect(Math.round(x - 2), Math.round(y - 18 - z), 5, 5); ctx.fillStyle = '#8a9a58'; ctx.fillRect(Math.round(x - 1), Math.round(y - 18 - z), 2, 1); ctx.fillStyle = '#c8c8c8'; ctx.fillRect(Math.round(x), Math.round(y - 20 - z), 1, 2); } }); continue; }
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(Math.round(x - 2), Math.round(y - 1), 4, 2);
         ctx.fillStyle = '#4a5a30'; ctx.fillRect(Math.round(x - 2), Math.round(y - 18 - z), 5, 5); ctx.fillStyle = '#8a9a58'; ctx.fillRect(Math.round(x - 1), Math.round(y - 18 - z), 2, 1); ctx.fillStyle = '#c8c8c8'; ctx.fillRect(Math.round(x), Math.round(y - 20 - z), 1, 2); }
       for (const u of b.u) { if (u.dead || u.hidden || !u.ar) continue;
-        if (u.arAimLine && u.action && u.action.type === 'arAim') { ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 20); ctx.lineTo(u.arAimLine.x, u.arAimLine.y); ctx.stroke(); ctx.restore(); }
+        if (V && u.arAimLine && u.action && u.action.type === 'arAim') V.beam({ x1: u.x, y1: u.y, x2: u.arAimLine.x, y2: u.arAimLine.y + 18, z1: 20, z2: 18, w: 4, draw: (c, L) => { c.globalAlpha = 0.55; c.strokeStyle = RED; c.lineWidth = 1; c.setLineDash([3, 3]); c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); } });
+        else if (u.arAimLine && u.action && u.action.type === 'arAim') { ctx.save(); ctx.globalAlpha = 0.55; ctx.strokeStyle = RED; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 20); ctx.lineTo(u.arAimLine.x, u.arAimLine.y); ctx.stroke(); ctx.restore(); }
         if (!isArmy(u) && !u.skills.some(s => s.id === 'arFire' || s.id === 'arAim')) continue;
         ctx.save(); ctx.font = '8px monospace'; ctx.textAlign = 'center'; const t = '탄 ' + u.ar.ammo; ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(Math.round(u.x - 14), Math.round(u.y + 3), 28, 9);
         ctx.fillStyle = u.ar.ammo > 0 ? '#ffe8a0' : '#ff8080'; ctx.fillText(t, Math.round(u.x), Math.round(u.y + 10)); ctx.restore(); }

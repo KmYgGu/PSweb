@@ -248,7 +248,8 @@
     },
     drawOver(ctx, b) {
       if (!b.bladeObj) return;
-      for (const B of b.bladeObj.big) drawBigBlade(ctx, B.x, B.y - 6, B.s * 0.8, B.rot);
+      const V = b._v3d; // 직접 플레이: 큰 칼날 = 제자리에서 바닥 위로 조금 떠서 도는 원반 + 그림자
+      for (const B of b.bladeObj.big) { if (V) { V.shadow(B.x, B.y, 26 * B.s * 0.8, 0.25); V.flat({ x: B.x, y: B.y, z: 8, r: 34 * B.s * 0.8 + 6, draw: c => drawBigBlade(c, B.x, B.y, B.s * 0.8, B.rot) }); } else drawBigBlade(ctx, B.x, B.y - 6, B.s * 0.8, B.rot); }
     },
   });
 

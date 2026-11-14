@@ -397,8 +397,10 @@
     },
     drawOver(ctx, b) {
       const S = b.jko; if (!S) return;
-      for (const F of S.tfl) { const k = Math.min(1, F.t / F.dur), x = F.sx + (F.tx - F.sx) * k, y = F.sy + (F.ty - F.sy) * k, z = 4 * F.h * k * (1 - k) + 18 * (1 - k); drawEmber(ctx, x, y, z, 1, b); }
-      for (const P of S.bombs) { const k = Math.min(1, P.t / P.dur), x = P.sx + (P.tx - P.sx) * k, y = P.sy + (P.ty - P.sy) * k, z = 4 * P.h * k * (1 - k) + (P.gen ? 0 : 20 * (1 - k)); drawEmber(ctx, x, y, z, P.gen === 0 ? 1.6 : 1.25 - P.gen * 0.18, b, P.gen); }
+      const V = b._v3d; // 직접 플레이: 던진 불씨·호박 폭탄을 제자리에 세움 (그림자는 그림 안에 같이)
+      const em = (x, y, z, ...r) => V ? V.stand({ x, y, w: 40, h: z + 40, draw: c => drawEmber(c, x, y, z, ...r) }) : drawEmber(ctx, x, y, z, ...r);
+      for (const F of S.tfl) { const k = Math.min(1, F.t / F.dur), x = F.sx + (F.tx - F.sx) * k, y = F.sy + (F.ty - F.sy) * k, z = 4 * F.h * k * (1 - k) + 18 * (1 - k); em(x, y, z, 1, b); }
+      for (const P of S.bombs) { const k = Math.min(1, P.t / P.dur), x = P.sx + (P.tx - P.sx) * k, y = P.sy + (P.ty - P.sy) * k, z = 4 * P.h * k * (1 - k) + (P.gen ? 0 : 20 * (1 - k)); em(x, y, z, P.gen === 0 ? 1.6 : 1.25 - P.gen * 0.18, b, P.gen); }
     },
   });
 

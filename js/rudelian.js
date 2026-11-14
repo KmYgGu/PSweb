@@ -227,15 +227,19 @@
       }
     },
     drawOver(ctx, b) {
-      for (const F of b.rdFlames || []) drawFlame(ctx, b, F);
+      const V = b._v3d; // 직접 플레이: 불꽃 = 제자리에 세움, 섬광 원 = 바닥, 눈 광선 = 눈 높이(40) 3D 띠
+      for (const F of b.rdFlames || []) { if (V) { V.shadow(F.x, F.y, F.size * 0.9, 0.2); V.stand({ x: F.x, y: F.y, w: F.size * 3 + 20, h: F.size * 3.5 + 30, draw: c => drawFlame(c, b, F) }); } else drawFlame(ctx, b, F); }
       for (const u of b.u) if (u.rdAura) drawAura(ctx, b, u);
-      for (const p of b.proj) if (p.rdPullR) { const ph = (b.time * 3 + (p.r * 7 % 1)) % 1, fl = 0.5 + 0.5 * Math.sin(b.time * 22); ctx.save(); // 섬광 원
+      for (const p of b.proj) if (p.rdPullR) { if (V) { V.floor(c => pullRing(c, b, p)); continue; } pullRing(ctx, b, p); }
+      for (const u of b.u) if (u.rdEye && !u.dead) { if (V) { const E = u.rdEye; if (E.L != null) V.beam({ x1: u.x, y1: u.y, x2: u.x + Math.cos(E.a) * E.L, y2: u.y + Math.sin(E.a) * E.L, z: 40, w: 18, draw: (c, L) => drawBeam(c, b, { x: 0, y: 40, rdEye: { L, a: 0 } }) }); }
+        else drawBeam(ctx, b, u); ctx.save(); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 40); ctx.fillStyle = '#ff2a3a'; ctx.fillRect(Math.round(u.x) - 5, Math.round(u.y) - 42, 3, 2); ctx.fillRect(Math.round(u.x) + 2, Math.round(u.y) - 42, 3, 2); ctx.restore(); }
+    },
+  });
+  function pullRing(ctx, b, p) { { const ph = (b.time * 3 + (p.r * 7 % 1)) % 1, fl = 0.5 + 0.5 * Math.sin(b.time * 22); ctx.save(); // 섬광 원
         ctx.globalAlpha = 0.18 + 0.3 * fl; ctx.strokeStyle = '#b06aff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, p.rdPullR * 0.95, 0, TAU); ctx.stroke();
         ctx.globalAlpha = 0.08 + 0.12 * fl; ctx.fillStyle = '#7a2aff'; ctx.fill();
         ctx.globalAlpha = 0.5 * (1 - ph); ctx.strokeStyle = '#ffd0ff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(p.x, p.y, p.rdPullR * (1 - ph * 0.8), 0, TAU); ctx.stroke(); ctx.restore(); }
-      for (const u of b.u) if (u.rdEye && !u.dead) { drawBeam(ctx, b, u); ctx.save(); ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 40); ctx.fillStyle = '#ff2a3a'; ctx.fillRect(Math.round(u.x) - 5, Math.round(u.y) - 42, 3, 2); ctx.fillRect(Math.round(u.x) + 2, Math.round(u.y) - 42, 3, 2); ctx.restore(); }
-    },
-  });
+  }
 
   // ---------- 캐릭터 ----------
   CHARACTERS.push({

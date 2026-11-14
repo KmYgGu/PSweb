@@ -238,11 +238,11 @@
       }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 빨려드는 물건·분신을 제자리에 세움
       for (const u of b.u) { if (!u.bz) continue; const Z = u.bz;
-        if (u.bzHole) for (const O of u.bzHole.objs) { ctx.save(); ctx.translate(Math.round(O.x), Math.round(O.y - 12)); ctx.rotate(O.spin);
-          ctx.fillStyle = ['#8a6a4a', '#9a9a9a', '#6a8a5a'][O.k]; ctx.fillRect(-5, -5, 10, 10); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-5, 2, 10, 3); ctx.restore(); }
-        const C = u.bzClone; if (C) { const s = Sprites.get(u.def); ctx.save(); ctx.globalAlpha = 0.6; ctx.translate(Math.round(C.x), Math.round(C.y - C.z)); if (u.facing < 0) ctx.scale(-1, 1); Sprites.draw(ctx, s, 0); ctx.restore();
-          ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#a0203a'; ctx.beginPath(); ctx.moveTo(C.x - 8, C.y - C.z - 30); ctx.lineTo(C.x + 8, C.y - C.z - 30); ctx.lineTo(C.x + 12, C.y - C.z - 4); ctx.lineTo(C.x - 12, C.y - C.z - 4); ctx.fill(); ctx.restore(); }
+        if (u.bzHole && V) for (const O of u.bzHole.objs) V.stand({ x: O.x, y: O.y, w: 30, h: 50, draw: c => bzObj(c, O) });
+        else if (u.bzHole) for (const O of u.bzHole.objs) bzObj(ctx, O);
+        const C = u.bzClone; if (C && V) { V.shadow(C.x, C.y, 10); V.stand({ x: C.x, y: C.y, z: C.z, w: 90, h: 110, draw: c => bzClone(c, u, { ...C, z: 0 }) }); } else if (C) bzClone(ctx, u, C);
         if (Z.scyT > 0 && !u.dead) { ctx.save(); ctx.translate(Math.round(u.x - u.facing * 12), Math.round(u.y - 30 - b.airZ(u))); ctx.strokeStyle = '#d8b0ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.facing * 4, -8, 8, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); ctx.restore(); }
         if (u.dead || u.hidden) continue;
         const w = 30, x0 = Math.round(u.x - w / 2), y0 = Math.round(u.y + u.ky - b.airZ(u) - 66);
@@ -253,6 +253,12 @@
         ctx.restore(); }
     },
   });
+
+  function bzObj(ctx, O) { ctx.save(); ctx.translate(Math.round(O.x), Math.round(O.y - 12)); ctx.rotate(O.spin);
+    ctx.fillStyle = ['#8a6a4a', '#9a9a9a', '#6a8a5a'][O.k]; ctx.fillRect(-5, -5, 10, 10); ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-5, 2, 10, 3); ctx.restore(); }
+  function bzClone(ctx, u, C) { const s = Sprites.get(u.def); ctx.save(); ctx.globalAlpha = 0.6; ctx.translate(Math.round(C.x), Math.round(C.y - C.z)); if (u.facing < 0) ctx.scale(-1, 1); Sprites.draw(ctx, s, 0); ctx.restore();
+    ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#a0203a'; ctx.beginPath(); ctx.moveTo(C.x - 8, C.y - C.z - 30); ctx.lineTo(C.x + 8, C.y - C.z - 30); ctx.lineTo(C.x + 12, C.y - C.z - 4); ctx.lineTo(C.x - 12, C.y - C.z - 4); ctx.fill(); ctx.restore();
+  }
 
   CHARACTERS.push({
     id: ID, name: '베르제브트', fullName: '베르제브트', gender: 'female', color: '#b0305a',

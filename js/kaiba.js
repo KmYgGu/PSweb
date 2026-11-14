@@ -556,8 +556,13 @@
   });
   function KAIBA_OVER(ctx, b) {
     {
+      const V = b._v3d; // 직접 플레이: 광선 = 높이 26 의 3D 띠, 충전·끝점 폭발 = 그 자리에 세움
+      const beam3 = (x, y, ca, sa, L, w, fn) => V.beam({ x1: x, y1: y + 26, x2: x + ca * L, y2: y + 26 + sa * L, z: 26, w, draw: fn });
       for (const f of b.kfx || []) {
-        if (f.type === 'ebeam') drawEpicBeam(ctx, f, b.time);
+        if (V && f.type === 'ebeam') beam3(f.x, f.y, f.ca, f.sa, f.L, f.w * 1.8 + 12, (c, L) => drawEpicBeam(c, { ...f, x: 0, y: 0, ca: 1, sa: 0, L }, b.time));
+        else if (V && f.type === 'beam') beam3(f.x, f.y, f.ca, f.sa, f.L, f.w + 10, (c, L) => drawBeam(c, 0, 0, 1, 0, L, f.w * (1 - 0.4 * f.t / f.dur), f.col, f.col2, 1 - f.t / f.dur, b.time));
+        else if (V && (f.type === 'charge' || f.type === 'impact')) V.stand({ x: f.x, y: f.y + 26, w: f.w * 4 + 70, h: f.w * 2 + 100, draw: c => f.type === 'charge' ? drawCharge(c, f, b.time) : drawImpact(c, f) });
+        else if (f.type === 'ebeam') drawEpicBeam(ctx, f, b.time);
         else if (f.type === 'charge') drawCharge(ctx, f, b.time);
         else if (f.type === 'impact') drawImpact(ctx, f);
         else if (f.type === 'beam') drawBeam(ctx, f.x, f.y, f.ca, f.sa, f.L, f.w * (1 - 0.4 * f.t / f.dur), f.col, f.col2, 1 - f.t / f.dur, b.time);
@@ -572,7 +577,7 @@
       for (const u of b.u) {
         const D = u.duel; if (!D || u.dead) continue;
         const A2 = u.action;
-        if (A2 && A2.type === 'kXyz') { if (A2.firing) drawBeam(ctx, u.x, u.y - 26, Math.cos(A2.ang), Math.sin(A2.ang), A2.L, 30 + Math.sin(b.time * 40) * 3, '#ffd060', '#ffffff', 1, b.time); drawSpr(ctx, 'xyzCannon', u.x - u.facing * 10, u.y - 40, u.facing, 1, 0.85); }
+        if (A2 && A2.type === 'kXyz') { if (A2.firing && V) beam3(u.x, u.y - 26, Math.cos(A2.ang), Math.sin(A2.ang), A2.L, 46, (c, L) => drawBeam(c, 0, 0, 1, 0, L, 30 + Math.sin(b.time * 40) * 3, '#ffd060', '#ffffff', 1, b.time)); else if (A2.firing) drawBeam(ctx, u.x, u.y - 26, Math.cos(A2.ang), Math.sin(A2.ang), A2.L, 30 + Math.sin(b.time * 40) * 3, '#ffd060', '#ffffff', 1, b.time); drawSpr(ctx, 'xyzCannon', u.x - u.facing * 10, u.y - 40, u.facing, 1, 0.85); }
         if (D.kGlider) { const G = D.kGlider, k = Math.max(0, G.hp / G.max); ctx.save(); ctx.globalAlpha = 0.35 + 0.5 * k; ctx.fillStyle = '#ffd040'; for (const s of [-1, 1]) for (let i = 0; i < 5; i++) ctx.fillRect(Math.round(u.x + s * (14 + i * 4)) - 2, Math.round(u.y - 40 + i * 5 - i * i), 4, 10 - i); ctx.fillStyle = '#fff4b0'; ctx.fillRect(Math.round(u.x) - 12, Math.round(u.y - 48), 24 * k, 2); ctx.restore(); }
         if (D.kPhant) { ctx.save(); ctx.globalAlpha = 0.25 + 0.12 * Math.sin(b.time * 6); ctx.strokeStyle = '#dff2ff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 22, 22, 30, 0, 0, TAU); ctx.stroke(); ctx.restore(); drawSpr(ctx, 'phantasm', u.x - u.facing * 6, u.y - 34, u.facing, 1, 0.35); }
         if (D.kGirl) drawSpr(ctx, 'blueGirl', u.x + u.facing * 16, u.y - 2, u.facing, 1, 0.9);

@@ -832,17 +832,21 @@
         if (!u.duel) continue;
         const D = u.duel;
         for (const s of D.spirits) drawSpirit(ctx, b, s);
-        if (D.hats) for (const h of D.hats.items) { const p = hatPos(u, D.hats, h); drawHat(ctx, p.x, p.y, b.time); }
+        if (D.hats) for (const h of D.hats.items) { const p = hatPos(u, D.hats, h); if (V3) { const L = V3; L.push({ x: p.x, y: p.y + 5, w: 40, h: 50, draw: c => drawHat(c, p.x, p.y, b.time) }); } else drawHat(ctx, p.x, p.y, b.time); } // 직접 플레이: 모자는 제자리에 세움
         if (D.kuri && !u.dead) { const x = u.x + Math.cos(b.time * 3) * 20, y = u.y - 30 + Math.sin(b.time * 6) * 3, sp = DuelSprites.get('kuriboh'); if (sp) { ctx.save(); ctx.globalAlpha = 0.9; ctx.drawImage(sp.c, Math.round(x - sp.w / 2), Math.round(y - sp.h / 2)); ctx.restore(); } }
         if (D.gardner && !u.dead) { const G = D.gardner; ctx.save(); ctx.globalAlpha = 0.45 + 0.4 * G.hp / G.max; ctx.strokeStyle = '#c8d0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(u.x, u.y - 18, 22 + u.pad, -1.1, 1.1); ctx.stroke(); ctx.beginPath(); ctx.arc(u.x, u.y - 18, 22 + u.pad, Math.PI - 1.1, Math.PI + 1.1); ctx.stroke(); ctx.restore(); }
-        if (D.magnet && D.magnet.tgt) { const t = D.magnet.tgt; ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(b.time * 20); ctx.strokeStyle = '#a0d8ff'; ctx.lineWidth = 1.5 + D.magnet.strain * 0.5; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 18); ctx.lineTo(t.x, t.y - 18 - b.airZ(t)); ctx.stroke(); ctx.restore(); }
+        if (D.magnet && D.magnet.tgt && V3 && b._v3d) { const t = D.magnet.tgt, m = D.magnet; b._v3d.beam({ x1: u.x, y1: u.y, x2: t.x, y2: t.y, z1: 18, z2: 18 + b.airZ(t), w: 6, draw: (c, L) => { c.globalAlpha = 0.5 + 0.3 * Math.sin(b.time * 20); c.strokeStyle = '#a0d8ff'; c.lineWidth = 1.5 + m.strain * 0.5; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); } }); } // 직접 플레이: 자석 줄 = 3D 띠
+        else if (D.magnet && D.magnet.tgt) { const t = D.magnet.tgt; ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(b.time * 20); ctx.strokeStyle = '#a0d8ff'; ctx.lineWidth = 1.5 + D.magnet.strain * 0.5; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 18); ctx.lineTo(t.x, t.y - 18 - b.airZ(t)); ctx.stroke(); ctx.restore(); }
         if (D.repel && !u.dead) { ctx.save(); ctx.globalAlpha = 0.25; ctx.strokeStyle = '#ffd0a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x, u.y - 14, u.pad + 30, 0, TAU); ctx.stroke(); ctx.restore(); }
         if (!u.dead) { const P = D.pops, n = P.length, f = c => P.forEach((p, i) => { if (n - 1 - i < 3) drawPop(c, b, u, p, n - 1 - i); });
           if (V3 && n) V3.push({ x: u.x, y: u.y, w: 140, h: 300, maxS: 1.5, draw: f }); else f(ctx); } // 직접 플레이: 머리 위에 층층이 세움
       }
       if (b.duelSpirits) for (const s of b.duelSpirits) drawSpirit(ctx, b, s);
       if (b.duelPops) b.duelPops.forEach(p => { if (V3 && p.u) V3.push({ x: p.u.x, y: p.u.y, w: 140, h: 300, maxS: 1.5, draw: c => drawPop(c, b, p.u, p, 0) }); else drawPop(ctx, b, p.u, p, 0); });
-      if (b.duelFx) for (const f of b.duelFx) { if (f.type === 'fist') drawFist(ctx, f); else if (f.type === 'exodia') drawExodia(ctx, b, f); }
+      if (b.duelFx) for (const f of b.duelFx) {
+        if (V3 && f.type === 'fist') { const L = V3; L.push({ x: f.x, y: f.y, w: 80, h: 340, draw: c => drawFist(c, f) }); } // 직접 플레이: 떨어지는 주먹·엑조디아를 제자리에 세움
+        else if (V3 && f.type === 'exodia') { const L = V3, g = { ...f, noDim: true }; L.push({ x: f.u.x, y: f.u.y, w: 420, h: 520, draw: c => drawExodia(c, b, g) }); }
+        else if (f.type === 'fist') drawFist(ctx, f); else if (f.type === 'exodia') drawExodia(ctx, b, f); }
     }
   }
 
@@ -923,7 +927,7 @@
   }
   function drawExodia(ctx, b, f) {
     const k = f.t / f.dur, u = f.u, a = Math.min(1, k * 3) * (k > 0.85 ? (1 - k) / 0.15 : 1);
-    ctx.save(); ctx.globalAlpha = 0.45 * a; ctx.fillStyle = '#1a0c00'; ctx.fillRect(0, 0, 360, 640);
+    ctx.save(); ctx.globalAlpha = 0.45 * a; ctx.fillStyle = '#1a0c00'; if (!f.noDim) ctx.fillRect(0, 0, 360, 640); // noDim: 직접 플레이 (세운 판엔 화면 어둡게 하기 없음)
     ctx.globalAlpha = a;
     const sp = DuelSprites.get('exodia');
     if (sp) { const sc = 5, w = sp.w * sc, h = sp.h * sc, rise = (1 - Math.min(1, k * 2.2)) * 120; ctx.drawImage(sp.c, Math.round(u.x - w / 2), Math.round(u.y - h - 10 + rise), w, h); }

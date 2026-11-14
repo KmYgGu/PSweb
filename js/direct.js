@@ -217,7 +217,8 @@ const DirectPlay = (() => {
     if (!lift) { lift = document.createElement('canvas'); lift.width = tex.width; lift.height = tex.height; lctx = lift.getContext('2d'); }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, tex.width, tex.height); c.setTransform(TR, 0, 0, TR, -TX.x * TR, -TX.y * TR); c.imageSmoothingEnabled = false; }
     // 바닥(tex) = 바닥 그림·바닥 이펙트, 세울 그림(lift) = 물체·특수 건물·기믹·위층 이펙트·입자. 투사체는 따로 (공중)
-    S.stand = []; S.bigs = []; S.bigN = 0; Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route });
+    S.stand = []; S.bigs = []; S.bigN = 0; S.flats = []; S.beams = []; S.walls = []; S.boxes = []; b._v3d = V3D;
+    try { Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route }); } finally { b._v3d = null; }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; }
   }
   // ---------- 큰 이펙트 → 바닥에 눕힘 ----------
@@ -260,8 +261,33 @@ const DirectPlay = (() => {
     else if (ok && ((B[2] - B[0]) / TR > BIGW || (B[3] - B[1]) / TR > BIGH)) { if (typeof TK.key === 'object') bigObj.set(TK.key, true); else bigKey[TK.key] = true; }
     TK.key = null; TK.bigC = null;
   }
+  // ---------- 훅이 직접 플레이에서 제자리에 그릴 수 있게 주는 도구 (b._v3d, 그리는 동안만 있음) ----------
+  // stand({x,y,z?,w,h,draw,maxS?}) = 세운 판 (draw 는 2D 처럼 발(x,y) 위로 그림), floor(draw) = 바닥에 그림,
+  // flat({x,y,z,r,draw,sy?}) = 높이 z 의 수평면 (팽이처럼 뜬 원반 등), beam({x1,y1,x2,y2,z|z1,z2,w,draw(c,L)}) = 두 점 사이 3D 띠
+  // (draw 는 (0,0)→(L,0) 가로로 그림), wall = 바닥에 고정된 세로 판, shadow(x,y,r) = 바닥 그림자. 여기로 넘긴 그림은 큰 이펙트 잡기에서 빠짐.
+  const V3D = {
+    stand(it) { S.stand.push(it); },
+    floor(fn) { tctx.save(); try { fn(tctx); } finally { tctx.restore(); } },
+    flat(it) { if (!(it.z > 0.5)) V3D.floor(c => flatXf(c, it)); else S.flats.push(it); },
+    beam(it) { S.beams.push(it); },
+    wall(it) { S.walls.push(it); },
+    box(it) { S.boxes.push(it); }, // {x0,y0,z0,x1,y1,z1,col,a?}: 축 정렬 3D 상자 (떨어지는 상자 등) // {x1,y1,x2,y2,h,draw(c,L)}: 두 바닥 점 사이에 선 세로 판 (벽처럼 고정, draw 는 (0,0)=왼쪽 위, 바닥 = y h)
+    shadow(x, y, r, a = 0.3) { tctx.save(); tctx.globalAlpha = a; tctx.fillStyle = '#000'; tctx.beginPath(); tctx.ellipse(x, y, r, r * 0.6, 0, 0, TAU); tctx.fill(); tctx.restore(); },
+  };
+  function flatXf(c, it) { if (it.sy) { c.translate(it.x, it.y); c.scale(1, 1 / it.sy); c.translate(-it.x, -it.y); } it.draw(c); } // sy: 2D 에서 세로로 눌러 그린 원 → 바닥에선 펴서
+  let sinkC = null;
+  function sink() { if (!sinkC) sinkC = document.createElement('canvas').getContext('2d'); sinkC.setTransform(1, 0, 0, 1, 0, 0); return sinkC; } // 이미 다른 길로 넘긴 그림의 자리 (그리지 않음)
+  function fxRoute(f) { // 공용 이펙트 중 제자리가 분명한 것 (true = 여기서 처리)
+    const t = f.type, D = Render.drawFx;
+    if (t === 'shock' || t === 'ring') { V3D.flat({ x: f.x, y: f.y, z: 0, sy: 0.7, draw: c => D(c, f, 1) }); return true; } // 퍼지는 고리 = 바닥
+    if (t === 'pillar' || t === 'meteor') { S.stand.push({ x: f.x, y: f.y, w: 130, h: t === 'meteor' ? 250 : 170, draw: c => D(c, f, 1) }); return true; } // 기둥·떨어지는 운석 = 세움
+    if (t === 'bolt' && f.pts && f.pts.length > 1) { const e = f.pts[f.pts.length - 1], top = f.pts[0]; S.stand.push({ x: e[0], y: e[1], w: 70, h: Math.max(0, e[1] - top[1]) + 50, draw: c => D(c, f, 1) }); return true; } // 번개 = 세움
+    if (t === 'streak') { if (Math.hypot(f.x2 - f.x1, f.y2 - f.y1) < 2) return false; S.beams.push({ x1: f.x1, y1: f.y1 + 18, x2: f.x2, y2: f.y2 + 18, z: 18, w: (f.w || 10) + 6, draw: (c, L) => D(c, Object.assign({}, f, { x1: 0, y1: 0, x2: L, y2: 0 }), 1) }); return true; } // 궤적 = 몸 높이 3D 띠
+    return false;
+  }
   function route(k) { // Render.draw 가 그림 단위마다 부름 (null = 끝)
     tflush(); if (k == null) return lctx;
+    if (typeof k === 'object' && k.type && !k.drawOver && fxRoute(k)) return sink();
     const big = (typeof k === 'object' ? bigObj.get(k) : bigKey[k]) && S.bigN < MAXBIG;
     if (big) { const B = bigCanvas(S.bigN++); TK.ctx = B.x; TK.bigC = B.c; } else { TK.ctx = lctx; TK.bigC = null; }
     TK.key = k; TK.box[0] = TK.box[1] = 1e9; TK.box[2] = TK.box[3] = -1e9;
@@ -563,6 +589,57 @@ const DirectPlay = (() => {
     ctx.restore();
   }
 
+  // ---------- 수평면(flat)·3D 띠(beam) ----------
+  const fpool = [], mpool = [];
+  function poolC(P, i, w, h) { let B = P[i]; if (!B || B.c.width < w || B.c.height < h) { const c = document.createElement('canvas'); c.width = Math.max(w, B ? B.c.width : 0); c.height = Math.max(h, B ? B.c.height : 0); B = P[i] = { c, x: c.getContext('2d') }; }
+    const x = B.x; x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; x.clearRect(0, 0, w, h); x.imageSmoothingEnabled = false; return B; }
+  function drawFlat(ctx, it, i) { // 높이 z 의 수평면: 작은 칸마다 아핀으로 붙임
+    const r = Math.min(it.r || 40, 200) + 2, n = Math.ceil(2 * r * TR), B = poolC(fpool, i, n, n);
+    B.x.setTransform(TR, 0, 0, TR, (r - it.x) * TR, (r - it.y) * TR);
+    B.x.save(); try { flatXf(B.x, it); } catch (e) { console.warn('[direct] flat draw', e); } finally { B.x.restore(); }
+    const N = 4, d = 2 * r / N, x0 = it.x - r, y0 = it.y - r, z = it.z;
+    for (let j = 0; j < N; j++) for (let i2 = 0; i2 < N; i2++) {
+      const a = proj(x0 + i2 * d, y0 + j * d, z), bx = proj(x0 + (i2 + 1) * d, y0 + j * d, z), by = proj(x0 + i2 * d, y0 + (j + 1) * d, z), c = proj(x0 + (i2 + 1) * d, y0 + (j + 1) * d, z);
+      if (!a || !bx || !by || !c || a.s > 12) continue;
+      ctx.save(); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(bx.x, bx.y); ctx.lineTo(c.x, c.y); ctx.lineTo(by.x, by.y); ctx.closePath(); ctx.clip();
+      const k = 1 / (d * TR); ctx.transform((bx.x - a.x) * k, (bx.y - a.y) * k, (by.x - a.x) * k, (by.y - a.y) * k, a.x, a.y);
+      const sx = i2 * d * TR, sy = j * d * TR, sw = d * TR; ctx.drawImage(B.c, sx - 0.5, sy - 0.5, sw + 1, sw + 1, -0.5, -0.5, sw + 1, sw + 1); ctx.restore();
+    }
+  }
+  function drawBeam3(ctx, m, i) { // 두 점 사이 띠: 길이 방향으로 나눠 각 조각을 그 깊이의 배율로
+    const L = Math.min(900, Math.hypot(m.x2 - m.x1, m.y2 - m.y1)); if (L < 1) return;
+    const z1 = m.z1 != null ? m.z1 : m.z, z2 = m.z2 != null ? m.z2 : m.z, hw = (m.w || 10) / 2 + 4, pad = hw;
+    const cw = Math.ceil((L + 2 * pad) * TR), ch = Math.ceil(2 * hw * TR), B = poolC(mpool, i, cw, ch);
+    B.x.setTransform(TR, 0, 0, TR, pad * TR, hw * TR);
+    B.x.save(); try { m.draw(B.x, L); } catch (e) { console.warn('[direct] beam draw', e); } finally { B.x.restore(); }
+    const N = clamp(Math.ceil(L / 25), 2, 16), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t, z1 + (z2 - z1) * t];
+    for (let k = 0; k < N; k++) {
+      let t0 = k / N, t1 = (k + 1) / N; if (k === 0) t0 = -pad / L; if (k === N - 1) t1 = 1 + pad / L;
+      let A = cam(...P(t0)), Bc = cam(...P(t1)); const nz = CAM.near + 1;
+      if (A[2] < nz && Bc[2] < nz) continue;
+      if (A[2] < nz) { const f = (nz - A[2]) / (Bc[2] - A[2]); t0 += (t1 - t0) * f; A = cam(...P(t0)); }
+      if (Bc[2] < nz) { const f = (nz - A[2]) / (Bc[2] - A[2]); t1 = t0 + (t1 - t0) * f; Bc = cam(...P(t1)); }
+      const pa = scr(A), pb = scr(Bc), s = Math.min(8, (pa.s + pb.s) / 2), len = Math.hypot(pb.x - pa.x, pb.y - pa.y);
+      ctx.save(); ctx.translate(pa.x, pa.y); ctx.rotate(Math.atan2(pb.y - pa.y, pb.x - pa.x));
+      ctx.drawImage(B.c, (pad + t0 * L) * TR, 0, Math.max(0.5, (t1 - t0) * L * TR), ch, 0, -hw * s, len + 0.6, 2 * hw * s); ctx.restore();
+    }
+  }
+
+  function drawWall3(ctx, m, i) { // 고정 세로 판: 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀
+    const L = Math.min(900, Math.hypot(m.x2 - m.x1, m.y2 - m.y1)), h = m.h || 16; if (L < 1) return;
+    const cw = Math.ceil(L * TR) + 2, ch = Math.ceil(h * TR) + 2, B = poolC(mpool, i, cw, ch);
+    B.x.setTransform(TR, 0, 0, TR, 0, 0);
+    B.x.save(); try { m.draw(B.x, L); } catch (e) { console.warn('[direct] wall draw', e); } finally { B.x.restore(); }
+    const N = clamp(Math.ceil(L / 20), 1, 24), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t];
+    for (let k = 0; k < N; k++) {
+      const t0 = k / N, t1 = (k + 1) / N, [ax, ay] = P(t0), [bx, by] = P(t1);
+      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl || a.s > 12 || bb.s > 12) continue;
+      const sw = (t1 - t0) * L * TR, sx = t0 * L * TR, sh = h * TR;
+      ctx.save(); ctx.transform((bb.x - a.x) / sw, (bb.y - a.y) / sw, (a.x - tl.x) / sh, (a.y - tl.y) / sh, tl.x, tl.y);
+      ctx.drawImage(B.c, sx, 0, sw + 0.6, sh, 0, 0, sw + 0.6, sh); ctx.restore();
+    }
+  }
+
   // ---------- 그리기 ----------
   function draw(ctx, b, dt, view) {
     S.battle = b;
@@ -585,6 +662,10 @@ const DirectPlay = (() => {
       const g = proj(p.x, p.y, 0); if (g && g.s < 9) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 6 * g.s, 2.2 * g.s, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; } } // 투사체 그림자
     for (const c of cells) { const q = cam(c.x, c.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.5, c }); } // 캐릭터 둘레 위층 그림: 그 캐릭터 바로 앞
     for (const o of S.stand) { const q = cam(o.x, o.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], o }); }
+    for (const f of S.flats) { const q = cam(f.x, f.y, f.z); if (q[2] > CAM.near + 2) items.push({ z: q[2], flat: f }); }
+    for (const m of S.beams) { const z1 = m.z1 != null ? m.z1 : m.z, z2 = m.z2 != null ? m.z2 : m.z, q = cam((m.x1 + m.x2) / 2, (m.y1 + m.y2) / 2, (z1 + z2) / 2); items.push({ z: q[2], beam: m }); }
+    for (const q of S.boxes) { const c = cam((q.x0 + q.x1) / 2, (q.y0 + q.y1) / 2, q.z0); items.push({ z: c[2], box: q }); }
+    for (const m of S.walls) { const q = cam((m.x1 + m.x2) / 2, (m.y1 + m.y2) / 2, 0); items.push({ z: q[2], wall: m }); }
     for (const g of S.bigs) { bigPlace(b, g); const q = cam(g.cx, g.wy, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.6, big: g }); } // 큰 이펙트: 세운 판
     if (b.balls && !EXCLUDE.has(b.stageId)) for (const bl of b.balls) { const q = cam(bl.x, bl.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], ball: bl }); }
     for (const g of goalItems(b)) items.push(g);
@@ -592,16 +673,20 @@ const DirectPlay = (() => {
       for (const [x, y] of [[AR.x + 4, AR.y + 4], [AR.x + AR.w - 4, AR.y + 4], [AR.x + 4, AR.y + AR.h - 4], [AR.x + AR.w - 4, AR.y + AR.h - 4]]) { const q = cam(x, y, 0); if (q[2] > CAM.near) items.push({ z: q[2], post: [x, y, Cr] }); } }
     items.sort((a, c) => c.z - a.z);
     const eRect = (() => { if (!E || E.hidden) return null; const p = proj(E.x, E.y, 0); return p ? { x: p.x, y: p.y, w: 30 * p.s, h: 60 * p.s } : null; })();
-    let bi = 0, pi = 0, oi = 0;
+    let bi = 0, pi = 0, oi = 0, fi = 0, mi = 0;
     for (const it of items) {
       if (it.bl) { drawBox(ctx, it.bl); continue; }
       if (it.c) { drawCell(ctx, it.c); continue; }
       if (it.big) { drawBig(ctx, it.big); continue; }
+      if (it.flat) { drawFlat(ctx, it.flat, fi++); continue; }
+      if (it.beam) { drawBeam3(ctx, it.beam, mi++); continue; }
+      if (it.box) { const q = it.box; ctx.save(); ctx.globalAlpha = q.a == null ? 1 : q.a; box3(ctx, q.x0, q.y0, q.z0, q.x1, q.y1, q.z1, q.col); ctx.restore(); continue; }
+      if (it.wall) { drawWall3(ctx, it.wall, mi++); continue; }
       if (it.ball) { drawBall(ctx, it.ball); continue; }
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
       if (it.claw) { drawClaw(ctx, it.claw); continue; }
       if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
-      if (it.o) { const p = proj(it.o.x, it.o.y, 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
+      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, p = proj(u.x, u.y, 0); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);

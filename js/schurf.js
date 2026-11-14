@@ -243,7 +243,7 @@
   }
   function drawBreath(ctx, b, u) {
     const F = u.schForm; if (!F || F.L == null) return; const D = u.def.sch.fin;
-    ctx.save(); ctx.translate(u.x, u.y - 30); ctx.rotate(F.aim);
+    ctx.save(); if (!u.v3dLocal) { ctx.translate(u.x, u.y - 30); ctx.rotate(F.aim); } // v3dLocal: 직접 플레이 띠 안에 (0,0)→+x 로
     if (window.BattleVFX && BattleVFX.breath(ctx, F, F.L, D.half, b.time, '#ffa03a')) { ctx.restore(); return; }
     const g = ctx.createLinearGradient(0, 0, F.L, 0); g.addColorStop(0, 'rgba(255,240,170,0.9)'); g.addColorStop(0.4, 'rgba(255,120,30,0.7)'); g.addColorStop(1, 'rgba(200,30,10,0.15)');
     ctx.fillStyle = g; const w = F.L * Math.tan(D.half), fl = 1 + 0.12 * Math.sin(b.time * 40);
@@ -282,10 +282,13 @@
       }
     },
     drawOver(ctx, b) {
-      for (const T of b.schTor || []) drawTor(ctx, b, T);
+      const V = b._v3d; // 직접 플레이: 토네이도 = 바닥의 소용돌이 영역, 브레스 = 입 높이(30) 3D 띠
+      for (const T of b.schTor || []) { if (V) V.flat({ x: T.x, y: T.y, z: 0, sy: 0.7, draw: c => drawTor(c, b, T) }); else drawTor(ctx, b, T); }
       for (const u of b.u) {
         if (u.dead || (u.def.id !== ID && !u.schGlue)) continue; // 빌려 쓴 문어 붙잡기도 끈 표시
-        if (u.def.id === ID && u.schForm && u.schForm.kind === 'dragon') drawBreath(ctx, b, u);
+        if (u.def.id === ID && u.schForm && u.schForm.kind === 'dragon') { const F = u.schForm;
+          if (V && F.L != null) { const w = F.L * Math.tan(u.def.sch.fin.half); V.beam({ x1: u.x, y1: u.y, x2: u.x + Math.cos(F.aim) * F.L, y2: u.y + Math.sin(F.aim) * F.L, z: 30, w: 2 * w + 40, draw: c => drawBreath(c, b, { def: u.def, schForm: F, v3dLocal: true }) }); }
+          else drawBreath(ctx, b, u); }
         if (u.schGlue) { const e = u.schGlue.e; ctx.save(); ctx.strokeStyle = '#b070d0'; ctx.lineWidth = 3; ctx.globalAlpha = 0.85;
           for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(u.x, u.y - 14 - i * 8); ctx.quadraticCurveTo((u.x + e.x) / 2, (u.y + e.y) / 2 - 30 - i * 6 + Math.sin(b.time * 8 + i) * 4, e.x, e.y - 16 - i * 8); ctx.stroke(); } ctx.restore(); }
         if (u.def.id === ID && u.schCopy) { ctx.save(); ctx.fillStyle = '#ffe8b0'; ctx.globalAlpha = 0.6 + 0.3 * Math.sin(b.time * 6); ctx.fillRect(Math.round(u.x) - 2, Math.round(u.y) - 62, 4, 4); ctx.restore(); }

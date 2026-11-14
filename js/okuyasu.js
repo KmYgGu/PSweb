@@ -182,16 +182,18 @@
       }
     },
     drawOver(ctx, b) {
+      const V = b._v3d; // 직접 플레이: 공간 삭제 범위 = 바닥, 더 핸드 = 제자리에 세움
+      const hand3 = (x, y, z, face, al, sc) => V ? V.stand({ x, y, z, w: 90, h: 100, draw: c => drawHand(c, x, y, face, al, sc) }) : drawHand(ctx, x, y - z, face, al, sc);
       for (const u of b.u) { if (!isOku(u) && !u.ok) continue; if (u.dead || u.hidden) continue; const E = u.ok && u.ok.erase, z = b.airZ(u);
         if (E) { const k = Math.min(1, E.t / E.charge), c = Math.cos(E.ang), s = Math.sin(E.ang); // 범위 예고 (점점 선명)
-          ctx.save(); ctx.translate(E.x, E.y); ctx.rotate(E.ang); ctx.globalAlpha = 0.08 + 0.32 * k; ctx.fillStyle = '#7cd0f4'; ctx.fillRect(0, -E.W / 2, E.L, E.W);
-          ctx.globalAlpha = 0.3 + 0.6 * k; ctx.strokeStyle = k > 0.8 && Math.floor(b.time * 12) % 2 ? '#ffffff' : '#bfe8ff'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(0, -E.W / 2, E.L, E.W); ctx.restore();
+          if (V) { V.floor(ctx => { ctx.save(); ctx.translate(E.x, E.y); ctx.rotate(E.ang); ctx.globalAlpha = 0.08 + 0.32 * k; ctx.fillStyle = '#7cd0f4'; ctx.fillRect(0, -E.W / 2, E.L, E.W); ctx.globalAlpha = 0.3 + 0.6 * k; ctx.strokeStyle = k > 0.8 && Math.floor(b.time * 12) % 2 ? '#ffffff' : '#bfe8ff'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(0, -E.W / 2, E.L, E.W); ctx.restore(); }); V.stand({ x: E.x, y: E.y, w: 140, h: 120, draw: ctx => { const g = 6 + 14 * k; ctx.save(); ctx.globalAlpha = 0.4 + 0.5 * k; ctx.fillStyle = BLUE; ctx.beginPath(); ctx.arc(E.x + c * 18, E.y - 24 + s * 6, g * (0.9 + 0.1 * Math.sin(b.time * 30)), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.8 * k; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(E.x + c * 18, E.y - 24 + s * 6, g * 0.45, 0, TAU); ctx.fill(); ctx.restore(); drawHand(ctx, E.x, E.y, Math.cos(E.ang) >= 0 ? 1 : -1, 0.95, 2.6); } }); continue; }
+          ctx.save(); ctx.translate(E.x, E.y); ctx.rotate(E.ang); ctx.globalAlpha = 0.08 + 0.32 * k; ctx.fillStyle = '#7cd0f4'; ctx.fillRect(0, -E.W / 2, E.L, E.W); ctx.globalAlpha = 0.3 + 0.6 * k; ctx.strokeStyle = k > 0.8 && Math.floor(b.time * 12) % 2 ? '#ffffff' : '#bfe8ff'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]); ctx.strokeRect(0, -E.W / 2, E.L, E.W); ctx.restore();
           const g = 6 + 14 * k; ctx.save(); ctx.globalAlpha = 0.4 + 0.5 * k; ctx.fillStyle = BLUE; ctx.beginPath(); ctx.arc(E.x + c * 18, E.y - 24 + s * 6, g * (0.9 + 0.1 * Math.sin(b.time * 30)), 0, TAU); ctx.fill(); ctx.globalAlpha = 0.8 * k; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(E.x + c * 18, E.y - 24 + s * 6, g * 0.45, 0, TAU); ctx.fill(); ctx.restore();
           drawHand(ctx, E.x, E.y, Math.cos(E.ang) >= 0 ? 1 : -1, 0.95, 2.6); continue; }
         if (!isOku(u)) continue;
         const A = u.action;
-        if (A && A.type === 'okBarrage') { const bob = Math.sin(b.time * 50) * 3; drawHand(ctx, u.x + Math.cos(A.ang) * 22, u.y + Math.sin(A.ang) * 10 + bob, Math.cos(A.ang) >= 0 ? 1 : -1, 0.9, 2.6); }
-        else drawHand(ctx, u.x - u.facing * 16 + (u.okSwing > 0 ? u.facing * 26 : 0), u.y - 6 - z + Math.sin(b.time * 3) * 2, u.facing, u.okSwing > 0 ? 0.85 : 0.55, 2.3);
+        if (A && A.type === 'okBarrage') { const bob = Math.sin(b.time * 50) * 3; hand3(u.x + Math.cos(A.ang) * 22, u.y + Math.sin(A.ang) * 10, -bob, Math.cos(A.ang) >= 0 ? 1 : -1, 0.9, 2.6); }
+        else hand3(u.x - u.facing * 16 + (u.okSwing > 0 ? u.facing * 26 : 0), u.y, 6 + z - Math.sin(b.time * 3) * 2, u.facing, u.okSwing > 0 ? 0.85 : 0.55, 2.3);
       }
     },
   });

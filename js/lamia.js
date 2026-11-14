@@ -153,7 +153,8 @@
       if (Math.abs(-dx * s + dy * c) > S.width + o.pad) continue;
       if (hit) hit.add(o); b.damage(u, o, u.st.atk * S.mult * (opening(b, u) ? OPEN.mult : 1), { element: 'light', delivery: 'ranged', color: '#fff4c0' }); }
   }
-  function drawBeams(ctx, arms, phase, t, lock, len, fade) {
+  function drawBeams(ctx, arms, phase, t, lock, len, fade, V) {
+    if (V) return beams3(V, arms, phase, t, lock, len, fade);
     for (const A of arms) {
       if (phase === 'lock') { ctx.save(); ctx.globalAlpha = 0.35 + 0.4 * Math.min(1, t / lock); ctx.strokeStyle = '#fff4c0'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
         ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(A.x + Math.cos(A.a) * len, A.y + Math.sin(A.a) * len); ctx.stroke(); ctx.restore(); }
@@ -163,11 +164,20 @@
       drawArm(ctx, A, phase === 'fire' ? (fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3)) : 0.9);
     }
   }
+  function beams3(V, arms, phase, t, lock, len, fade) { // 직접 플레이: 팔 = 몸 높이(22)에 세움, 조준선·광선 = 높이 22 의 3D 띠
+    const ca = Math.cos, sa = Math.sin, s = Sprites.get(ARM);
+    for (const A of arms) {
+      const gx = A.x, gy = A.y + 22, k = phase === 'fire' ? (fade ? Math.min(1, Math.max(0, (fade - t) / 0.15)) : Math.max(0, 1 - t / 0.3)) : 0.9;
+      if (phase === 'lock') V.beam({ x1: gx, y1: gy, x2: gx + ca(A.a) * len, y2: gy + sa(A.a) * len, z: 22, w: 4, draw: (c, L) => { c.globalAlpha = 0.35 + 0.4 * Math.min(1, t / lock); c.strokeStyle = '#fff4c0'; c.lineWidth = 1; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); } });
+      if (phase === 'fire' && A.L != null) V.beam({ x1: gx, y1: gy, x2: gx + ca(A.a) * A.L, y2: gy + sa(A.a) * A.L, z: 22, w: 24, draw: (c, L) => { c.lineCap = 'round'; c.globalAlpha = 0.4 * k; c.strokeStyle = '#fff0a0'; c.lineWidth = 20; c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); c.globalAlpha = 0.95 * k; c.strokeStyle = '#ffffff'; c.lineWidth = 6; c.stroke(); } });
+      V.stand({ x: gx, y: gy, w: s.dw * 2 + 10, h: s.dw + 50, draw: c => drawArm(c, A, k) });
+    }
+  }
   function drawArm(ctx, A, k) {
     const s = Sprites.get(ARM); ctx.save(); ctx.translate(Math.round(A.x), Math.round(A.y)); ctx.rotate(A.a); ctx.globalAlpha = k;
     ctx.drawImage(s.img, 0, 0, s.fw, s.fh, -s.dw * 0.25, -s.dh / 2, s.dw, s.dh); ctx.restore();
   }
-  function drawSpread(ctx, b, u) { const P = u.lmSp; drawBeams(ctx, P.arms, P.phase, P.t, P.S.lock, P.S.len); }
+  function drawSpread(ctx, b, u) { const P = u.lmSp; drawBeams(ctx, P.arms, P.phase, P.t, P.S.lock, P.S.len, undefined, b._v3d); }
 
   // ---------- 5. 브릴리언스 서클 ----------
   SKILLS.lmCircle = {
@@ -243,10 +253,11 @@
     drawOver(ctx, b) {
       for (const u of b.u) { if (u.def.id !== ID) continue;
         if (u.lmSp) drawSpread(ctx, b, u);
-        if (u.lmCircle) { const C = u.lmCircle; drawBeams(ctx, C.arms, C.phase, C.t, C.S.lock, C.S.len, C.S.sweep); }
+        if (u.lmCircle) { const C = u.lmCircle; drawBeams(ctx, C.arms, C.phase, C.t, C.S.lock, C.S.len, C.S.sweep, b._v3d); }
         const L = u.lmLev; if (L && L.thrown && !L.done) { const k = L.bt / u.skills.find(s => s.id === 'lmFreeze').fall, z = b.airZ(u) * (1 - k);
           ctx.save(); ctx.translate(Math.round(u.x + 8), Math.round(u.y - 30 - z + 30 * k)); ctx.rotate(L.bt * 12); ctx.fillStyle = '#3a2a5a'; ctx.fillRect(-5, -4, 10, 8); ctx.fillStyle = '#e8d8a8'; ctx.fillRect(-4, -3, 8, 1); ctx.fillStyle = '#bfe8ff'; ctx.fillRect(-1, -1, 2, 2); ctx.restore(); }
-        const s = standOf(u); if (s && s.lmOrder) { ctx.save(); ctx.strokeStyle = '#bfe8ff'; ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 30); ctx.lineTo(s.x, s.y - 24); ctx.stroke(); ctx.restore(); }
+        const s = standOf(u); if (s && s.lmOrder && b._v3d) b._v3d.beam({ x1: u.x, y1: u.y, x2: s.x, y2: s.y, z1: 30, z2: 24, w: 4, draw: (c, L) => { c.globalAlpha = 0.5; c.strokeStyle = '#bfe8ff'; c.lineWidth = 1; c.setLineDash([3, 4]); c.beginPath(); c.moveTo(0, 0); c.lineTo(L, 0); c.stroke(); } }); // 직접 플레이: 명령 줄 = 3D 띠
+        else if (s && s.lmOrder) { ctx.save(); ctx.strokeStyle = '#bfe8ff'; ctx.globalAlpha = 0.5; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 30); ctx.lineTo(s.x, s.y - 24); ctx.stroke(); ctx.restore(); }
       }
     },
   });

@@ -480,7 +480,14 @@
     },
     drawTop(ctx, b) {
       if (!b.bfx || !b.bfx.length) return;
-      for (const f of b.bfx) {
+      const V = b._v3d; // 직접 플레이: 두 캐릭터 사이(가운데 발 위치)에 세움
+      if (V) { for (const f of b.bfx) V.stand({ x: (f.a.x + f.b.x) / 2, y: (f.a.y + f.b.y) / 2, w: Math.abs(f.a.x - f.b.x) + 160, h: 200, draw: c => BRO_TOP(c, b, [f]) }); return; }
+      BRO_TOP(ctx, b, b.bfx);
+    },
+  });
+  function BRO_TOP(ctx, b, list) {
+    {
+      for (const f of list) {
         const mx = (f.a.x + f.b.x) / 2, my = (f.a.y + f.b.y) / 2 - 26;
         ctx.save();
         if (f.type === 'hearts') { // 화면 밖에서 모여들며 작아지고 진해짐 (blur 대신 크기+알파로 표현)
@@ -509,6 +516,6 @@
         }
         ctx.restore();
       }
-    },
-  });
+    }
+  }
 })();

@@ -132,34 +132,41 @@
     },
     drawOver(ctx, b) {
       const O = b.sk2; if (!O) return;
-      ctx.save();
+      const V = b._v3d; // 직접 플레이: 바닥 표시는 바닥에, 기둥·구슬은 제자리에 세움
+      const put = (fn, st) => { if (!V) { ctx.save(); fn(ctx); ctx.restore(); } else if (st) V.stand({ ...st, draw: c => { c.save(); fn(c); c.restore(); } }); else V.floor(fn); };
       for (const f of O.fx) {
         const p = f.t / f.dur;
-        if (f.type === 'step') { // 백스텝: 바닥 화살표 잔상
+        if (f.type === 'step') put(ctx => { // 백스텝: 바닥 화살표 잔상
           ctx.globalAlpha = 0.7 * (1 - p); ctx.fillStyle = '#bff0a8';
           for (let i = 0; i < 4; i++) { const d = 8 + i * 10 + p * 20; px(ctx, f.x + Math.cos(f.ang) * d, f.y + Math.sin(f.ang) * d * 0.6, 3, i % 2 ? '#e8ffd8' : '#8fd47a'); }
-        } else if (f.type === 'tpOut' || f.type === 'tpIn') { // 텔레포트: 픽셀 기둥 + 룬 원
+        });
+        else if (f.type === 'tpOut' || f.type === 'tpIn') put(ctx => { // 텔레포트: 픽셀 기둥 + 룬 원
           const k = f.type === 'tpIn' ? 1 - p : p, a = 1 - p;
           ctx.globalAlpha = 0.55 * a; ctx.fillStyle = '#b89cff'; ctx.fillRect(Math.round(f.x - 7 + k * 4), Math.round(f.y - 50), Math.round(14 - k * 8), 50);
           ctx.globalAlpha = 0.9 * a; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(f.x - 1), Math.round(f.y - 50), 2, 50);
           for (let i = 0; i < 8; i++) { const an = i * TAU / 8 + b.time * 3; px(ctx, f.x + Math.cos(an) * (16 + k * 6), f.y + Math.sin(an) * (6 + k * 2), 2, i % 2 ? '#e8dcff' : '#8f6ae0'); }
           for (let i = 0; i < 5; i++) px(ctx, f.x + Math.sin(i * 7.3 + f.t * 9) * 10, f.y - 10 - ((i * 13 + f.t * 90) % 46), 2, '#f0e8ff');
-        }
+        }, { x: f.x, y: f.y, w: 60, h: 70 });
       }
       for (const u of b.u) if (u.action && u.action.type === 'pray' && !u.dead) { // 기도: 머리 위 후광 + 발밑 빛 원
         const z = b.airZ(u), y = u.y - z;
-        ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 8); ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(u.x, u.y, 20, 7, 0, 0, TAU); ctx.stroke();
-        ctx.globalAlpha = 0.9; ctx.strokeStyle = '#fff4b8'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(u.x, y - 48 - u.pad, 9, 3, 0, 0, TAU); ctx.stroke();
-        for (let i = 0; i < 6; i++) { const an = i * TAU / 6 + b.time * 2; px(ctx, u.x + Math.cos(an) * 22, u.y + Math.sin(an) * 8, 2, '#fff8d0'); }
+        put(ctx => {
+          ctx.globalAlpha = 0.35 + 0.15 * Math.sin(b.time * 8); ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(u.x, u.y, 20, 7, 0, 0, TAU); ctx.stroke();
+          for (let i = 0; i < 6; i++) { const an = i * TAU / 6 + b.time * 2; px(ctx, u.x + Math.cos(an) * 22, u.y + Math.sin(an) * 8, 2, '#fff8d0'); }
+        });
+        put(ctx => { ctx.globalAlpha = 0.9; ctx.strokeStyle = '#fff4b8'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, y - 48 - u.pad, 9, 3, 0, 0, TAU); ctx.stroke(); }, { x: u.x, y: u.y, w: 40, h: 70 + z + u.pad });
       }
       for (const o of O.orbs) { // 마법구: 꼬리 + 픽셀 구슬
-        for (let i = 0; i < o.trail.length; i++) { ctx.globalAlpha = (i + 1) / o.trail.length * 0.5; px(ctx, o.trail[i][0], o.trail[i][1] - 14, 2 + Math.floor(i / 2), '#b070e0'); }
-        ctx.globalAlpha = 0.35; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(o.x, o.y - 14, 8, 0, TAU); ctx.fill();
-        ctx.globalAlpha = 1; px(ctx, o.x, o.y - 14, 7, '#9a4ad8'); px(ctx, o.x, o.y - 14, 5, '#e0b0ff'); px(ctx, o.x - 1, o.y - 15, 2, '#ffffff');
+        if (V) V.shadow(o.x, o.y, 5);
+        const d = o.trail.reduce((m, [x]) => Math.max(m, Math.abs(x - o.x)), 0);
+        put(ctx => {
+          for (let i = 0; i < o.trail.length; i++) { ctx.globalAlpha = (i + 1) / o.trail.length * 0.5; px(ctx, o.trail[i][0], o.trail[i][1] - 14, 2 + Math.floor(i / 2), '#b070e0'); }
+          ctx.globalAlpha = 0.35; ctx.fillStyle = '#d890ff'; ctx.beginPath(); ctx.arc(o.x, o.y - 14, 8, 0, TAU); ctx.fill();
+          ctx.globalAlpha = 1; px(ctx, o.x, o.y - 14, 7, '#9a4ad8'); px(ctx, o.x, o.y - 14, 5, '#e0b0ff'); px(ctx, o.x - 1, o.y - 15, 2, '#ffffff');
+        }, { x: o.x, y: o.y, w: d * 2 + 30, h: 50 });
       }
-      ctx.restore(); ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1;
     },
   });
 })();

@@ -447,6 +447,7 @@
     drawOver(ctx, b) {
       for (const u of b.u) { const A = u.ao; if (!A) continue;
         for (const f of A.fall) { if (f.t < 0) continue; const p = clamp(f.t / f.dur, 0, 1), z = (1 - p) * (1 - p) * D.slam.drop; // 떨어지는 상자
+          if (b._v3d) { const V = b._v3d, sz = D.slam.size; V.shadow(f.x + sz / 2, f.y + sz / 2, sz * 0.6, 0.3 * Math.min(1, p * 3)); V.box({ x0: f.x, y0: f.y, z0: z, x1: f.x + sz, y1: f.y + sz, z1: z + 10, col: '#c08a48', a: Math.min(1, p * 3) }); continue; } // 직접 플레이: 떨어지는 상자 = 3D 상자 + 그림자
           ctx.save(); ctx.globalAlpha = Math.min(1, p * 3); drawBox(ctx, { x: f.x, y: f.y - z, w: D.slam.size, h: D.slam.size, hits: 0, t: 1, hitT: 0 }); ctx.restore(); }
         if (A.chase && !u.hidden && !u.dead) { const C = A.chase, s = Math.hypot(C.vx, C.vy); if (s > 150) { ctx.save(); ctx.globalAlpha = Math.min(0.5, (s - 150) / 300); ctx.strokeStyle = '#dce8ff'; ctx.lineWidth = 1;
           const a = Math.atan2(C.vy, C.vx), c = Math.cos(a), sn = Math.sin(a); for (let i = 0; i < 3; i++) { const o = (i - 1) * 9, l = 10 + ((b.time * 60 + i * 7) % 10); ctx.beginPath(); ctx.moveTo(u.x - c * 18 - sn * o, u.y - 22 + c * o - sn * 18); ctx.lineTo(u.x - c * (18 + l) - sn * o, u.y - 22 + c * o - sn * (18 + l)); ctx.stroke(); } ctx.restore(); } }
@@ -454,6 +455,7 @@
     },
     drawTop(ctx, b) {
       let C = null; for (const u of b.u) if (u.ao && u.ao.closet && (u.ao.closet.phase === 'foeIn' || u.ao.closet.phase === 'grab2')) { C = u.ao.closet; break; }
+      if (b._v3d) { if (C && !b.over) b._v3d.floor(c => drawDark(c, b, C)); return; } // 직접 플레이: 어둠은 바닥에만, 방 이동 화면 밀기는 없음
       if (C && !b.over) drawDark(ctx, b, C);
       slideFx(ctx, b);
     },

@@ -179,11 +179,16 @@
   function begin(b) { draws=0;const list=extras.get(b);if(list)extras.set(b,list.filter(f=>(b.visualTime||0)-f.start<f.dur)); }
   function drawExtras(ctx,b,layer) {
     if(!API.enabled)return;
-    for(const f of extras.get(b)||[]){f.t=Math.max(0,(b.visualTime||0)-f.start);const p=f.t/f.dur;
-      if(f.type==='smoke'){if(layer===0)smoke(ctx,f,f.x,f.y,p*f.dur,f.color,22,16,1-p);continue;}
+    const V=b._v3d; // 직접 플레이: 폭발·불꽃 하나하나를 제자리에 세움 (모두 묶어 한 판으로 잡히지 않게)
+    for(const f of extras.get(b)||[]){f.t=Math.max(0,(b.visualTime||0)-f.start);
+      if(V&&layer===1&&f.type!=='smoke'){V.stand({x:f.x,y:f.y,w:150,h:170,draw:c=>extra1(c,f,layer)});continue;}
+      extra1(ctx,f,layer);
+    }
+  }
+  function extra1(ctx,f,layer){const p=f.t/f.dur;
+      if(f.type==='smoke'){if(layer===0)smoke(ctx,f,f.x,f.y,p*f.dur,f.color,22,16,1-p);return;}
       const id={explosion:'explosions/small-explosion',sparks:'impacts/hit-spark'}[f.type];
       if(id)live(ctx,f,id,f.type==='explosion' ? (f.t<.15?f.t*2:.3+(f.t-.15)*7) : p*X.effects[id].meta.duration*.98,f.x,f.y,{color:f.color,scale:f.scale,cy:f.type==='sparks'?-20:0,alpha:Math.min(1,(1-p)*4)},layer);
-    }
   }
   function smoke(ctx,key,x,y,t,color,height=28,width=5,alpha=1) {
     if(!API.enabled || !available)return false;

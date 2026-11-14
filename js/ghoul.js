@@ -540,7 +540,7 @@
       return amt !== amount ? amt : undefined;
     },
     drawTop(ctx, b) { // 화이트 레빗 시간 정지: 정지 중엔 화면 전체 회색조, 레빗과 그 듀얼리스트만 컬러로 다시 그림
-      const T = b.gTS; if (!T || !T.foe || !T.foe.status('gStop')) return;
+      const T = b.gTS; if (!T || !T.foe || !T.foe.status('gStop') || b._v3d) return; // 직접 플레이: 화면 회색조 없음
       const cv = ctx.canvas; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.filter = 'grayscale(1)'; ctx.drawImage(cv, 0, 0); ctx.restore();
       if (!T.owner.dead && b.u.includes(T.owner)) { Render.drawUnit(ctx, T.owner, b); ctx.globalAlpha = 1; }
       if (T.A && T.A.t < T.A.dur) drawActor(ctx, b, T.A);
@@ -579,26 +579,34 @@
       if (b.gCrack) { const C = b.gCrack, k = Math.min(1, C.t / C.dur); ctx.save(); ctx.strokeStyle = '#ff5a9a'; ctx.lineWidth = 3 + k * 3; ctx.globalAlpha = 0.9; for (const pts of C.cr) { const n = Math.max(1, Math.floor((pts.length - 1) * k)); ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= n; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); } ctx.strokeStyle = '#1a0a14'; ctx.lineWidth = 1.5; for (const pts of C.cr) { const n = Math.max(1, Math.floor((pts.length - 1) * k)); ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y); for (let i = 1; i <= n; i++) ctx.lineTo(pts[i].x, pts[i].y); ctx.stroke(); } ctx.restore(); }
     },
     drawOver(ctx, b) {
-      for (const A of b.gAct || []) drawActor(ctx, b, A);
+      const V = b._v3d; // 직접 플레이: 등장 몬스터는 제자리(높이 z)에 세우고, 성은 그 자리에 세움, 휩쓰는 물결은 바닥에
+      for (const A of b.gAct || []) { if (V) { const g = { ...A, z: 0 }, sp = DuelSprites.get(A.spr), sc = sp ? sp.s * A.k : 1; V.shadow(A.x, A.y, 12); V.stand({ x: A.x, y: A.y, z: A.z || 0, w: (sp ? sp.w * sc : 40) + 20, h: (sp ? sp.h * sc : 40) + 20, draw: c => drawActor(c, b, g) }); } else drawActor(ctx, b, A); }
       for (const s of b.u) if (s.summon && !s.dead && s.maxHp > 0 && !s.hidden && !s.def.noDraw) { // 소환수 머리 위 작은 체력바
-        const k = clamp(s.hp / s.maxHp, 0, 1), x = Math.round(s.x) - 12, y = Math.round(s.y - 50 * (s.size || 1) - b.airZ(s));
-        ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(20,18,30,0.85)'; ctx.fillRect(x - 1, y - 1, 26, 5); ctx.fillStyle = '#3a3448'; ctx.fillRect(x, y, 24, 3);
-        ctx.fillStyle = s.team === 0 ? '#6ad0ff' : '#ff7a8a'; ctx.fillRect(x, y, Math.max(1, Math.round(24 * k)), 3); ctx.restore(); }
+        if (!V) gHpBar(ctx, b, s); } // 직접 플레이는 모든 유닛 체력바를 따로 그림
       for (const u of b.u) {
-        if (u.gCastle && !u.dead) { const C = u.gCastle, k = Math.max(0.2, C.hp / C.max), x = Math.round(C.cx ?? u.x), y = Math.round(C.cy ?? u.y); ctx.save(); // 작은 성: 뒷벽은 반투명, 앞쪽 기둥/성벽
+        if (u.gCastle && !u.dead && V) { const C = u.gCastle; V.stand({ x: C.cx ?? u.x, y: (C.cy ?? u.y) + 8, w: 80, h: 90, draw: c => GHOUL_CASTLE(c, u) }); }
+        else if (u.gCastle && !u.dead) GHOUL_CASTLE(ctx, u);
+        if (u.gIce && !u.dead) { ctx.save(); ctx.globalAlpha = 0.3 + 0.1 * Math.sin(b.time * 6); ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 16, 36, 30, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 0.12; ctx.fillStyle = '#bfefff'; ctx.fill(); ctx.restore(); }
+      }
+      for (const L of projLists(b)) for (const p of L) if (p.gFrz > 0) { const q = projPos(p); ctx.save(); ctx.globalAlpha = 0.8; ctx.fillStyle = '#bfefff'; ctx.fillRect(Math.round(q.x) - 6, Math.round(q.y) - 6, 12, 12); ctx.restore(); }
+      if (b.gZone) for (const Z of b.gZone) if (V) V.floor(c => GHOUL_ZONE(c, b, Z)); else GHOUL_ZONE(ctx, b, Z);
+    },
+    drawAboveUI(ctx, b) { for (const A of b.gAct || []) drawActor(ctx, b, A); },
+  });
+  function gHpBar(ctx, b, s) { const k = clamp(s.hp / s.maxHp, 0, 1), x = Math.round(s.x) - 12, y = Math.round(s.y - 50 * (s.size || 1) - b.airZ(s));
+    ctx.save(); ctx.globalAlpha = 1; ctx.fillStyle = 'rgba(20,18,30,0.85)'; ctx.fillRect(x - 1, y - 1, 26, 5); ctx.fillStyle = '#3a3448'; ctx.fillRect(x, y, 24, 3);
+    ctx.fillStyle = s.team === 0 ? '#6ad0ff' : '#ff7a8a'; ctx.fillRect(x, y, Math.max(1, Math.round(24 * k)), 3); ctx.restore(); }
+  function GHOUL_CASTLE(ctx, u) {
+    { const C = u.gCastle, k = Math.max(0.2, C.hp / C.max), x = Math.round(C.cx ?? u.x), y = Math.round(C.cy ?? u.y); ctx.save(); // 작은 성: 뒷벽은 반투명, 앞쪽 기둥/성벽
           ctx.globalAlpha = 0.45 + 0.35 * k; ctx.fillStyle = '#e8ecf8'; ctx.strokeStyle = '#8a90a8'; ctx.lineWidth = 1;
           ctx.fillRect(x - 26, y - 44, 52, 4); for (const dx of [-30, 24]) { ctx.fillRect(x + dx, y - 50, 6, 58); ctx.strokeRect(x + dx + 0.5, y - 49.5, 5, 57); }
           ctx.fillStyle = '#5a6080'; for (const dx of [-30, 24]) for (let i = 0; i < 2; i++) ctx.fillRect(x + dx + i * 4, y - 54, 2, 4);
           ctx.globalAlpha = 0.35 + 0.35 * k; ctx.fillStyle = '#e8ecf8'; ctx.fillRect(x - 24, y + 2, 48, 6); ctx.strokeRect(x - 23.5, y + 2.5, 47, 5);
           ctx.fillStyle = '#8a90a8'; for (let i = -20; i <= 18; i += 6) ctx.fillRect(x + i, y + 4, 2, 2);
           ctx.globalAlpha = 1; ctx.fillStyle = '#ffffff'; ctx.fillRect(x - 16, y - 60, 32 * k, 2); ctx.restore(); }
-        if (u.gIce && !u.dead) { ctx.save(); ctx.globalAlpha = 0.3 + 0.1 * Math.sin(b.time * 6); ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y - 16, 36, 30, 0, 0, TAU); ctx.stroke(); ctx.globalAlpha = 0.12; ctx.fillStyle = '#bfefff'; ctx.fill(); ctx.restore(); }
-      }
-      for (const L of projLists(b)) for (const p of L) if (p.gFrz > 0) { const q = projPos(p); ctx.save(); ctx.globalAlpha = 0.8; ctx.fillStyle = '#bfefff'; ctx.fillRect(Math.round(q.x) - 6, Math.round(q.y) - 6, 12, 12); ctx.restore(); }
-      if (b.gZone) for (const Z of b.gZone) { const y = 120 + (Z.t / Z.dur) * 500; ctx.save(); ctx.globalAlpha = 0.55 * (1 - Z.t / Z.dur * 0.5); ctx.fillStyle = '#5ab0ff'; ctx.fillRect(0, y - 26, 360, 30); ctx.fillStyle = '#e8f8ff'; for (let x = 0; x < 360; x += 12) ctx.fillRect(x + (Math.floor(b.time * 30) % 12), y - 28 + Math.sin(x * 0.2 + b.time * 10) * 3, 7, 4); ctx.globalAlpha *= 0.5; ctx.fillStyle = '#3a7ad8'; ctx.fillRect(0, y + 4, 360, 18); ctx.restore(); }
-    },
-    drawAboveUI(ctx, b) { for (const A of b.gAct || []) drawActor(ctx, b, A); },
-  });
+  }
+  function GHOUL_ZONE(ctx, b, Z) { { const y = 120 + (Z.t / Z.dur) * 500; ctx.save(); ctx.globalAlpha = 0.55 * (1 - Z.t / Z.dur * 0.5); ctx.fillStyle = '#5ab0ff'; ctx.fillRect(0, y - 26, 360, 30); ctx.fillStyle = '#e8f8ff'; for (let x = 0; x < 360; x += 12) ctx.fillRect(x + (Math.floor(b.time * 30) % 12), y - 28 + Math.sin(x * 0.2 + b.time * 10) * 3, 7, 4); ctx.globalAlpha *= 0.5; ctx.fillStyle = '#3a7ad8'; ctx.fillRect(0, y + 4, 360, 18); ctx.restore(); }
+  }
   function drawActor(ctx, b, A) {
     const sp = DuelSprites.get(A.spr); if (!sp) return;
     const k = A.t / A.dur, a = Math.min(1, A.t / 0.12, (A.dur - A.t) / 0.15) * (A.ghost ? 0.75 : 1);
