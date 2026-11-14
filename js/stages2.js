@@ -341,6 +341,7 @@
         if (c) { ctx.fillStyle = '#9aa0a8'; ctx.fillRect(cx - 2, y + 30, 4, h - 60); } // 연결부
         ctx.fillStyle = '#e8c840'; ctx.fillRect(cx + 46, y + h / 2 - 2, 28, 4); // 손잡이 봉
       }
+      if (!thumb && b._v3d) { SUB.walls3D(b, sb, b._v3d, x0, door); ctx.restore(); return; } // 직접 플레이: 열차 옆벽·앞뒤 끝 = 세로 벽 (천장 없음, 안이 보임)
       // 벽
       for (const side of ['top', 'bot']) {
         const wy = side === 'top' ? y - 3 : y + h - 3;
@@ -372,6 +373,29 @@
         for (let k = 0; k < 8; k++) { const ly = y + 8 + k * (h - 16) / 7, ll = Math.min(60, Math.abs(sb.vx) * 0.12); ctx.beginPath(); ctx.moveTo(x0 - 8, ly); ctx.lineTo(x0 - 8 - ll, ly); ctx.stroke(); }
       }
       ctx.restore();
+    },
+    walls3D(b, sb, V, x0, door) {
+      const T = sb.S.train, L = sb.L, WH = 44, xa = Math.max(x0, AR.x), xb = Math.min(x0 + L, AR.x + AR.w); if (xb - xa < 1) return;
+      for (const side of ['top', 'bot']) {
+        const wy = side === 'top' ? T.y : T.y + T.h;
+        V.wall({ x1: xa, y1: wy, x2: xb, y2: wy, h: WH, draw: c => { c.translate(-(xa - x0), 0);
+          c.fillStyle = '#a8b0bc'; c.fillRect(0, 0, L, WH); c.fillStyle = '#7a828e'; c.fillRect(0, 0, L, 3); c.fillStyle = '#2f7ad0'; c.fillRect(0, WH - 14, L, 3);
+          for (let k = 1; k < T.cars; k++) { c.fillStyle = '#8a929e'; c.fillRect(k * T.carW - 2, 0, 4, WH); } // 차량 연결부
+          for (const w of sb.windows) if (w.side === side) { const ww = w.e - w.a;
+            c.clearRect(w.a, 8, ww, 18);
+            if (w.broken) { c.fillStyle = 'rgba(200,230,255,0.6)'; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(w.a + k * ww / 4, 8); c.lineTo(w.a + k * ww / 4 + 5, 8); c.lineTo(w.a + k * ww / 4 + 2, 8 + 4 + (k % 2) * 3); c.fill(); } continue; }
+            c.fillStyle = w.hitT > 0 ? 'rgba(255,255,255,0.8)' : 'rgba(159,216,240,0.42)'; c.fillRect(w.a, 8, ww, 18);
+            c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(w.a + 3, 9, ww * 0.3, 1);
+            const cs = Math.floor((1 - w.hp / w.max) * 3); c.strokeStyle = '#4a6a88'; c.lineWidth = 1;
+            for (let k = 0; k < cs; k++) { const kx = w.a + ww * (0.25 + 0.25 * k); c.beginPath(); c.moveTo(kx, 9); c.lineTo(kx + 4, 16); c.lineTo(kx - 3, 24); c.stroke(); } }
+          for (const d of SUB.doorList(T, side)) { const dw = d[1] - d[0], half = dw / 2, sl = half * door; // 문: 열린 만큼 옆으로 밀림
+            c.clearRect(d[0], 3, dw, WH - 3);
+            for (const px of [d[0] - sl, d[0] + half + sl]) { c.fillStyle = '#e0e4ea'; c.fillRect(px, 3, half, WH - 3); c.fillStyle = 'rgba(159,216,240,0.5)'; c.fillRect(px + 5, 9, half - 10, 14); }
+            c.fillStyle = '#e07a3a'; c.fillRect(d[0] - sl + half - 2, 3, 2, WH - 3); c.fillRect(d[0] + half + sl, 3, 2, WH - 3); } } });
+      }
+      for (const [ex, front] of [[x0, false], [x0 + L, true]]) if (ex >= AR.x && ex <= AR.x + AR.w) // 앞뒤 끝 (운전실 + 헤드라이트)
+        V.wall({ x1: ex, y1: T.y, x2: ex, y2: T.y + T.h, h: WH, draw: c => { c.fillStyle = '#8a929e'; c.fillRect(0, 0, T.h, WH); c.fillStyle = 'rgba(40,50,70,0.8)'; c.fillRect(14, 6, T.h - 28, 16);
+          c.fillStyle = '#2f7ad0'; c.fillRect(0, WH - 14, T.h, 3); if (front) { c.fillStyle = '#fff6c8'; c.fillRect(12, WH - 9, 10, 5); c.fillRect(T.h - 22, WH - 9, 10, 5); } } });
     },
     solidsThumb(sb, side) { const d = sb.door; sb.door = 1; const r = SUB.solids(sb, side); sb.door = d; return r; },
   };

@@ -149,11 +149,10 @@
       const D = b.bbq; if (!D) return;
       for (const u of mains(b)) { // 열기 게이지 (산소 게이지와 같은 모양)
         if (u.dead || u.hidden || !(u.bbqHeat > 0.5)) continue;
+        if (b._v3d) { const V = b._v3d, ux = u.x + u.kx, uy = u.y + u.ky; // 직접 플레이: 캐릭터 머리 위 세운 판 (바닥에 눕혀 엉뚱한 곳에 보이던 문제)
+          V.stand({ x: ux, y: uy, z: b.airZ(u), w: 40, h: 70, draw: c => { const r = u.bbqHeat / 100, x = ux, top = Math.round(uy - 57); heatBar(c, b, x, top, r); } }); continue; }
         const r = u.bbqHeat / 100, x = u.x + u.kx, top = Math.round(u.y + u.ky - 57 - b.airZ(u));
-        ctx.save(); ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(28,14,10,0.8)'; ctx.fillRect(x - 15, top, 30, 6);
-        ctx.fillStyle = r > 0.7 ? (Math.floor(b.time * 8) % 2 ? '#ff5a3a' : '#ffd23a') : '#ffa040'; ctx.fillRect(x - 9, top + 2, 22 * r, 2);
-        ctx.fillStyle = '#ff7a2a'; ctx.beginPath(); ctx.moveTo(x - 12, top + 0.5); ctx.quadraticCurveTo(x - 9.5, top + 4, x - 12, top + 5.5); ctx.quadraticCurveTo(x - 14.5, top + 4, x - 12, top + 0.5); ctx.fill();
-        ctx.restore();
+        heatBar(ctx, b, x, top, r);
       }
     },
     drawTop(ctx, b) { // 거대한 손 (예고 하강 → 뒤집기 / 집어 올리기)
@@ -179,6 +178,12 @@
       for (const h of D.hand) { const y = h.y - 10 - 260 * (h.t / h.dur) ** 1.5; drawMeat(ctx, b, { x: h.x, y: y + 12, cook: h.meat.cook, down: 0, rot: h.meat.rot, state: 'held', t: 0, pop: 0 }, C, b.time); drawHand(ctx, h.x, y, 0.85, true); }
     }
   };
+  function heatBar(ctx, b, x, top, r) { // 열기 게이지 (산소 게이지와 같은 모양)
+    ctx.save(); ctx.globalAlpha = 0.9; ctx.fillStyle = 'rgba(28,14,10,0.8)'; ctx.fillRect(x - 15, top, 30, 6);
+    ctx.fillStyle = r > 0.7 ? (Math.floor(b.time * 8) % 2 ? '#ff5a3a' : '#ffd23a') : '#ffa040'; ctx.fillRect(x - 9, top + 2, 22 * r, 2);
+    ctx.fillStyle = '#ff7a2a'; ctx.beginPath(); ctx.moveTo(x - 12, top + 0.5); ctx.quadraticCurveTo(x - 9.5, top + 4, x - 12, top + 5.5); ctx.quadraticCurveTo(x - 14.5, top + 4, x - 12, top + 0.5); ctx.fill();
+    ctx.restore();
+  }
   function drawMeat(ctx, b, m, C, T) {
     const s = 1 + m.pop * 0.25, rx = C.rx * s, ry = C.ry * s, top = m.cook[1 - m.down], bot = m.cook[m.down];
     ctx.save(); ctx.translate(m.x, m.y);
@@ -357,15 +362,18 @@
     }
   };
 
-  function CL_3D(b, D, T, facing, V) { // 직접 플레이: 선생님·학생 = 세운 판 + 그림자, 교탁·책상 = 3D 상자
-    const ts = Sprites.get(D.teacher), tx = 180, ty = 168, sh = D.phase === 'warn' ? Math.sin(D.t * 40) * 1.2 : 0;
+  function CL_3D(b, D, T, facing, V) { const tFacing = facing; // 직접 플레이: 선생님·학생 = 세운 판 + 그림자, 교탁·책상 = 3D 상자
+    const ts = Sprites.get(D.teacher), tx = 180, ty = 168, sh = D.phase === 'warn' ? Math.sin(D.t * 40) * 1.2 : 0, K = V.cam();
+    const seen = (x, y, fx, fy) => (K.x - x) * fx + (K.y - y) * fy > 0; // 카메라가 바라보는 쪽 앞에 있으면 앞모습
+    facing = seen(tx, ty, 0, facing ? 1 : -1);
     V.shadow(tx, ty + 1, 13, 0.3);
     V.stand({ x: tx, y: ty, w: ts.dw + 40, h: ts.dh + 80, draw: c => { c.save(); c.translate(tx + sh, ty); if (facing) Sprites.draw(c, ts, 0, false); else drawBack(c, D.teacher, ts); c.restore();
       if (D.phase === 'warn') { c.save(); c.fillStyle = '#fff'; c.strokeStyle = '#333'; c.lineWidth = 1.5; c.beginPath(); c.arc(tx + 22, ty - 62, 9, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#d33'; c.font = `bold 12px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('!', tx + 22, ty - 61); c.restore(); } } });
     V.box({ x0: tx - 22, y0: ty + 3, z0: 0, x1: tx + 22, y1: ty + 13, z1: 20, col: '#7a5530' }); // 교탁 (선생님 앞)
     for (const s of D.studs) {
       const sp = Sprites.get(s.def), sx = s.x, sy = s.y, bob = T && !facing ? Math.max(0, Math.sin(T * 3 + s.ph)) * -1 : 0;
-      const face = s.row === 'L' ? 1 : s.row === 'R' ? -1 : (sx < 180 ? 1 : -1), back = facing || s.row === 'B';
+      const face = s.row === 'L' ? 1 : s.row === 'R' ? -1 : (sx < 180 ? 1 : -1), up = tFacing || s.row === 'B'; // 2D: 위(선생님 쪽)를 보면 뒷모습
+      const lx = up ? 0 : face, ly = up ? -1 : 0.35, back = !seen(sx, sy, lx, ly); // 직접 플레이: 학생이 보는 방향과 카메라 위치로 앞/뒷모습
       V.shadow(sx, sy, 11, 0.25);
       V.stand({ x: sx, y: sy, w: sp.dw * 0.62 + 30, h: sp.dh * 0.62 + 40, draw: c => { c.save(); c.translate(sx, sy + bob); c.scale(0.62, 0.62); c.scale(spriteSX(s.def, back && !!sp.back, face), 1);
         if (back) drawBack(c, s.def, sp); else Sprites.draw(c, sp, 0, false); c.restore(); } });

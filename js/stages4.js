@@ -147,6 +147,52 @@
       bx.drawImage(src, px, py, pw, ph, 0, 0, bw, bh); // 오프스크린 버퍼로 복사
       IDOL.bufB = b; // 어느 전투의 화면인지 (다른 전투/썸네일의 지난 화면이 비치지 않게)
     },
+    captureView(c, b) { // 직접 플레이: 지난 프레임 카메라 화면 가운데를 중계 화면 비율로 버퍼에 복사 (drawImage 만, 픽셀 읽기 없음)
+      const D = b.idol, sw = IDOL.SCR.w, sh = D.I.top - AR.y - 20, src = c.canvas, W0 = src.width, H0 = src.height;
+      const pw = W0 * 0.8, ph = pw * sh / sw, px = (W0 - pw) / 2, py = H0 * 0.55 - ph / 2;
+      const buf = IDOL.buf || (IDOL.buf = document.createElement('canvas')), bw = Math.round(sw * 2), bh = Math.round(sh * 2);
+      if (buf.width !== bw || buf.height !== bh) { buf.width = bw; buf.height = bh; }
+      const bx = buf.getContext('2d'); bx.imageSmoothingEnabled = false; bx.clearRect(0, 0, bw, bh); bx.drawImage(src, px, py, pw, ph, 0, 0, bw, bh); IDOL.bufB = b;
+    },
+    draw3D(ctx, b, D, V) { // 직접 플레이: 뒷벽(스크린 3개) = 세로 벽, 관객 = 줄마다 세로 벽(벽 그림 안에서 들썩임), 스포트라이트 = 세운 빛기둥
+      const I = D.I, wh = I.top - AR.y, sh = wh - 20;
+      const wy = I.top - 22; // 벽 위치: 무대 이동 영역(top-15) 바로 뒤
+      ctx.save(); ctx.fillStyle = '#0c0a12'; ctx.fillRect(AR.x, AR.y, AR.w, wy - AR.y); ctx.fillStyle = '#362b52'; ctx.fillRect(AR.x, wy, AR.w, I.top - wy); ctx.restore(); // 바닥에 눕혀 그린 뒷벽 지움
+      V.wall({ x1: AR.x, y1: wy, x2: AR.x + AR.w, y2: wy, h: wh, draw: c => { c.translate(-AR.x, -AR.y);
+        for (let i = 0; i < AR.w; i += 8) { c.fillStyle = i % 16 ? '#1c1728' : '#201a2e'; c.fillRect(AR.x + i, AR.y, 8, wh); }
+        for (const [sx, sw] of [[120, 120], [26, 80], [254, 80]]) { c.fillStyle = '#3a3448'; c.fillRect(sx - 3, AR.y + 5, sw + 6, wh - 14); c.fillStyle = '#05060a'; c.fillRect(sx, AR.y + 8, sw, wh - 20); }
+        IDOL.drawScreen(c, b, D, false); IDOL.drawFans(c, b, D, sh); } });
+      const rowH = (AR.y + AR.h - I.seatY) / I.crowdRows, amp = 1 + D.cheer * 1.2;
+      for (let r = I.crowdRows - 1; r >= 0; r--) {
+        const ry = I.seatY + rowH * (r + 0.85), row = D.crowd.filter(c => Math.abs(c.y - ry) < rowH / 2), H = 74;
+        V.wall({ x1: AR.x, y1: ry, x2: AR.x + AR.w, y2: ry, h: H, draw: c => { c.translate(-AR.x, H);
+          for (const m of row) { const s = Sprites.get(m.def), bob = Math.max(0, Math.sin(b.time * (2.2 + D.cheer) + m.ph)) * amp * -1.5;
+            c.save(); c.translate(Math.round(m.x), Math.round(bob)); c.scale(spriteSX(m.def, false, m.face), 1); Sprites.draw(c, s, 0, false); c.restore(); // 무대를 보는 앞모습
+            if (m.stick) { const a = Math.sin(b.time * (1.6 + D.cheer) + m.ph) * 0.5, hx = m.x + m.face * 9, hy = bob - s.dh * 0.55, tx = hx + Math.sin(a) * 14, ty = hy - Math.cos(a) * 14;
+              c.globalAlpha = 0.3; glowDot(c, tx, ty, 7, m.stick); c.globalAlpha = 0.9; c.strokeStyle = m.stick; c.lineWidth = 2.5; c.beginPath(); c.moveTo(hx, hy); c.lineTo(tx, ty); c.stroke(); c.globalAlpha = 1; } } } });
+      }
+      const S = D.spot;
+      if (S) { // 스포트라이트: 위에서 내려오는 반투명 빛기둥 (세움) + 바닥 빛 웅덩이
+        const fade = Math.min(1, S.t * 4) * (S.t > I.spot.life - 1 ? 0.5 + 0.5 * Math.sin(b.time * 20) : 1), pul = 1 + 0.06 * Math.sin(b.time * 6), R = S.r * pul, Hc = 190;
+        ctx.save(); ctx.globalAlpha = 0.45 * fade; const g = ctx.createRadialGradient(S.x, S.y, 2, S.x, S.y, R); g.addColorStop(0, '#fffbe0'); g.addColorStop(1, 'rgba(255,240,170,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(S.x, S.y, R, R, 0, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = '#ffe9a0'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(S.x, S.y, R, R, 0, 0, TAU); ctx.stroke(); ctx.restore();
+        V.stand({ x: S.x, y: S.y, w: R * 2, h: Hc, draw: c => { const lg = c.createLinearGradient(0, S.y - Hc, 0, S.y); lg.addColorStop(0, 'rgba(255,246,200,0.05)'); lg.addColorStop(1, `rgba(255,246,200,${0.3 * fade})`);
+          c.fillStyle = lg; c.beginPath(); c.moveTo(S.x - 7, S.y - Hc); c.lineTo(S.x + 7, S.y - Hc); c.lineTo(S.x + R, S.y); c.lineTo(S.x - R, S.y); c.fill(); } });
+      }
+    },
+    drawFans(ctx, b, D, sh) { // 좌우 스크린: 팬심 수
+      ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      [0, 1].forEach(i => {
+        const mem = b.u.filter(o => o.team === i), u = mem[mem.length - 1];
+        const sx = i ? 254 : 26, cx = sx + 40, cy = AR.y + 8 + sh / 2;
+        ctx.fillStyle = Sprites.shade(TEAM_COL[i], 0.25); ctx.fillRect(sx, AR.y + 8, 80, sh);
+        ctx.fillStyle = TEAM_COL[i]; ctx.font = 'bold 9px "Galmuri11", sans-serif'; ctx.fillText(u.def.name + (mem.length > 1 ? ' 팀' : ''), cx, cy - 13);
+        ctx.fillStyle = '#ffb0e8'; ctx.font = 'bold 16px "Galmuri11", sans-serif'; ctx.fillText('♥ ' + D.fans[i], cx, cy + 6);
+        if (D.leadTeam === i) { ctx.fillStyle = '#ffe07a'; ctx.font = 'bold 8px "Galmuri11", sans-serif'; ctx.fillText('LEAD', cx, cy + 20); }
+      });
+      ctx.restore();
+    },
     drawScreen(ctx, b, D, thumb) {
       const I = D.I, sx = IDOL.SCR.x, sw = IDOL.SCR.w, sy = AR.y + 8, sh = I.top - AR.y - 20;
       ctx.save();
@@ -189,12 +235,14 @@
     },
     drawTop(ctx, b) { // 관객은 최상단 (무대 앞쪽 캐릭터가 관객 뒤에 있는 것처럼), 중계 화면은 관객 그리기 전 화면을 캡처
       const D = b.idol; if (!D) return;
+      if (b._v3d) { b._v3d.hud(c => IDOL.captureView(c, b)); return; } // 직접 플레이: 관객은 세로 벽(drawUnder), 중계 화면은 카메라 화면을 캡처
       IDOL.captureScreen(ctx, b, D); // 중계 화면은 drawUnder 에서 (배경)
       IDOL.drawCrowd(ctx, b, D, false);
     },
     drawUnder(ctx, b, thumb) {
       const D = b.idol; if (!D) return;
       const I = D.I, sh = I.top - AR.y - 20;
+      if (!thumb && b._v3d) return IDOL.draw3D(ctx, b, D, b._v3d);
       ctx.save();
       IDOL.drawScreen(ctx, b, D, !!thumb); // 중계 화면: 무대 뒤 벽이라 유닛보다 먼저 (지난 프레임 캡처)
       // 좌우 스크린: 팬심 수
@@ -332,7 +380,11 @@
     },
     floor(x, st) {
       const D = st.diving; if (!D) return;
-      const P = D.pool, S = D.stairs;
+      DIVE.floorBase(x, D);
+      DIVE.floorStairs(x, D);
+    },
+    floorBase(x, D) { // 데크 + 수영장 (계단·다이빙대 제외)
+      const P = D.pool;
       // 수영장 데크 타일
       for (let j = 0; j * 14 < AR.h; j++) for (let i = 0; i * 14 < AR.w; i++) { x.fillStyle = (i + j) % 2 ? '#d8dde2' : '#cfd5db'; x.fillRect(AR.x + i * 14, AR.y + j * 14, 14, 14); x.fillStyle = 'rgba(0,0,0,0.06)'; x.fillRect(AR.x + i * 14, AR.y + j * 14, 14, 1); }
       // 수영장 (위·왼쪽 끝까지) + 테두리
@@ -341,6 +393,9 @@
       for (let j = 0; j * 12 < P.h; j++) for (let i = 0; i * 12 < P.w; i++) { x.fillStyle = (i + j) % 2 ? '#3a9ccc' : '#3ea2d2'; x.fillRect(P.x + i * 12, P.y + j * 12, Math.min(12, P.w - i * 12), Math.min(12, P.h - j * 12)); }
       for (let k = 1; k < 4; k++) { const lx = P.x + P.w * k / 4; for (let j = 0; j < P.h; j += 8) { x.fillStyle = (j / 8) % 2 ? '#e84848' : '#f4f4f4'; x.fillRect(lx - 1, P.y + j, 2, 6); } } // 레인 로프 (세로)
       x.fillStyle = '#2a6a96'; for (let k = 0; k < 4; k++) x.fillRect(P.x + P.w * (k + 0.5) / 4 - 1, P.y + 14, 2, P.h - 28);
+    },
+    floorStairs(x, D) {
+      const S = D.stairs;
       // 다이빙 구역: 오른쪽 위 기둥 전체 (플랫폼 + 계단, 옆면 벽, 아래 입구)
       const cx = S.x + S.w / 2, stTop = D.boardY + 12;
       x.fillStyle = 'rgba(0,0,0,0.3)'; x.fillRect(S.x - 4, S.y, 4, S.h + 4); x.fillRect(S.x - 4, S.y + S.h, S.w + 4, 4);
@@ -367,9 +422,35 @@
       x.fillStyle = '#3ea2d2'; x.fillRect(bx0 + 1, by - 7, 6, 15);                                 // 끝 표시
       x.fillStyle = '#8a96a4'; x.fillRect(S.x - 2, by - 10, 10, 21); x.fillStyle = '#5a6470'; x.fillRect(S.x + 1, by - 6, 4, 4); x.fillRect(S.x + 1, by + 3, 4, 4); // 고정 브래킷 (볼트)
     },
+    H: 60, // 직접 플레이: 플랫폼·다이빙대 높이
+    groundZ(b, u) { // 직접 플레이: 계단을 오르는 중이면 그 높이, 다이빙 중이면 다이빙대 높이에서 내려옴
+      const V = b.dv; if (!V) return 0;
+      if (u.climb) { const S = V.D.stairs, stTop = V.D.boardY + 12; return u.climb.p > V.L1 ? DIVE.H : DIVE.H * clamp((S.y + S.h - u.y) / (S.y + S.h - stTop), 0, 1); }
+      if (u.dive && u.air) return DIVE.H * (1 - clamp(u.air.t / u.air.dur, 0, 1));
+      return 0;
+    },
+    draw3D(ctx, b, V3) { // 직접 플레이: 계단(단마다 3D 상자)·옆 난간·플랫폼·다이빙대(판 + 지지대)
+      const D = b.dv.D, S = D.stairs, H = DIVE.H, cx = S.x + S.w / 2, stTop = D.boardY + 12, n = 16, sh0 = S.y + S.h - stTop;
+      const bx0 = D.boardX - 8, by = D.boardY;
+      ctx.save(); // 바닥 그림의 계단·다이빙대를 지움 (데크·수영장으로 다시 칠함)
+      ctx.beginPath(); ctx.rect(S.x - 6, S.y, S.w + 6, S.h + 18); ctx.rect(bx0 - 2, by - 12, S.x - bx0 + 2, 44); ctx.clip(); DIVE.floorBase(ctx, D); ctx.restore();
+      ctx.save(); ctx.fillStyle = '#e8b82a'; ctx.fillRect(S.x + 7, S.y + S.h - 2, S.w - 14, 3); ctx.fillStyle = '#2a6a3a'; ctx.beginPath(); ctx.moveTo(cx, S.y + S.h + 6); ctx.lineTo(cx - 9, S.y + S.h + 16); ctx.lineTo(cx + 9, S.y + S.h + 16); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.fillStyle = 'rgba(0,30,60,0.25)'; ctx.fillRect(bx0 + 4, by - 6, S.x - bx0 - 4, 14); ctx.restore(); // 다이빙대 그림자 (물 위)
+      V3.box({ x0: S.x, y0: S.y, z0: 0, x1: S.x + S.w, y1: stTop, z1: H, col: '#7e8a98' }); // 플랫폼
+      for (let k = 0; k < n; k++) { // 계단 (아래 입구 → 위, 단마다 높아짐)
+        const y1 = S.y + S.h - sh0 * k / n, y0 = S.y + S.h - sh0 * (k + 1) / n, z = H * (k + 1) / n, sh = 0.72 + 0.28 * (1 - k / n);
+        V3.box({ x0: S.x + 7, y0, z0: 0, x1: S.x + S.w - 7, y1, z1: z, col: `rgb(${Math.round(176 * sh)},${Math.round(184 * sh)},${Math.round(194 * sh)})` });
+        for (const rx of [S.x, S.x + S.w - 7]) V3.box({ x0: rx, y0, z0: 0, x1: rx + 7, y1, z1: z + 12, col: '#c8ccd2' }); // 옆 난간 (계단 따라 올라감)
+      }
+      for (const rx of [S.x, S.x + S.w - 7]) V3.box({ x0: rx, y0: S.y, z0: H, x1: rx + 7, y1: stTop, z1: H + 12, col: '#c8ccd2' }); // 플랫폼 난간
+      V3.box({ x0: bx0, y0: by - 8, z0: H - 5, x1: S.x, y1: by + 9, z1: H, col: '#f4f0e2' }); // 다이빙 널판
+      V3.box({ x0: bx0, y0: by - 8, z0: H - 5.2, x1: bx0 + 6, y1: by + 9, z1: H + 0.2, col: '#3ea2d2' }); // 끝 표시
+      for (const px of [S.x - 34, S.x - 8]) V3.box({ x0: px - 3, y0: by - 3, z0: 0, x1: px + 3, y1: by + 3, z1: H - 5, col: '#5a6672' }); // 지지대
+    },
     drawUnder(ctx, b, thumb) {
       const V = b.dv; if (!V || thumb) return;
       const P = V.D.pool;
+      if (b._v3d) DIVE.draw3D(ctx, b, b._v3d);
       ctx.save(); ctx.beginPath(); ctx.rect(P.x, P.y, P.w, P.h); ctx.clip();
       for (let i = 0; i < 36; i++) { // 물결 반짝임 (무인도와 같은 표현)
         const gx = P.x + (i * 97) % P.w, gy = P.y + (i * 61 + (i % 7) * 13) % P.h, ph = i * 1.7;

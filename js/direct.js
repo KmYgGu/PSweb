@@ -272,6 +272,7 @@ const DirectPlay = (() => {
     beam(it) { S.beams.push(it); },
     wall(it) { S.walls.push(it); },
     box(it) { S.boxes.push(it); },
+    cam() { return { x: C.x, y: C.y, z: C.z }; }, // 카메라 위치 (월드) — 앞/뒷모습 고르기 등
     hud(fn) { S.huds.push(fn); }, // 화면 고정 HUD (3D 그림 위, 2D 화면 좌표) // {x0,y0,z0,x1,y1,z1,col,a?}: 축 정렬 3D 상자 (떨어지는 상자 등) // {x1,y1,x2,y2,h,draw(c,L)}: 두 바닥 점 사이에 선 세로 판 (벽처럼 고정, draw 는 (0,0)=왼쪽 위, 바닥 = y h)
     shadow(x, y, r, a = 0.3) { tctx.save(); tctx.globalAlpha = a; tctx.fillStyle = '#000'; tctx.beginPath(); tctx.ellipse(x, y, r, r * 0.6, 0, 0, TAU); tctx.fill(); tctx.restore(); },
   };
@@ -425,7 +426,44 @@ const DirectPlay = (() => {
     }
     if (clipped) ctx.restore();
   }
+  // 얼음 동굴: 시뮬의 얼음벽 구간(b.iceSegs: hp·hitT·dead)을 그대로 비춤. 금 = 깎인 hp, 부딪힘 = 작은 얼음 조각, hp 0 = 구간이 산산조각 → 크레바스(시뮬대로 영구)
+  const iceVis = new WeakMap(), hsh = (a, k) => { const v = Math.sin(a * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); }; // 화면 전용 해시 (시뮬 난수 안 씀)
+  function iceSegPts(sg) { const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h;
+    return sg.side === 'top' ? [[sg.a0, y0], [sg.a1, y0], [0, 1]] : sg.side === 'bottom' ? [[sg.a0, y1], [sg.a1, y1], [0, -1]] : sg.side === 'left' ? [[x0, sg.a0], [x0, sg.a1], [1, 0]] : [[x1, sg.a0], [x1, sg.a1], [-1, 0]]; }
+  function drawIceWalls3(ctx, b) {
+    const h = CAM.wallH, T = b.time, shards = [];
+    for (const sg of b.iceSegs) {
+      const [A, B2, N] = iceSegPts(sg), vis = (C.x - A[0]) * N[0] + (C.y - A[1]) * N[1] > 0;
+      let st = iceVis.get(sg); if (!st) iceVis.set(sg, st = { hitT: sg.hitT, hits: [], deadT: sg.dead ? -9 : null });
+      if (sg.hitT !== st.hitT) { st.hitT = sg.hitT; let bu = null, bd = 1e9; // 부딪힌 자리: 그 벽에 가장 가까운 캐릭터 위치
+        for (const u of b.u) { const t = clamp(((u.x - A[0]) * (B2[0] - A[0]) + (u.y - A[1]) * (B2[1] - A[1])) / ((B2[0] - A[0]) ** 2 + (B2[1] - A[1]) ** 2), 0, 1), d = Math.hypot(u.x - (A[0] + (B2[0] - A[0]) * t), u.y - (A[1] + (B2[1] - A[1]) * t)); if (d < bd) { bd = d; bu = t; } }
+        st.hits.push({ t0: T, at: bu ?? 0.5, k: st.hits.length }); }
+      if (sg.dead && st.deadT === null) st.deadT = T;
+      st.hits = st.hits.filter(q => T - q.t0 < 0.6);
+      const P = t => [A[0] + (B2[0] - A[0]) * t, A[1] + (B2[1] - A[1]) * t];
+      for (const q of st.hits) for (let i = 0; i < 6; i++) shards.push([P(clamp(q.at + (hsh(sg.seed + q.k, i) - 0.5) * 0.3, 0, 1)), N, h * (0.25 + 0.5 * hsh(sg.seed, i + 9)), T - q.t0, sg.seed * 3 + q.k * 7 + i, 0.6]);
+      if (sg.dead) { const dt = T - st.deadT; if (st.deadT > -9 && dt < 1.1) for (let i = 0; i < 18; i++) shards.push([P(hsh(sg.seed, i + 40)), N, h * hsh(sg.seed, i + 60), dt, sg.seed * 5 + i, 1.1]); continue; }
+      if (!vis) continue;
+      const fl = T - sg.hitT < 0.25 ? 1 - (T - sg.hitT) / 0.25 : 0, jit = fl * 1.2;
+      const q4 = [[A[0], A[1], 0], [B2[0], B2[1], 0], [B2[0], B2[1], h + jit], [A[0], A[1], h - jit]];
+      if (poly(ctx, q4)) { const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, `rgba(${200 + 55 * fl},240,255,0.62)`); g.addColorStop(1, 'rgba(110,180,225,0.5)'); ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = 'rgba(225,248,255,0.55)'; ctx.lineWidth = 1; ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; // 서리 줄무늬 (기울어진 반사광)
+      for (let i = 0; i < 3; i++) { const t = 0.15 + 0.3 * i + 0.1 * hsh(sg.seed, i), [ax, ay] = P(t), [bx, by] = P(Math.min(1, t + 0.12)), p = proj(ax, ay, h * 0.2), q = proj(bx, by, h * 0.85); if (p && q) { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); } }
+      const tp = proj(A[0], A[1], h), tq = proj(B2[0], B2[1], h); if (tp && tq) { ctx.strokeStyle = '#eafaff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(tp.x, tp.y); ctx.lineTo(tq.x, tq.y); ctx.stroke(); }
+      const cs = sg.maxHp - sg.hp; ctx.strokeStyle = 'rgba(30,70,110,0.85)'; ctx.lineWidth = 1.2; // 금 (깎인 hp 만큼)
+      for (let k = 0; k < cs; k++) { ctx.beginPath(); let t = 0.2 + 0.2 * k + 0.08 * hsh(sg.seed, k + 20), z = h * (0.85 - 0.1 * hsh(sg.seed, k)); let p0 = proj(...P(t), z); if (!p0) continue; ctx.moveTo(p0.x, p0.y);
+        for (let j = 0; j < 4; j++) { t += (hsh(sg.seed, k * 5 + j) - 0.5) * 0.12; z -= h * 0.2; const p = proj(...P(clamp(t, 0, 1)), Math.max(0, z)); if (p) ctx.lineTo(p.x, p.y); } ctx.stroke(); }
+    }
+    for (const [pt, N, z0, dt, sd, life] of shards) { // 얼음 조각: 경기장 안쪽으로 튀고 떨어짐 (화면 전용)
+      const sp = 30 + 50 * hsh(sd, 1), side = (hsh(sd, 2) - 0.5) * 30, x = pt[0] + N[0] * sp * dt + N[1] * side * dt, y = pt[1] + N[1] * sp * dt + N[0] * side * dt, z = z0 + 40 * dt - 160 * dt * dt;
+      if (z < 0) continue; const p = proj(x, y, z); if (!p) continue; const r = (2 + 2.5 * hsh(sd, 3)) * p.s * 0.6, a = hsh(sd, 4) * 6 + dt * 8;
+      ctx.globalAlpha = clamp(1 - dt / life, 0, 1) * 0.9; ctx.fillStyle = sd % 3 ? '#d8f4ff' : '#9fd0ea';
+      ctx.beginPath(); ctx.moveTo(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r); ctx.lineTo(p.x + Math.cos(a + 2.3) * r * 0.7, p.y + Math.sin(a + 2.3) * r * 0.7); ctx.lineTo(p.x + Math.cos(a + 4.1) * r, p.y + Math.sin(a + 4.1) * r); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
   function drawWalls(ctx, b) {
+    if (b.iceSegs && b.iceSegs.length) return drawIceWalls3(ctx, b);
     const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h, h = CAM.wallH;
     const sides = [ // [시작, 끝, 안쪽에서 보이나]
       [[x0, y0], [x1, y0], C.y > y0, '#2f3447'], [[x1, y0], [x1, y1], C.x < x1, '#262a3a'],
@@ -643,6 +681,10 @@ const DirectPlay = (() => {
     }
   }
 
+  function groundZ(b, u) { // 스테이지 지형 높이 (다이빙 존 계단·다이빙대 위 등). 훅이 groundZ(b, u) 를 주면 사용
+    for (const h of STAGE_HOOKS) if (h.groundZ) { const z = h.groundZ(b, u); if (z) return z; }
+    return 0;
+  }
   // ---------- 그리기 ----------
   function draw(ctx, b, dt, view) {
     S.battle = b;
@@ -691,14 +733,14 @@ const DirectPlay = (() => {
       if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
       if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
-      const u = it.u, isP = u === P, p = proj(u.x, u.y, 0); if (!p || p.s > 9) continue;
+      const u = it.u, isP = u === P, gz = groundZ(b, u), p = proj(u.x, u.y, gz); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
       const w = BB.w * p.s * v.sq, h = BB.h * p.s;
       let a = 1;
       if (isP && eRect && Math.abs(eRect.x - p.x) < 34 * p.s * 0.5 + eRect.w && eRect.y < p.y && eRect.y > p.y - 58 * p.s) a = 0.55; // 내 캐릭터가 상대를 가리면 반투명
       ctx.globalAlpha = a; ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1;
       if (u.wSwing && !u.dead) drawSwing(ctx, u, b);
-      if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u)); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
+      if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u) + gz); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
     drawTexts(ctx, b);
     for (const fn of S.huds) { ctx.save(); try { fn(ctx); } catch (e) { console.warn('[direct] hud', e); } ctx.restore(); }
