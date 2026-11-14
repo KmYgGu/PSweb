@@ -169,9 +169,10 @@ const DirectPlay = (() => {
   function gyroOn() { return S.active && Settings.get('gyro') === true && phoneLike(); }
   function gyroReset() { S.gyroT0 = now(); S.gcal = { n: 0, y: 0, p: 0 }; S.prevAlpha = null; }
   Settings.on((k, v) => { if (k === 'gyro' && v) gyroReset(); });
-  function begin(b) { // main.js startBattle (실전, 직접 플레이 켜짐, 지원 스테이지)
-    gyroReset();
-    S.battle = b; S.init = false; S.userYaw = S.userPitch = S.inYaw = S.inPitch = 0; S.lastFlipT = -9; S.flipReq = false; S.flash = 0; S.looks = new WeakMap();
+  function begin(b, view) { // main.js startBattle (실전, 직접 플레이 켜짐, 지원 스테이지). view: 리플레이 시점 전용 (카메라만, 자이로·입력 없음)
+    if (!view) gyroReset();
+    S.battle = b; S.init = false; S.userYaw = S.userPitch = S.inYaw = S.inPitch = 0; S.lastFlipT = -9; S.flipReq = false; S.flash = 0; S.looks = new WeakMap(); S.lockOn = null; S.ov = 0; S.ovT = null; S.oY = S.oP = S.oH = S.oX = S.oY2 = null; S.zm = 1; S.slK = 1; S.slT = null;
+    if (view) return;
     if (touchDevice() && hasGyroApi() && !Settings.has('gyro')) askGyro();
     else if (Settings.get('gyro') === true && typeof window.DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && now() - S.gyroSeen > 2) { // iOS: 권한을 이번 실행에서 다시 받아야 할 때
       setTimeout(() => { if (S.battle === b && now() - S.gyroSeen > 2 && !S.popup) popup('자이로 허용', '자이로 시점을 쓰려면 한 번 허용해 주세요.', '허용', '이번엔 끄기', () => { requestGyro().then(() => closePopup(), () => closePopup()); }, () => closePopup()); }, 600);
@@ -1103,6 +1104,7 @@ const DirectPlay = (() => {
     ctx.fillStyle = 'rgba(14,15,24,0.82)'; ctx.fillRect(W / 2 - w / 2, ay + 22, w, 16); ctx.fillStyle = col; ctx.fillText(msg, W / 2, ay + 30);
     ctx.restore();
   }
-  return { supported, begin, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
+  function fresh() { tex = lift = rest = null; tctx = lctx = rctx = null; for (const P of [bigPool, opool, ppool, pool, fpool, mpool]) P.length = 0; } // 녹화: 중간 캔버스 새로 만들기
+  return { supported, begin, fresh, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();

@@ -318,7 +318,7 @@
   });
 
   // ---------- 전투 ----------
-  let battle = null, speed = 1, hud = [];
+  let battle = null, speed = 1, hud = [], camLast = null;
   const frames = [$('#f0'), $('#f1')], frameHTML = frames.map(f => f.innerHTML);
   // 배속 (0.5x/1x/2x/4x): 시뮬레이션 dt 에만 적용. 선택은 저장 (file:// 등 localStorage 불가 시 무시)
   const SPEED_KEY = 'psweb.speed';
@@ -494,14 +494,15 @@
   }
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
-    const dpOn = !!(battle && directMode && DP && !RP.on && !VID.active && !escMap && DP.supported(battle)); // 직접 플레이 3D 시점 (스테이지가 농구장·야구장으로 바뀌면 일반 시점)
-    if (DP) DP.setActive(dpOn && $('#result').classList.contains('hidden') && $('#fullLog').classList.contains('hidden')); // 결과·로그 창에서는 입력 끔 (마우스 잠금 해제)
+    const dpOn = !!(battle && DP && (RP.on ? RP.dview : directMode && !VID.active && !escMap) && DP.supported(battle)); // 리플레이: 시점 전환 버튼(RP.dview) — 카메라만, 입력 없음 // 직접 플레이 3D 시점 (스테이지가 농구장·야구장으로 바뀌면 일반 시점)
+    if (battle && !dpOn) battle._dp = false; // 일반 시점으로 돌아오면 3D 전용 표시 끔
+    if (DP) DP.setActive(dpOn && !RP.on && $('#result').classList.contains('hidden') && $('#fullLog').classList.contains('hidden')); // 결과·로그 창에서는 입력 끔 (마우스 잠금 해제)
     if (RP.on) RP.frame(dt);
     else if (battle) {
       if (!(dpOn && DP.blocking())) { // 자이로 묻는 창이 떠 있는 동안 전투 정지
         const tk = (window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1) * (dpOn && DP.timeK ? DP.timeK(battle, dt) : 1); // 직접 플레이: 송구 조준 슬로모션 (진행 속도만) // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
         battle.updateVisual(dt * tk);
-        if (dpOn) { const A = DP.takeAct(battle); if (A) { const ok = A.kind ? battle.playerAct(A.u, A.kind, A.val) : battle.playerFlip(A.u); DP.acted(battle, A, ok); if (ok) REC.input(battle.u.indexOf(A.u), A.kind, A.val); } } // 반전·스테이지 입력(야구 스윙 등)은 스텝 사이에만 (리플레이 재현)
+        if (dpOn) { const A = DP.takeAct(battle); if (A) { const ok = seeded(() => A.kind ? battle.playerAct(A.u, A.kind, A.val) : battle.playerFlip(A.u)); /* 입력 처리 안의 난수(야구 판정·농구 슛)도 시뮬 난수로 → 리플레이 재현 */ DP.acted(battle, A, ok); if (ok) REC.input(battle.u.indexOf(A.u), A.kind, A.val); } } // 반전·스테이지 입력(야구 스윙 등)은 스텝 사이에만 (리플레이 재현)
         acc += dt * speed * tk;
         let n = 0;
         seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
@@ -515,12 +516,13 @@
     else if (battle && window.BASEBALL) { if (!dpOn) BASEBALL.updateCam(battle, dt, camView); else if (battle._bsbCam) { battle.cam = null; battle._bsbCam = false; } } // 야구장 카메라 (js/baseball.js, 시각 전용). 직접 플레이는 3D 카메라
     cineSync(); // 홈런 시네마틱 바 (DOM, HUD·하단 UI 위)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
-    if (dpOn) { DP.draw(ctx, battle, dt, camView); Render.drawTopUnits(ctxTop, battle, RES, 0); } // 3D 시점: HUD 위 캐릭터 덧그림 없음 (지우기만)
+    camLast = camView; const vidD = VID.active && VID.active.direct;
+    if (dpOn) { if (!vidD) DP.draw(ctx, battle, dt, camView); Render.drawTopUnits(ctxTop, battle, RES, 0); } // 직접 시점 녹화 중: 녹화 캔버스에 그린 것을 화면에 옮김 (VID.frame) // 3D 시점: HUD 위 캐릭터 덧그림 없음 (지우기만)
     else {
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !wideOn && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0); // 넓은 화면: HUD가 맵 위에 없음
     }
-    if (VID.active) VID.frame();
+    if (VID.active) { VID.frame(dt); if (vidD && VID.active) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(VID.active.c, 0, 0, ctx.canvas.width, ctx.canvas.height); } }
     bgmSync(); charDeathSync();
     requestAnimationFrame(loop);
   }
@@ -606,7 +608,7 @@
       const a = CHARACTERS.find(c => c.id === rec.a), b = CHARACTERS.find(c => c.id === rec.b);
       if (!a || !b || !STAGE_DEFS[rec.stage]) { toast('이 리플레이의 캐릭터/스테이지를 찾을 수 없어요'); return false; }
       if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, focusMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; } // 리플레이도 소리 재생 (예전: 여기서 Sfx.toggle(false)로 꺼서 무음이었음)
-      this.on = true; this.rec = rec; pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; focusMode = !!rec.focusMode; // 모드 없는 옛 리플레이 = A, focusMode 없는 옛 리플레이 = 끄기
+      this.on = true; this.rec = rec; if (this.dview == null) this.dview = !!rec.direct; // 처음엔 녹화 때 시점 (직접 플레이로 한 판이면 3D) pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; focusMode = !!rec.focusMode; // 모드 없는 옛 리플레이 = A, focusMode 없는 옛 리플레이 = 끄기
       this.range = rec.range ? rec.range.slice() : [0, rec.dur]; this.A = this.B = null; this.stopAt = null; this.warned = false; $('#rpWarn').textContent = rec.build !== BUILD ? '다른 버전에서 저장됨' : '';
       $('#select').classList.add('hidden'); $('#speed').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop'].forEach(s => $(s).classList.remove('hidden')); $('#rpSave').classList.add('hidden');
@@ -624,10 +626,13 @@
       else { battle = null; $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); $('#result').classList.add('hidden'); $('#select').classList.remove('hidden'); refresh(); }
       this.live = null;
     },
-    restart() { startBattle({ seed: this.rec.seed, replay: true }); this.steps = 0; this.acc = 0; this.inpI = 0; },
+    restart() { startBattle({ seed: this.rec.seed, replay: true }); this.steps = 0; this.acc = 0; this.inpI = 0; if (this.dview && DP && DP.supported(battle)) DP.begin(battle, true); this.viewUI(); },
+    // 시점 전환 (일반 ↔ 직접 플레이 3D): 카메라만 바뀜, 시뮬·입력 재현은 그대로. 녹화 중엔 바꿀 수 없음 (녹화 시작 때 시점으로 고정)
+    toggleView() { if (VID.active || !DP || !battle || !DP.supported(battle)) return; this.dview = !this.dview; if (this.dview) DP.begin(battle, true); this.viewUI(); },
+    viewUI() { const el = $('#rpView'); if (!el) return; const ok = !!(DP && battle && DP.supported(battle)); el.disabled = !ok; el.textContent = this.dview && ok ? '3D' : '2D'; el.classList.toggle('on', !!(this.dview && ok)); el.title = ok ? '시점 전환 (일반 ↔ 직접 플레이)' : '이 맵은 일반 시점만'; },
     step1() {
       const I = this.rec.inp; // 직접 플레이 반전 입력 재현
-      if (I) while (this.inpI < I.length && I[this.inpI][0] <= this.steps) { const e = I[this.inpI++], u = battle.u[e[1]]; if (u) { if (e[2]) battle.playerAct(u, e[2], e[3]); else battle.playerFlip(u); } }
+      if (I) while (this.inpI < I.length && I[this.inpI][0] <= this.steps) { const e = I[this.inpI++], u = battle.u[e[1]]; if (u) seeded(() => { if (e[2]) battle.playerAct(u, e[2], e[3]); else battle.playerFlip(u); }); /* 실전과 같이 시뮬 난수로 */ }
       seeded(() => battle.update(STEP)); this.steps++;
       if (this.steps % CHECK_EVERY === 0 && !this.warned) { const c = this.rec.check && this.rec.check[this.steps / CHECK_EVERY - 1]; if (c && c[1] !== hashB(battle)) { this.warned = true; $('#rpWarn').textContent = '⚠ 재현 불일치 (버전 차이?)'; console.warn('[replay] desync at', battle.time.toFixed(2)); } }
     },
@@ -718,6 +723,7 @@
   $('#rpHl').onclick = () => { const n = (RP.rec.hl || []).length; RP.potg(RP.potgI != null && RP.stopAt == null && RP.banner <= 0 ? (RP.potgI + 1) % Math.max(1, n) : RP.potgI || 0); };
   $('#rpA').onclick = () => { RP.A = battle.time; RP.drawMarks(); toast(`시작 지점 ${fmtS(RP.A - RP.range[0])}`, 1000); };
   $('#rpB').onclick = () => { RP.B = battle.time; RP.drawMarks(); toast(`끝 지점 ${fmtS(RP.B - RP.range[0])}`, 1000); };
+  $('#rpView').onclick = () => RP.toggleView();
   $('#rpSv').onclick = () => $('#rpSave').classList.toggle('hidden');
   $('#rpSvHl').onclick = () => RP.save('hl'); $('#rpSvSeg').onclick = () => RP.save('seg'); $('#rpSvFull').onclick = () => RP.save('full');
   $('#rpX').onclick = () => RP.close();
@@ -774,10 +780,10 @@
       }
       if (clip) x.restore();
     },
-    frame() { // 녹화 캔버스에 현재 화면 합성
+    frame(dt = 0) { // 녹화 캔버스에 현재 화면 합성
       const A = this.active; if (!A) return; const x = A.x;
       x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.fillStyle = '#1e2130'; x.fillRect(0, 0, A.c.width, A.c.height);
-      x.setTransform(RES, 0, 0, RES, 0, 0); x.imageSmoothingEnabled = false; Render.draw(x, battle);
+      x.setTransform(RES, 0, 0, RES, 0, 0); x.imageSmoothingEnabled = false; if (A.direct && camLast) DP.draw(x, battle, dt, camLast); else Render.draw(x, battle); // 직접 시점 녹화: 3D 를 녹화 캔버스에 바로
       const sr = stage.getBoundingClientRect(), S = { left: sr.left, top: sr.top, k: sr.width / W };
       x.setTransform(RES, 0, 0, RES, 0, 0); x.globalAlpha = 1; this.raster(x, hudEl, 1, S);
       Render.drawTopUnits(A.tx, battle, RES, hudEl.offsetHeight); x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.drawImage(A.t, 0, 0);
@@ -800,7 +806,8 @@
       const r1 = await Sprites.swapSources(u => this.map(u)), r2 = await DuelSprites.swapSources(u => this.map(u));
       const restore = () => { r1(); r2(); };
       const c = document.createElement('canvas'); c.width = W * RES; c.height = H * RES; const t = document.createElement('canvas'); t.width = c.width; t.height = c.height;
-      const A = { c, x: c.getContext('2d'), t, tx: t.getContext('2d'), s: range[0], e: range[1], kind, done: 0, chunks: [], restore };
+      const A = { c, x: c.getContext('2d'), t, tx: t.getContext('2d'), s: range[0], e: range[1], kind, done: 0, chunks: [], restore, direct: !!(RP.dview && DP && DP.supported(battle)) }; // direct: 녹화 시작 때 시점으로 고정
+      if (A.direct) DP.fresh(); // 직접 시점 녹화: 3D 중간 캔버스를 새로 (바꾼 그림 사본으로 다시 그려 오염 없음)
       for (const im of document.querySelectorAll('#hud img, #rpBanner img')) this.img(im.src);
       let mr;
       try {
@@ -830,7 +837,7 @@
     fmtUI() { const el = $('#vidFmt'); if (!el || !window.MediaRecorder) return; el.textContent = '형식: ' + this.format(this.wantAudio()).ext.toUpperCase(); },
     stop(cancel) { const A = this.active; if (!A || A.stopping) return; A.stopping = true; A.cancel = cancel; RP.pause(); RP.stopAt = null; try { A.mr.stop(); } catch (e) { this.finish(A); } },
     finish(A) {
-      if (this.active !== A) return; this.active = null; fit(); A.restore(); Sfx.recStop();
+      if (this.active !== A) return; this.active = null; fit(); A.restore(); Sfx.recStop(); if (A.direct) DP.fresh();
       $('#vidRec').classList.add('hidden'); ['#rpBar', '#rpCtl'].forEach(s => $(s).classList.remove('hidden')); RP.banner = 0; $('#rpBanner').classList.add('hidden');
       if (A.cancel) { toast('녹화 취소'); return; }
       if (A.ext === 'mp4') this.save(A, new Blob(A.chunks, { type: 'video/mp4' }));
