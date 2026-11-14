@@ -25,13 +25,14 @@
     // court: 코트 선, cx: 중앙선, band: 외야 폭. npcK: 팀원 그림 배율
     dodge: {
       world: { w: 760, h: 520 }, court: { x: 60, y: 130, w: 640, h: 280 }, band: 46, npcK: 0.8,
-      spdIn: 150, spdOut: 165, spdExit: 230, turn: 5.0, // turn: 시선 회전 속도 (rad/s)
+      spdIn: 150, spdOut: 165, spdExit: 230, spdMainExit: 320, outBoost: { per: 0.25, n: 5, max: 1.8 }, passBoost: { per: 0.06, max: 0.4 }, // outBoost: 외야 속도 × min(max, 1 + per × (n − 외야 인원)), passBoost: 던지기 속도 × (1 + min(max, per × 연속 패스))
+      turn: 5.0, // turn: 시선 회전 속도 (rad/s)
       passSlow: 0.35, slowMin: 0.3, // 상대 시선 속도 = turn / (1 + passSlow × 연속 패스 수), 최소 slowMin 배
       fumble: { base: 0.05, per: 0.06, max: 0.4 }, // 패스 받을 때 놓칠 확률 = base + per × 연속 패스 수
       catchP: { npc: 0.42, main: 0.5 }, backC: 0.3, // 정면 포구 확률 (정면 정도에 따라 ×0.5~1). 시선과 공 방향 cos < backC → 등 뒤 (무조건 명중)
       throwSpd: 430, passSpd: 280, hitR: 17, pickR: 14, lineR: 14, intercept: 0.3,
       dmg: { k: 0.045, perT: 1 / 40, perMate: 0.3, mates: 3 }, // 주인공 피해 = 최대체력 × k × (1 + 경과초 × perT) × (1 + perMate × (mates − 안쪽 팀원 수))
-      addT: [75, 150], maxBalls: 3, downT: 1.0,
+      addT: [75, 150], maxBalls: 3, downT: 1.2, // downT: 체력 0 → 넘어졌다 일어나는 시간
     },
   };
   const S0 = STAGE_DEFS.dodge.dodge, C0 = S0.court, CX = C0.x + C0.w / 2;
@@ -89,12 +90,13 @@
       }
       for (const u of b.u) { if (u.summon) continue; u.x = u.team === 0 ? CX - 150 : CX + 150; u.y = C0.y + C0.h / 2 + (u.n > 1 ? 50 : 0); u.facing = u.team === 0 ? 1 : -1; u.dgG = u.team === 0 ? 0 : Math.PI; }
       addBall(b, D, CX, C0.y + C0.h / 2);
-      Object.assign(b.stats, { dgOut: 0, dgMainOut: 0, dgCatch: 0, dgPass: 0, dgFumble: 0, dgThrow: 0, dgHit: 0, dgBack: 0, dgSteal: 0, dgBalls: 1, dgDmg: 0 });
+      Object.assign(b.stats, { dgOut: 0, dgMainOut: 0, dgCatch: 0, dgPass: 0, dgFumble: 0, dgThrow: 0, dgHit: 0, dgBack: 0, dgSteal: 0, dgBalls: 1, dgDmg: 0, dgOutHitTry: 0, dgDownHitTry: 0, dgFast: 0 });
       D.msg = { big: '피구 시작!', sub: '중앙의 공을 먼저 잡아라', col: '#ffffff', t: 0, dur: 1.6 };
     },
-    leave(b) { const D = b.dg; if (!D) return; D.on = false; setAR(AR0); if (b.cam) b.cam = null; for (const u of b.u) if (u.dgOut || u.dgDown != null) { u.hidden = false; u.dgOut = false; u.dgDown = null; u.hp = Math.max(1, u.hp); } sys(b, '피구 중단 — 이제부터는 체력 승부!'); },
+    leave(b) { const D = b.dg; if (!D) return; D.on = false; setAR(AR0); if (b.cam) b.cam = null; for (const u of b.u) if (u.dgOut || u.dgDown != null) { if (u.dgPark) { u.x = u.dgPark.x; u.y = u.dgPark.y; u.dgPark = null; } u.hidden = false; u.statuses = []; u.dgOut = false; u.dgDown = null; u.hp = Math.max(1, u.hp); } sys(b, '피구 중단 — 이제부터는 체력 승부!'); },
     clamp(b, x, y, pad) { return { x, y }; },
-    preDamage(b, src, tgt, amount, o) { const D = b.dg; if (!D || !D.on) return; if (tgt && (tgt.dgOut || tgt.dgDown != null)) return true; },
+    noClamp(b, u) { return !!(b.dg && b.dg.on && u.dgOut); }, // 맵 밖에 숨긴 아웃 주인공은 경기장 안으로 되돌리지 않음
+    preDamage(b, src, tgt, amount, o) { const D = b.dg; if (!D || !D.on) return; if (tgt && (tgt.dgOut || tgt.dgDown != null)) { if (tgt.dgOut) b.stats.dgOutHitTry++; else b.stats.dgDownHitTry++; return true; } },
 
     step(b, dt) {
       const D = b.dg; if (!D || !D.on) return;
@@ -121,10 +123,11 @@
     downStep(b, D, dt) {
       for (const u of b.u) {
         if (u.dgDown == null) continue;
-        u.dgDown += dt; u.hp = 0; u.action = null;
+        u.dgDown += dt; u.hp = 0; u.action = null; for (const st of u.statuses) st.t = Math.max(0, st.t - dt);
         if (u.dgDown >= S0.downT) {
-          u.dgDown = null; u.dgOut = true; u.hidden = true;
-          const n = mkNpc(D, u.def, u.team, true); n.main = u; n.x = u.x; n.y = u.y; n.exiting = true;
+          u.dgDown = null; u.dgOut = true; u.hidden = true; u.statuses = [];
+          const n = mkNpc(D, u.def, u.team, true); n.main = u; n.x = u.x; n.y = u.y; n.exiting = true; n.g = u.dgG || 0;
+          u.dgPark = { x: u.x, y: u.y }; u.x = -4000; u.y = -4000; // 숨긴 주인공 본체는 맵 밖으로 (광역기·투사체가 보이지 않는 대상을 맞히지 않게)
           const p = outProj(1 - u.team, u.team === 0 ? C0.x + C0.w + 30 : C0.x - 30, u.y); n.hx = p.x; n.hy = p.y;
           for (const B of D.balls) if (B.st === 'held' && B.h === u) B.h = n;
         }
@@ -132,7 +135,8 @@
     },
     mainOut(b, D, u) {
       if (u.dgDown != null || u.dgOut) return;
-      u.dgDown = 0; u.hp = 0; u.action = null; u.statuses = []; b.stats.dgMainOut++;
+      u.dgDown = 0; u.hp = 0; u.action = null; u.air = null; b.stats.dgMainOut++;
+      u.statuses = [{ id: 'stun', t: S0.downT, dur: S0.downT, src: null, tickT: 0, knock: true }]; u.knockSide = u.team === 0 ? -1 : 1; b.dust && b.dust(u.x, u.y); // 기본 넘어짐 연출 (game.js 의 knock 기절 그림: 쓰러졌다 끝에 일어남)
       b.burst(u.x, u.y - 16, u.def.color, 18); b.shake(2.5); b.hitstop(0.15);
       b.text(u.x, u.y - 70, '아웃!', '#ffe27a', 13); sys(b, `피구: ${u.def.name} 체력 0 — 외야로!`);
       for (const B of D.balls) if (B.st === 'held' && B.h === u) DG.drop(B, u.x, u.y);
@@ -153,19 +157,25 @@
     },
     npcMove(b, D, dt) {
       // 굴러다니는 공: 각 팀에서 자격 있는 가장 가까운 팀원이 쫓아감
+      const ents = [...D.npc, ...b.u.filter(u => !u.summon && mainIn(u) && DG.free(b, u))]; // free: 싸울 상대가 없는 주인공 → 피구만 (팀원처럼 움직임)
+      for (const e of ents) if (e.hx == null) { e.hx = e.x; e.hy = e.y; e.homeT = 0; }
       const chase = new Map();
       for (const B of D.balls) {
         if (B.st !== 'loose') continue;
         for (let t = 0; t < 2; t++) {
           let best = null, bd = 1e9;
-          for (const n of D.npc) { if (n.team !== t || n.exiting || chase.has(n) || !DG.canPick(n, B)) continue; const d = hyp(n.x - B.x, n.y - B.y); if (d < bd) { bd = d; best = n; } }
+          for (const n of ents) { if (n.team !== t || n.exiting || chase.has(n) || !DG.canPick(n, B)) continue; const d = hyp(n.x - B.x, n.y - B.y); if (d < bd) { bd = d; best = n; } }
           if (best) chase.set(best, B);
         }
       }
-      for (const n of D.npc) {
-        let tx = n.hx, ty = n.hy, sp = n.out ? S0.spdOut : S0.spdIn;
-        if (n.exiting) { sp = S0.spdExit; if (hyp(n.x - n.hx, n.y - n.hy) < 4) n.exiting = false; }
+      const oc = [0, 1].map(t => D.npc.filter(n => n.team === t && n.out).length), OB = S0.outBoost;
+      for (const n of ents) {
+        let tx = n.hx, ty = n.hy, sp = n.out ? S0.spdOut * Math.min(OB.max, 1 + OB.per * Math.max(0, OB.n - oc[n.team])) : S0.spdIn;
+        const lineB = chase.has(n) && n.out && inCourt(chase.get(n).x, chase.get(n).y); // 중앙선 공: 외야 선수가 코트 안으로 들어와 주움
+        if (n.exiting) { sp = n.main ? S0.spdMainExit : S0.spdExit; if (hyp(n.x - n.hx, n.y - n.hy) < 4) n.exiting = false; }
+        else if (DG.recv(D, n)) { tx = n.x; ty = n.y; } // 패스 받는 중: 제자리
         else if (chase.has(n)) { const B = chase.get(n); tx = B.x; ty = B.y; }
+        else if (n.ret) { const p = outProj(1 - n.team, n.x, n.y); tx = p.x; ty = p.y; if (hyp(n.x - p.x, n.y - p.y) < 3) n.ret = false; } // 코트 안 → 외야로 복귀
         else if (D.balls.some(B => B.st === 'held' && B.h === n)) { tx = n.x; ty = n.y; }
         else {
           n.homeT -= dt;
@@ -180,17 +190,18 @@
             for (const B of D.balls) {
               if (B.team !== 1 - n.team) continue;
               if (B.st === 'held' && B.h) { const dx = n.x - B.h.x, dy = n.y - B.h.y, d = hyp(dx, dy) || 1; if (d < 160) { ax += dx / d * (160 - d); ay += dy / d * (160 - d); } }
-              else if (B.st === 'fly' && B.kind === 'throw') { const sp2 = hyp(B.vx, B.vy) || 1, ux = B.vx / sp2, uy = B.vy / sp2, rx = n.x - B.x, ry = n.y - B.y, along = rx * ux + ry * uy; const gc = Math.cos(n.g) * -ux + Math.sin(n.g) * -uy; if (gc > S0.backC && along > 0 && along < 110) { const px = rx - ux * along, py = ry - uy * along, s = (px * -uy + py * ux) >= 0 ? 1 : -1; ax += -uy * s * 50; ay += ux * s * 50; } }
+              else if (B.st === 'fly' && B.kind === 'throw') { const sp2 = hyp(B.vx, B.vy) || 1, ux = B.vx / sp2, uy = B.vy / sp2, rx = n.x - B.x, ry = n.y - B.y, along = rx * ux + ry * uy; const gc = Math.cos(gz(n)) * -ux + Math.sin(gz(n)) * -uy; if (gc > S0.backC && along > 0 && along < 110) { const px = rx - ux * along, py = ry - uy * along, s = (px * -uy + py * ux) >= 0 ? 1 : -1; ax += -uy * s * 50; ay += ux * s * 50; } }
             }
             if (ax || ay) { tx = n.x + ax; ty = n.y + ay; }
           }
         }
-        if (n.out && !n.exiting) { // 외야: 위↔아래 띠를 오갈 때는 바깥쪽 끝을 돌아서 (코트를 가로지르지 않음)
+        if (n.out && !n.exiting && !lineB && !n.ret) { // 외야: 위↔아래 띠를 오갈 때는 바깥쪽 끝을 돌아서 (코트를 가로지르지 않음)
           const eg = y => y < C0.y ? 0 : y > C0.y + C0.h ? 1 : 2, a = eg(n.y), c = eg(ty);
           if (a !== 2 && c !== 2 && a !== c) { const fx = n.team === 1 ? C0.x - 24 : C0.x + C0.w + 24; if (Math.abs(n.x - fx) > 6) ty = n.y; tx = fx; }
         }
         const dx = tx - n.x, dy = ty - n.y, d = hyp(dx, dy), st = Math.min(d, sp * dt);
         n.moving = d > 2; if (n.moving) { n.x += dx / d * st; n.y += dy / d * st; n.walk += dt * 10; }
+        if (n.out && !n.exiting && (lineB || n.ret)) { if (lineB) n.ret = true; continue; } // 중앙선 공 줍기·복귀 중: 외야 띠에 묶지 않음
         if (!n.exiting) { const p = n.out ? outProj(1 - n.team, n.x, n.y) : zoneClamp(n.team, n.x, n.y); n.x = p.x; n.y = p.y; }
       }
     },
@@ -201,16 +212,19 @@
         if (d >= R || d < 1e-6) continue;
         const push = (R - d), ux = dx / d, uy = dy / d, wa = isU(a) ? (isU(c) ? 0 : 0.3) : (isU(c) ? 0.7 : 0.5), wc = isU(c) ? (isU(a) ? 0 : 0.3) : (isU(a) ? 0.7 : 0.5);
         if (wa) { a.x -= ux * push * wa; a.y -= uy * push * wa; } if (wc) { c.x += ux * push * wc; c.y += uy * push * wc; }
-        for (const e of [a, c]) if (!isU(e)) { const p = e.out ? outProj(1 - e.team, e.x, e.y) : zoneClamp(e.team, e.x, e.y); e.x = p.x; e.y = p.y; }
+        for (const e of [a, c]) if (!isU(e) && !e.ret) { const p = e.out ? outProj(1 - e.team, e.x, e.y) : zoneClamp(e.team, e.x, e.y); e.x = p.x; e.y = p.y; }
       }
     },
+    recv: (D, e) => D.balls.some(B => B.st === 'fly' && B.kind === 'pass' && B.to === e),
+    fighters: (b, t) => b.u.filter(o => o.team === t && !o.dead && !o.hidden && (o.summon || mainIn(o))),
+    free(b, u) { return !b.over && !u.dead && !DG.fighters(b, 1 - u.team).length; },
     canPick(e, B) {
       if (isU(e)) { if (!mainIn(e)) return false; }
       else if (e.exiting) return false;
       const ic = inCourt(B.x, B.y);
-      if (e.out) return !ic && sideOf(B.x) === 1 - e.team;
+      if (e.out) return sideOf(B.x) === 1 - e.team && (!ic || Math.abs(B.x - CX) < S0.lineR); // 외야: 코트 밖 공 + 상대 진영 쪽 중앙선 공
       if (!ic) return false;
-      return sideOf(B.x) === e.team || Math.abs(B.x - CX) < S0.lineR;
+      return sideOf(B.x) === e.team; // 안쪽: 자기 진영 (중앙선 공은 우리 안쪽 vs 상대 외야 경쟁)
     },
     take(b, D, B, e) {
       B.st = 'held'; B.h = e; B.vx = B.vy = 0; B.z = 0; B.kind = null; B.hold = 0.35 + Math.random() * 0.55; B.wait = 0;
@@ -220,7 +234,7 @@
       if (B.st === 'held') {
         const H = B.h;
         if (!H || (isU(H) ? !mainIn(H) && !(H.dgOut) : H.exiting && !H.main)) { DG.drop(B, H ? H.x : B.x, H ? H.y : B.y); return; }
-        B.x = H.x; B.y = H.y; B.hold -= dt; B.wait += dt;
+        B.x = H.x; B.y = H.y; B.hold -= dt; B.wait += dt; if (H.ret) B.hold = Math.max(B.hold, 0.1);
         if (B.hold <= 0) DG.decide(b, D, B, H);
         return;
       }
@@ -235,12 +249,13 @@
         return;
       }
       // 날아가는 공
-      if (B.kind === 'pass' && B.to) { const R = B.to; if (!R.exiting && (isU(R) ? mainIn(R) || R.dgOut : true)) { const dx = R.x - B.x, dy = R.y - B.y, d = hyp(dx, dy) || 1, sp = hyp(B.vx, B.vy); B.vx += (dx / d * sp - B.vx) * Math.min(1, dt * 4); B.vy += (dy / d * sp - B.vy) * Math.min(1, dt * 4); } }
       B.x += B.vx * dt; B.y += B.vy * dt; B.trav += hyp(B.vx, B.vy) * dt; B.z = 10 + Math.sin(Math.min(1, B.trav / Math.max(60, B.len)) * Math.PI) * (B.kind === 'pass' ? 18 : 6);
       const sp = hyp(B.vx, B.vy) || 1, ix = -B.vx / sp, iy = -B.vy / sp;
       if (B.kind === 'pass') {
         const R = B.to;
-        if (R && hyp(R.x - B.x, R.y - B.y) < S0.hitR + 2) {
+        if (B.trav >= B.len - 10) { // 패스: 던진 순간의 받는 자리로 곧게 → 도착하면 판정 (받는 쪽은 제자리)
+          const ok = R && !R.exiting && (isU(R) ? mainIn(R) : true) && hyp(R.x - B.x, R.y - B.y) < S0.hitR + 4;
+          if (!ok) { B.to = null; DG.drop(B, B.x, B.y); return; }
           const fum = Math.min(S0.fumble.max, S0.fumble.base + S0.fumble.per * B.passN);
           if (Math.random() < fum) { b.stats.dgFumble++; DG.drop(B, R.x, R.y); B.team = R.team; b.text(R.x, R.y - 50, '놓침!', '#ffb0b0', 9); }
           else { B.passN++; b.stats.dgPass++; DG.take(b, D, B, R); }
@@ -293,7 +308,7 @@
       if (throwIt) {
         const d = hyp(best.x - H.x, best.y - H.y), tt = d / S0.throwSpd, vx = best.vx || 0, vy = best.vy || 0;
         const ax = best.x + vx * tt * 0.6 + (Math.random() - 0.5) * 12, ay = best.y + vy * tt * 0.6 + (Math.random() - 0.5) * 12;
-        DG.launch(B, H, ax, ay, S0.throwSpd, 'throw', null); b.stats.dgThrow++;
+        const PB = S0.passBoost, bk = Math.min(PB.max, PB.per * B.passN); DG.launch(B, H, ax, ay, S0.throwSpd * (1 + bk), 'throw', null); b.stats.dgThrow++; if (bk > 0) b.stats.dgFast++;
       } else {
         const pref = mates.filter(e => (isU(e) ? mainIn(e) : !e.out) !== inH);
         const L = pref.length && Math.random() < 0.7 ? pref : mates, R = L[Math.floor(Math.random() * L.length)];
@@ -415,7 +430,7 @@
     const D = b.dg;
     if (!D || !D.on) { if (b._dgCam) { b.cam = null; b._dgCam = false; } return; }
     const V = view || { x: 0, y: 112, w: 360, h: 410 }; b.dgView = V; b._dgCam = true;
-    const pts = []; for (const u of b.u) if (!u.dead && !u.hidden) pts.push([u.x, u.y]); for (const n of D.npc) if (!n.out) pts.push([n.x, n.y]);
+    const pts = []; for (const u of b.u) if (!u.dead && !u.hidden) pts.push([u.x, u.y]); for (const n of D.npc) if (!n.out || n.main) pts.push([n.x, n.y]); // 아웃된 주인공(외야)도 화면 안에
     for (const B of D.balls) { const p = ballPos(B); pts.push([p.x, p.y]); }
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [x, y] of pts) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y - 50); y1 = Math.max(y1, y); }
     const k = clamp(Math.min(V.w / (x1 - x0 + 120), V.h / (y1 - y0 + 160)), 0.46, 1.15);
@@ -436,8 +451,14 @@
   };
   const _uu = Pp.updateUnit;
   Pp.updateUnit = function (u, dt) {
-    const D = this.dg; if (!D || !D.on || (u.dgDown == null && !u.dgOut)) return _uu.call(this, u, dt);
-    u.flash = Math.max(0, u.flash - dt); u.moving = false; u.action = null; u.hp = 0;
+    const D = this.dg; if (!D || !D.on) return _uu.call(this, u, dt);
+    if (u.dgDown != null || u.dgOut) { u.flash = Math.max(0, u.flash - dt); u.moving = false; u.action = null; u.hp = 0; return; }
+    if (!u.dead && !this.freeze && DG.free(this, u)) { // 상대 주인공·소환수가 모두 아웃 → 공격하지 않고 피구만 (주인공은 DG.npcMove 가 움직임, 소환수는 정지)
+      u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt); u.action = null; u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
+      if (u.summon) u.moving = false; return;
+    }
+    if (DG.recv(D, u)) { const x = u.x, y = u.y; const r = _uu.call(this, u, dt); u.x = x; u.y = y; u.moving = false; return r; } // 패스 받는 주인공: 제자리 (공격은 그대로)
+    return _uu.call(this, u, dt);
   };
   // 주인공 체력 0 → 탈락 대신 외야로 (소환수는 그대로)
   const _kill = Pp.kill;
