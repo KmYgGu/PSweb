@@ -501,7 +501,7 @@
       if (!(dpOn && DP.blocking())) { // 자이로 묻는 창이 떠 있는 동안 전투 정지
         const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
         battle.updateVisual(dt * tk);
-        if (dpOn) { const fu = DP.takeFlip(battle); if (fu) { const ok = battle.playerFlip(fu); DP.flipped(battle, ok); if (ok) REC.input(battle.u.indexOf(fu)); } } // 반전 입력은 스텝 사이에만 (리플레이 재현)
+        if (dpOn) { const A = DP.takeAct(battle); if (A) { const ok = A.kind ? battle.playerAct(A.u, A.kind, A.val) : battle.playerFlip(A.u); DP.acted(battle, A, ok); if (ok) REC.input(battle.u.indexOf(A.u), A.kind, A.val); } } // 반전·스테이지 입력(야구 스윙 등)은 스텝 사이에만 (리플레이 재현)
         acc += dt * speed * tk;
         let n = 0;
         seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
@@ -512,7 +512,7 @@
     const hudH = wideOn ? WB.hudH : hudEl.offsetHeight, botTop = wideOn ? WB.botTop : $('#bottom').offsetTop; // 넓은 화면: 카메라 영역은 폰 배치와 같게
     const camView = { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) };
     if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, camView);
-    else if (battle && window.BASEBALL) BASEBALL.updateCam(battle, dt, camView); // 야구장 카메라 (js/baseball.js, 시각 전용)
+    else if (battle && window.BASEBALL) { if (!dpOn) BASEBALL.updateCam(battle, dt, camView); else if (battle._bsbCam) { battle.cam = null; battle._bsbCam = false; } } // 야구장 카메라 (js/baseball.js, 시각 전용). 직접 플레이는 3D 카메라
     cineSync(); // 홈런 시네마틱 바 (DOM, HUD·하단 UI 위)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     if (dpOn) { DP.draw(ctx, battle, dt, camView); Render.drawTopUnits(ctxTop, battle, RES, 0); } // 3D 시점: HUD 위 캐릭터 덧그림 없음 (지우기만)
@@ -570,7 +570,7 @@
       else if (u.def.duelist && window.CARD_DEFS) { const c = Object.values(CARD_DEFS).find(c => c.name === sk); if (c && c.level >= 7) this.ev('card', u.team, 6 + c.level); }
     },
     sys(t) { /* 스테이지 교체는 stageId 변화로 감지 */ },
-    input(k) { const R = this.cur; if (R && !R.done && R.inp) R.inp.push([this.n, k]); }, // 직접 플레이 반전: [몇 번째 스텝 앞, battle.u 번호] → 리플레이에서 같은 스텝에 다시 넣음
+    input(k, kind, val) { const R = this.cur; if (R && !R.done && R.inp) R.inp.push(kind ? (val != null ? [this.n, k, kind, val] : [this.n, k, kind]) : [this.n, k]); }, // 직접 플레이 반전: [몇 번째 스텝 앞, battle.u 번호] → 리플레이에서 같은 스텝에 다시 넣음
     finish() { const R = this.cur; if (!R || R.done) return; R.dur = Math.round(this.b.time * 100) / 100; R.done = true; R.hl = computeHL(R); R.names = [pick[0].name, pick[1].name]; R.stageName = STAGE_DEFS[stageId].name; this.last = R; },
   };
   function computeHL(R) { // 하이라이트: 8초 창마다 점수 (피해량 + 이벤트 가중치 + 역전), 상위 3개 (서로 겹치지 않음, 처치·결정타 가중치 낮음)
@@ -627,7 +627,7 @@
     restart() { startBattle({ seed: this.rec.seed, replay: true }); this.steps = 0; this.acc = 0; this.inpI = 0; },
     step1() {
       const I = this.rec.inp; // 직접 플레이 반전 입력 재현
-      if (I) while (this.inpI < I.length && I[this.inpI][0] <= this.steps) { const u = battle.u[I[this.inpI++][1]]; if (u) battle.playerFlip(u); }
+      if (I) while (this.inpI < I.length && I[this.inpI][0] <= this.steps) { const e = I[this.inpI++], u = battle.u[e[1]]; if (u) { if (e[2]) battle.playerAct(u, e[2], e[3]); else battle.playerFlip(u); } }
       seeded(() => battle.update(STEP)); this.steps++;
       if (this.steps % CHECK_EVERY === 0 && !this.warned) { const c = this.rec.check && this.rec.check[this.steps / CHECK_EVERY - 1]; if (c && c[1] !== hashB(battle)) { this.warned = true; $('#rpWarn').textContent = '⚠ 재현 불일치 (버전 차이?)'; console.warn('[replay] desync at', battle.time.toFixed(2)); } }
     },

@@ -398,6 +398,8 @@ class Battle {
     u.flipHold = { until: this.time + FLIP_HOLD, dir: u.dir, n: u.bnc || 0 };
     return true;
   }
+  // 직접 플레이의 스테이지 입력 (야구장 스윙·투구 게이지·송구 등, js/baseball.js BB.act). 받아들이면 true → 리플레이에 [스텝, 유닛, 종류, 값] 으로 기록
+  playerAct(u, kind, val) { for (const h of STAGE_HOOKS) if (h.act) { const r = h.act(this, u, kind, val); if (r != null) return !!r; } return false; }
   // 반전 직후 FLIP_HOLD 초: 벽·건물·캐릭터 충돌 반사(u.bnc 증가)는 받아들이고, 그 밖의 방향 전환(스킬 끝·캐릭터 AI 등)은 반전 방향으로 되돌림
   holdFlip(u) {
     const H = u.flipHold;
