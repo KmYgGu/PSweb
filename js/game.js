@@ -204,7 +204,7 @@ class Battle {
     const dot = vx * nx + vy * ny;
     if (dot > 0) { // 법선 기준 반사
       vx -= 2 * dot * nx; vy -= 2 * dot * ny;
-      u.dir = Math.atan2(vy, vx) + rand(-0.25, 0.25); u.bnc = (u.bnc || 0) + 1;
+      u.dir = Math.atan2(vy, vx) + rand(-0.25, 0.25); u.bnc = (u.bnc || 0) + 1; u.wbnc = (u.wbnc || 0) + 1;
       if (this.time - (u.wallT || -1) > 0.12) { u.wallT = this.time; this.dust(u.x, u.y); this.ring(u.x + nx * 10, u.y, 2, 10, 0.2, '#f0e8e0'); playSfx('wall'); }
     }
   }
@@ -668,11 +668,11 @@ class Battle {
         const a = u.action;
         if (a && (a.type === 'dash' || a.type === 'chase')) { // 돌진: 강한 충돌
           this.hitBuilding(b, 90, true, u.x - nx * 10, u.y - 14, u, 'dash');
-          if (!b.dead) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); u.bnc = (u.bnc || 0) + 1; }
+          if (!b.dead) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); u.bnc = (u.bnc || 0) + 1; u.wbnc = (u.wbnc || 0) + 1; }
         } else {
           let vx = Math.cos(u.dir), vy = Math.sin(u.dir);
           const dot = vx * nx + vy * ny;
-          if (dot < 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.25, 0.25)); u.bnc = (u.bnc || 0) + 1; }
+          if (dot < 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.25, 0.25)); u.bnc = (u.bnc || 0) + 1; u.wbnc = (u.wbnc || 0) + 1; }
           if (this.time - u.bldT > 0.15) {
             u.bldT = this.time;
             this.hitBuilding(b, this.rules.bumpDmg + u.speed * this.rules.bumpSpeedK, false, u.x - nx * 11, u.y - 8, u, 'bump');
@@ -761,7 +761,7 @@ class Battle {
     if (hit) {
       // 순수 반사: 법선 기준 반사각 + ±0.25rad 무작위 흔들림 (상대 방향 보정 없음 — 전투·탈출맵 공통)
       const ang = Math.atan2(vy, vx) + rand(-0.25, 0.25);
-      u.dir = fixAngle(ang); u.bnc = (u.bnc || 0) + 1; this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); }
+      u.dir = fixAngle(ang); u.bnc = (u.bnc || 0) + 1; u.wbnc = (u.wbnc || 0) + 1; this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); } // wbnc: 벽·장애물·건물에 튕긴 횟수 (농구장 덩크 판정용, 그 밖엔 안 씀)
   }
 
   collide(a, b) {
@@ -1309,7 +1309,7 @@ class Battle {
     const nx = u.x + c * k, ny = u.y + s * k, q = this.clampPos(nx, ny, u.pad, u), bl = this.blockAt(nx, ny - 4, 9 + u.pad);
     if (bl || Math.abs(q.x - nx) > 0.3 || Math.abs(q.y - ny) > 0.3) {
       u.push = null; playSfx('wall'); this.dust(u.x, u.y); this.ring(u.x + c * 12, u.y - 6, 2, 14, 0.25, '#f0e8d8');
-      u.dir = fixAngle(P.ang + Math.PI + rand(-0.6, 0.6)); u.bnc = (u.bnc || 0) + 1; P.onWall && P.onWall(bl); return;
+      u.dir = fixAngle(P.ang + Math.PI + rand(-0.6, 0.6)); u.bnc = (u.bnc || 0) + 1; u.wbnc = (u.wbnc || 0) + 1; P.onWall && P.onWall(bl); return;
     }
     u.x = q.x; u.y = q.y; if (Math.random() < 0.6) this.dust(u.x, u.y);
     if (P.t <= 0 || u.climb || u.airborne) u.push = null;

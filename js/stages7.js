@@ -14,10 +14,11 @@
   STAGE_DEFS.basket = {
     name: '농구장', desc: '골대는 하나! 공을 잡으면 드리블, 일반 공격(충돌)으로 뺏기. 슛 포인트에 가면 점프 슛 — 골대에 가까울수록·오래 드리블할수록 잘 들어감. 먼 거리는 고득점. 6점 선취 승리 (체력 0도 패배).', theme: 'basket',
     // hoop: 골대 링 위치(바닥 기준), point: 슛 포인트 { r, first, gap(슛 후 다음), life(미사용 시 이동) }
+    // dunk: 공을 잡거나 뺏은 뒤 벽에 안 튕기고 골대(반경 r + 몸 크기)에 닿으면 덩크 (2점, 확률 = 거리 d 의 2점 슛과 같은 식 + 드리블 보너스), 점프 dur 초·높이 h, fly 초 뒤 판정
     // bands: 거리별 점수 [최대거리, 점수], prob: 성공 확률 = clamp(base − dist×perPx, min, max) + min(dribbleMax, 드리블 초×perSec), 최종 상한 cap
     basket: { hoop: { x: 180, y: 160 }, win: 6, point: { r: 20, first: 1.5, gap: 1.5, life: 9 }, bands: [[120, 1], [210, 2], [1e9, 3]],
       prob: { base: 0.85, perPx: 0.0025, min: 0.15, max: 0.8, perSec: 0.06, dribbleMax: 0.3, cap: 0.95 },
-      jump: { dur: 0.6, h: 22 }, fly: 0.7, stealGrace: 0.5, respawn: 1.2, ai: { point: 0.9, ball: 0.75, turn: 6, dur: [1.6, 3.2] } },
+      jump: { dur: 0.6, h: 22 }, fly: 0.7, dunk: { r: 12, d: 165, dur: 0.55, h: 34, fly: 0.4 }, stealGrace: 0.5, respawn: 1.2, ai: { point: 0.9, ball: 0.75, turn: 6, dur: [1.6, 3.2] } },
     spawns: [{ x: 110, y: 400 }, { x: 250, y: 400 }],
   };
   STAGE_DEFS.snake = {
@@ -35,9 +36,9 @@
       const S = b.stage.basket; if (!S) return;
       b.bb = { S, ball: { x: 180, y: 330, vx: 0, vy: 0, z: 0, state: 'loose', holder: null, t: 0, fl: null }, score: [0, 0], point: null, nextT: S.point.first, ann: null, respawnT: 0 };
       b.u.forEach(u => { u.bbAI = { mode: 'free', t: rand(0.3, 1.0) }; });
-      Object.assign(b.stats, { bbShots: 0, bbMade: 0, bbSteals: 0 });
+      Object.assign(b.stats, { bbShots: 0, bbMade: 0, bbSteals: 0, bbDunks: 0, bbDunkMade: 0 });
     },
-    give(b, u) { const B = b.bb.ball; B.state = 'held'; B.holder = u; B.t = 0; B.gotT = b.time; },
+    give(b, u) { const B = b.bb.ball; B.state = 'held'; B.holder = u; B.t = 0; B.gotT = b.time; B.wb = u.wbnc || 0; }, // wb: 잡은 순간의 벽 튕김 수 (덩크: 그 뒤 벽에 안 튕겼는지)
     drop(b, x, y) { const B = b.bb.ball; B.state = 'loose'; B.holder = null; B.x = clamp(x, AR.x + 20, AR.x + AR.w - 20); B.y = clamp(y, AR.y + 34, AR.y + AR.h - 14); B.vx = rand(-60, 60); B.vy = rand(-60, 60); B.z = 10; },
     on(b, ev, u, e) { // 일반 공격(충돌 포함)으로 공 뺏기
       const D = b.bb; if (!D || ev !== 'attack' || b.over) return false;
@@ -63,10 +64,12 @@
         const got = mains(b).find(u => !u.dead && !u.hidden && !u.airborne && Math.hypot(u.x - B.x, u.y - B.y) < 12 + u.pad);
         if (got) { BB.give(b, got); b.text(got.x, got.y - 62, '공 잡음!', '#ffd08a', 9); }
       } else if (B.state === 'flight') {
-        const F = B.fl; F.t += dt; const k = Math.min(1, F.t / S.fly);
-        B.x = F.x0 + (H.x - F.x0) * k; B.y = F.y0 + (H.y - F.y0) * k; B.z = F.z0 + (24 - F.z0) * k + Math.sin(Math.PI * k) * (40 + F.d * 0.15);
+        const F = B.fl; F.t += dt; const k = Math.min(1, F.t / (F.dunk ? S.dunk.fly : S.fly));
+        B.x = F.x0 + (H.x - F.x0) * k; B.y = F.y0 + (H.y - F.y0) * k; B.z = F.dunk ? F.z0 + (24 - F.z0) * k + Math.sin(Math.PI * Math.min(1, k * 1.4)) * 18 : F.z0 + (24 - F.z0) * k + Math.sin(Math.PI * k) * (40 + F.d * 0.15); // 덩크: 링 위로 올렸다가 내리꽂음
         if (k >= 1) BB.resolve(b);
       } else if (B.state === 'dead') { D.respawnT -= dt; B.z = Math.max(0, B.z - 60 * dt); if (D.respawnT <= 0) { BB.drop(b, rand(120, 240), rand(300, 400)); B.z = 40; } }
+      // ---- 덩크: 잡거나 뺏은 뒤 벽에 한 번도 안 튕기고 골대에 닿음 ----
+      if (B.state === 'held') { const u = B.holder; if (!u.airborne && !u.blocked('blocksAct') && (u.wbnc || 0) === B.wb && Math.hypot(u.x - H.x, u.y - H.y) < S.dunk.r + u.pad) BB.dunk(b, u); }
       // ---- 슛 포인트 ----
       if (!D.point) { D.nextT -= dt; if (D.nextT <= 0) BB.spawnPoint(b); }
       else {
@@ -100,19 +103,26 @@
       b.stats.bbShots++; D.point = null; D.nextT = S.point.gap + S.fly;
       b.text(u.x, u.y - 70, `슛! (${P.pts}점·${Math.round(p * 100)}%)`, '#ffe08a', 10);
     },
+    dunk(b, u) { // 2점, 확률은 거리 dunk.d 2점 슛과 같은 식 (난수는 성공 판정 1번만, 슛과 같음)
+      const D = b.bb, S = D.S, B = D.ball, p = BB.chance(b, { d: S.dunk.d }, B.t);
+      u.action = null; u.air = { t: 0, dur: S.dunk.dur, h: S.dunk.h, ride: true, bb: true }; // 링까지 점프
+      B.state = 'flight'; B.holder = null; B.fl = { x0: u.x, y0: u.y, z0: 34, t: 0, d: 0, p, pts: 2, who: u, made: Math.random() < p, dunk: true };
+      b.stats.bbShots++; b.stats.bbDunks++;
+      b.text(u.x, u.y - 74, `덩크! (2점·${Math.round(p * 100)}%)`, '#ff9a5a', 11); b.ring(u.x, u.y - 20, 3, 22, 0.3, '#ffb46a');
+    },
     resolve(b) {
       const D = b.bb, S = D.S, B = D.ball, F = B.fl, u = F.who;
       if (F.made) {
-        D.score[u.team] += F.pts; b.stats.bbMade++;
-        D.ann = { t: 0, made: true, pts: F.pts, team: u.team, who: u.def.name };
-        sys(b, `${u.def.name} ${F.pts}점 슛 성공! (${D.score[0]} : ${D.score[1]})`);
+        D.score[u.team] += F.pts; b.stats.bbMade++; if (F.dunk) { b.stats.bbDunkMade++; b.shake(4); b.shock(S.hoop.x, S.hoop.y - 24, 4, 34, '#ffb46a', 0.35, 3); }
+        D.ann = { t: 0, made: true, pts: F.pts, team: u.team, who: u.def.name, dunk: !!F.dunk };
+        sys(b, `${u.def.name} ${F.pts}점 ${F.dunk ? '덩크' : '슛'} 성공! (${D.score[0]} : ${D.score[1]})`);
         b.text(S.hoop.x, S.hoop.y - 50, `+${F.pts}`, '#ffe27a', 16); b.glow(S.hoop.x, S.hoop.y - 36, 40, '#ffe27a', 0.4);
         for (let i = 0; i < 16; i++) { const a = rand(0, TAU), s = rand(40, 120); b.parts.push({ x: S.hoop.x, y: S.hoop.y - 36, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, g: 200, life: rand(0.5, 0.9), max: 0.9, color: ['#ffffff', TEAM_COL[u.team], '#ffe27a'][i % 3], size: 2 }); }
         B.state = 'dead'; B.x = S.hoop.x; B.y = S.hoop.y + 4; D.respawnT = S.respawn;
         if (D.score[u.team] >= S.win) BB.finish(b, u.team);
       } else {
-        D.ann = { t: 0, made: false, team: u.team, who: u.def.name };
-        b.text(S.hoop.x, S.hoop.y - 50, '노골!', '#c8d0e0', 12);
+        D.ann = { t: 0, made: false, team: u.team, who: u.def.name, dunk: !!F.dunk };
+        b.text(S.hoop.x, S.hoop.y - 50, F.dunk ? '림에 맞고 튕김!' : '노골!', '#c8d0e0', 12);
         const a = rand(0.3, Math.PI - 0.3), r = rand(40, 90); BB.drop(b, S.hoop.x + Math.cos(a) * r, S.hoop.y + Math.sin(a) * r); B.z = 30; // 리바운드
       }
     },
@@ -181,7 +191,7 @@
       ctx.font = `7px ${FONT}`; ctx.fillStyle = '#c8cede'; ctx.textAlign = 'left'; ctx.fillText(`${D.S.win}점 승리`, x0 + 2, y0 + 23);
       const A = D.ann;
       if (A) { const a = Math.min(1, A.t / 0.15) * Math.min(1, (1.6 - A.t) / 0.3); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.font = `bold 18px ${FONT}`; ctx.lineWidth = 4; ctx.strokeStyle = '#0e1018';
-        const t = A.made ? `${A.pts}점 슛!` : '노골…'; ctx.strokeText(t, 180, 260); ctx.fillStyle = A.made ? '#ffe27a' : '#c8d0e0'; ctx.fillText(t, 180, 260);
+        const t = A.dunk ? (A.made ? '덩크! +2' : '덩크 실패…') : A.made ? `${A.pts}점 슛!` : '노골…'; ctx.strokeText(t, 180, 260); ctx.fillStyle = A.made ? '#ffe27a' : '#c8d0e0'; ctx.fillText(t, 180, 260);
         ctx.font = `bold 9px ${FONT}`; ctx.fillStyle = TEAM_COL[A.team]; ctx.fillText(`${A.who} · ${D.score[0]} : ${D.score[1]}`, 180, 278); }
       ctx.restore();
     },
