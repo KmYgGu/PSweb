@@ -77,7 +77,7 @@ const DirectPlay = (() => {
     if (e.pointerType === 'mouse' && e.button === 0 && S.lockOn === 'mouse' && !e.target.closest(UI_SEL)) { S.flipReq = true; S.pressPt = null; S.mDown = true; e.preventDefault(); return; } // 추적 중 왼쪽 클릭 = 반전 (야구: 조준점이 동료면 송구, 잠금 여부와 무관)
     if (e.pointerType === 'touch' || e.pointerType === 'pen') { // 모바일: 짧게 탭 = 반전(손 뗄 때), 길게 누름(0.45초) = 누르는 동안 상대 추적
       if (e.target.closest(UI_SEL)) return;
-      if (S.touch && e.pointerId !== S.touch.id) { if (S.lockOn === 'touch') { S.flipReq = true; S.pressPt = toCanvas(e); } return; } // 길게 눌러 추적하는 동안 다른 손가락 탭 = 반전 (그 밖의 두 번째 손가락은 무시)
+      if (S.touch && e.pointerId !== S.touch.id) { if (S.lockOn === 'touch') { S.flipReq = true; S.pressPt = DGX(S.battle) ? null : toCanvas(e); } return; } /* 피구: 다른 손가락 탭 = 조준점 기준 클릭 */ // 길게 눌러 추적하는 동안 다른 손가락 탭 = 반전 (그 밖의 두 번째 손가락은 무시)
       S.touch = { id: e.pointerId, t: now(), x: e.clientX, y: e.clientY };
       if (S.battle && timing(S.battle)) { S.touch.used = true; S.flipReq = true; S.pressPt = toCanvas(e); } // 야구 스윙·게이지: 누르는 순간 (손 뗄 때가 아니라)
       return;
@@ -100,7 +100,8 @@ const DirectPlay = (() => {
   }
   function toCanvas(e) { const cv = S.cv; if (!cv || !cv.getBoundingClientRect) return null; const r = cv.getBoundingClientRect(); if (!r.width) return null; return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; } // 화면 점 → 논리 좌표 (송구 대상 고르기)
   document.addEventListener('pointerup', onUp); document.addEventListener('pointercancel', onUp);
-  document.addEventListener('pointermove', e => { if (S.touch && e.pointerId === S.touch.id && S.lockOn !== 'touch' && Math.hypot(e.clientX - S.touch.x, e.clientY - S.touch.y) > 14) S.touch.moved = true; });
+  document.addEventListener('pointermove', e => { // 다른 버튼을 누른 채 누른/뗀 마우스 버튼 (포인터 이벤트는 pointerdown 대신 pointermove 로 알림) → 우클릭 유지 중 좌클릭
+    if (e.pointerType === 'mouse' && e.button >= 0) { const bit = e.button === 0 ? 1 : e.button === 2 ? 2 : e.button === 1 ? 4 : 0; if (bit) { if (e.buttons & bit) onDown(e); else onUp(e); } } if (S.touch && e.pointerId === S.touch.id && S.lockOn !== 'touch' && Math.hypot(e.clientX - S.touch.x, e.clientY - S.touch.y) > 14) S.touch.moved = true; });
   document.addEventListener('contextmenu', e => { if (S.active && !e.target.closest(UI_SEL)) e.preventDefault(); }); // 오른쪽 버튼·길게 누르기 메뉴 막기 (전장만)
   addEventListener('blur', () => { S.lockOn = null; S.touch = null; });
   document.addEventListener('mousemove', e => {
@@ -182,7 +183,7 @@ const DirectPlay = (() => {
   }
   function setActive(on) {
     if (on === S.active) return;
-    S.active = on;
+    S.active = on; { const el = stageEl(); if (el && el.style) el.style.touchAction = on ? 'none' : ''; } // 직접 플레이: 두 손가락(길게 누름 + 탭)이 확대·스크롤로 취소되지 않게
     if (!on) { unlock(); S.space = false; S.flipReq = false; closePopupIfGyro(); }
   }
   function closePopupIfGyro() { if (S.popup) closePopup(); }
@@ -834,12 +835,13 @@ const DirectPlay = (() => {
     let L = S.looks.get(u);
     const toCam = Math.atan2(C.y - u.y, C.x - u.x), mv = Math.cos(u.dir) * C.R[0] + Math.sin(u.dir) * C.R[1];
     if (!L) { L = { ang: toCam, facing: mv >= 0 ? 1 : -1, back: !!isP }; S.looks.set(u, L); }
-    if (isP) {
+    const dgA = DGX(b) && !u.summon && u.dgG != null ? (u.action && u.tgtU && !u.tgtU.dead ? Math.atan2(u.tgtU.y - u.y, u.tgtU.x - u.x) : u.dgG) : null; // 피구: 모든 주인공(나 포함)이 공을 봄 (공격 동작 중에는 대상 쪽)
+    if (isP && dgA == null) {
       const rel = Math.abs(wrap(S.userYaw)); L.back = L.back ? rel < 1.7 : rel < 1.4; // 시점을 크게 돌리면 앞모습
       if (u.moving && Math.abs(mv) > 0.2) L.facing = mv > 0 ? 1 : -1; // 좌우 반전은 화면 기준 진행 방향
       return { back: L.back, facing: L.facing, sq: 1 };
     }
-    if (!u.dead && !u.blocked('blocksAct')) { const d = wrap(toCam - L.ang); L.ang = wrap(L.ang + clamp(d * (1 - Math.exp(-4.5 * dt)), -5 * dt, 5 * dt)); } // 칼같이 돌지 않고 따라옴
+    if (!u.dead && !u.blocked('blocksAct')) { const d = wrap((dgA != null ? dgA : toCam) - L.ang); L.ang = wrap(L.ang + clamp(d * (1 - Math.exp(-4.5 * dt)), -5 * dt, 5 * dt)); } // 칼같이 돌지 않고 따라옴
     const rel = wrap(L.ang - toCam), ar = Math.abs(rel);
     L.back = L.back ? ar > 1.65 : ar > 1.85;
     const side = Math.cos(L.ang) * C.R[0] + Math.sin(L.ang) * C.R[1];

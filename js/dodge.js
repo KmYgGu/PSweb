@@ -178,7 +178,7 @@
         if (!best) continue;
         const a = Math.atan2(best.y - e.y, best.x - e.x), g = gz(e), r = S0.turn * trackK(b, D, e.team) * dt, d = angD(g, a);
         setG(e, g + clamp(d, -r, r));
-        if (isU(e) && !e.action) e.facing = Math.cos(gz(e)) >= 0 ? 1 : -1;
+        if (isU(e) && !e.action) { e.facing = Math.cos(gz(e)) >= 0 ? 1 : -1; const sg = Math.sin(gz(e)); if (sg < -0.35) e.lookUp = true; else if (sg > 0.35) e.lookUp = false; } // 주인공도 공을 봄: 좌우·앞뒤 모습 (공격·스킬 동작 중에는 전투 방향 그대로)
       }
     },
     npcMove(b, D, dt) {
