@@ -2521,7 +2521,7 @@ const Render = (() => {
     const list = [...(V ? [] : b.u.map(u => ({ y: u.y, u }))), ...b.buildings.filter(x => !x.dead && !(V && !x.draw)).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
     for (const it of list) {
       if (it.u) { drawUnit(ctx, it.u, b); if (!it.u.aoHid) drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); } // aoHid: 아오오니 옷장·문 숨김 중엔 산소 게이지도 숨김
-      else if (V && o.stand && (it.bl || it.x != null)) o.stand.push(it.bl ? { x: it.bl.x + it.bl.w / 2, y: it.bl.y + it.bl.h, w: it.bl.w, draw: c => it.bl.draw ? drawBuilding(c, it.bl) : 0 } : { x: it.x, y: it.y, draw: it.draw }); // 직접 플레이: 물체마다 세워 그림 (x 가 있는 sortItems · 특수 건물)
+      else if (V && o.stand && (it.bl || it.x != null)) o.stand.push(it.bl ? { x: it.bl.x + it.bl.w / 2, y: it.bl.y + it.bl.h, w: it.bl.w, draw: c => it.bl.draw ? drawBuilding(c, it.bl) : 0 } : { x: it.x, y: it.y, h: it.h, hl: it.hl, draw: it.draw }); // 직접 플레이: 물체마다 세워 그림 (x 가 있는 sortItems · 특수 건물)
       else if (it.draw) it.draw(LC);
       else drawBuilding(LC, it.bl);
     }

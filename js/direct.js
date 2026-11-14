@@ -9,7 +9,7 @@
  * - 농구장·야구장·탈출맵은 일반 시점 (EXCLUDE · supported)
  * 그리기·카메라는 전투 상태를 바꾸지 않고 Math.random 도 부르지 않음 (그리는 동안 잠깐 바꾸는 u.lookUp·u.facing 은 바로 되돌림) */
 const DirectPlay = (() => {
-  const EXCLUDE = new Set(['dodge']); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u 부터 직접 플레이. 피구대전은 아직 일반 시점만)
+  const EXCLUDE = new Set([]); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u, 피구대전 t272u 부터 직접 플레이)
   const FRONT = { a0: 1.6, dist: 1.1, h: 30, zoom: 0.15 }; // 정면 시점 뒤로 빼기: 시작 각(rad), 거리 +110%, 높이 +30, 화면 ×0.85
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
   const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
@@ -50,8 +50,8 @@ const DirectPlay = (() => {
   const stageEl = () => $('#stage');
   const UI_SEL = '#bottom, button, a, input, label, #result, #fullLog, #settings, .dpPop, #rpCtl, #rpBar, #rpSave, #vidDlg, #vidRec';
 
-  function supported(b) { return !!(b && !b.escape && (!b.cam || b._bsbCam) && !EXCLUDE.has(b.stageId)); } // _bsbCam: 야구장 2D 카메라 (직접 플레이면 main.js 가 끔)
-  function player(b) { const m = b.u.filter(u => u.team === 0 && !u.summon); return m.filter(u => !u.dead).pop() || m[m.length - 1] || b.u[0]; }
+  function supported(b) { return !!(b && !b.escape && (!b.cam || b._bsbCam || b._dgCam) && !EXCLUDE.has(b.stageId)); } /* _dgCam: 피구 2D 카메라 (직접 플레이면 main.js 가 끔) */ // _bsbCam: 야구장 2D 카메라 (직접 플레이면 main.js 가 끔)
+  function player(b) { const dg = b.dg && b.dg.on ? b.dg : null; if (dg) { const ms = b.u.filter(u => u.team === 0 && !u.summon && !u.dgProxy), m0 = dg.man || ms.find(u => !ms.some(o => o.def.partner && o.def.partner.id === u.def.id)) || ms[0]; if (m0) return m0; } /* 듀오: 파트너가 아닌 쪽 (브로리) */ /* 피구: 1P 주인공 고정 (아웃 → 외야 분신 위치) */ const m = b.u.filter(u => u.team === 0 && !u.summon); return m.filter(u => !u.dead).pop() || m[m.length - 1] || b.u[0]; }
   function focus(b, P) { // 시점이 향할 상대: 가까운 생존 상대(본체 우선). 전투 상태(u.tgtU 등)는 건드리지 않음
     let best = null, bd = 1e9;
     for (const pass of [0, 1]) {
@@ -200,15 +200,19 @@ const DirectPlay = (() => {
   // 야구: 내가 공을 쥐고 송구할 수 있을 때 잠깐 슬로모션 (화면·시뮬 진행 속도만 줄임 → 고정 스텝이라 결과·리플레이 그대로). 실제 시간 기준 SLOW.t 초 0.3배 → SLOW.e 초 동안 원래대로, 던지면 바로 복귀
   const SLOW = { k: 0.3, t: 1.6, e: 0.5 };
   function timeK(b, dt) {
-    const th = S.active && bsbCtx(b, player(b)) === 'th';
+    const dc = S.active ? dgCtx(b) : null, th = S.active && (bsbCtx(b, player(b)) === 'th' || dc === 'hold');
+    if (dc === 'gauge' || (dc === 'inc' && DGX(b).inc(b, b.dg, DGX(b).pe(b, b.dg)).ok)) { const k = dc === 'gauge' ? 0.35 : 0.45; S.slT = null; S.slK = S.slK == null ? k : S.slK + (k - S.slK) * Math.min(1, dt * 12); return S.slK; } // 피구: 게이지·캐치 타이밍 슬로모션
     if (th) { S.slT = S.slT == null ? 0 : S.slT + dt; S.slK = S.slT < SLOW.t ? SLOW.k : SLOW.k + (1 - SLOW.k) * Math.min(1, (S.slT - SLOW.t) / SLOW.e); }
     else { S.slT = null; S.slK = S.slK == null ? 1 : Math.min(1, S.slK + (1 - S.slK) * (1 - Math.exp(-14 * dt)) + 0.002); }
     return S.slK;
   }
-  function timing(b) { const c = bsbCtx(b, player(b)) || bkCtx(b, player(b)); return c === 'sw' || c === 'pa' || c === 'bj' || c === 'bs'; }
+  function timing(b) { const c = bsbCtx(b, player(b)) || bkCtx(b, player(b)) || dgCtx(b); return c === 'sw' || c === 'pa' || c === 'bj' || c === 'bs' || c === 'gauge' || c === 'inc'; } // 피구 게이지·캐치: 누르는 순간
   // 농구장 수동 슛 상황 (입력 전용 판단, 시뮬은 BB.act 가 다시 확인): 'bj' 점프 · 'bs' 공중 슛 · 'bw' 슛 뒤 (누름은 소비, 반전 없음)
   function bkCtx(b, P) { const D = b && b.bb; if (!D || !b.bbMan || b.over || !P) return null; const sh = D.sh; if (!sh || sh.u !== P) return null; return sh.st === 'ready' ? 'bj' : sh.st === 'air' ? 'bs' : 'bw'; }
   const bkBall = b => b.bb && window.StageExt7 ? StageExt7.BB.ball3(b) : null;
+  const DGX = b => b && b.dg && b.dg.on && window.DODGE && DODGE.DG ? DODGE.DG : null; // 피구대전 직접 플레이 (js/dodge.js)
+  const dgCtx = b => { const G = DGX(b); return G ? G.ctx(b) : null; };
+  const OUTL = 'drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)'; // 공 가진 사람 흰 테두리
   function aimVal() { // 화면 가운데(카메라 정면) 광선이 홈 플레이트 면(y = 홈 − 2)과 만나는 점 → 존 반폭·반높이 단위 [ax, az]
     const BS = window.BASEBALL, Hm = BS.S.home, t = Math.abs(C.F[1]) > 1e-4 ? (Hm.y - 2 - C.y) / C.F[1] : 0; if (!(t > 0)) return [0, 0];
     const x = C.x + C.F[0] * t, z = C.z + C.F[2] * t, r = v => Math.round(v * 100) / 100;
@@ -217,10 +221,14 @@ const DirectPlay = (() => {
   function takeAct(b) { // 입력 → { u, kind?, val? } (kind 없음 = 반전). main.js 가 스텝 사이에 적용하고 리플레이에 기록
     if (b.bsb && b.bsb.on && !b.bsbMan) return { u: player(b), kind: 'man' }; // 야구장 직접 플레이: 수동 조작 켜기 (첫 프레임, 기록됨)
     if (b.bb && !b.bbMan && player(b)) return { u: player(b), kind: 'bbman' }; // 농구장: 수동 슛 켜기 (첫 프레임, 기록됨)
+    if (DGX(b) && !b.dgMan && player(b)) return { u: player(b), kind: 'dgman' }; // 피구: 직접 플레이 켜기 (첫 프레임, 기록됨)
     if (!S.flipReq) { if (S.relReq) { S.relReq = false; const P = player(b); if (S.active && !b.over && bsbCtx(b, P) === 'pr') return { u: P, kind: 'pr' }; } return null; } // 놓음 (누름과 같은 프레임이면 다음 프레임에)
     S.flipReq = false; const pt = S.pressPt; S.pressPt = null;
     if (!S.active || b.over) return null;
-    const P = player(b), c = bsbCtx(b, P), k = bkCtx(b, P);
+    const P = player(b), c = bsbCtx(b, P), k = bkCtx(b, P), dc = dgCtx(b);
+    if (dc === 'gauge') return { u: P, kind: 'dshot' }; // 피구: 게이지 멈춤
+    if (dc === 'hold') { let a = S.dgAim; if (pt && !S.locked && S.dproj) { a = null; let bd = 34; for (const f of S.dproj) { const d = Math.hypot(f.x - pt.x, f.y - pt.y) - (f.foe ? 6 : 0); if (d < bd) { bd = d; a = f; } } } if (a) return { u: P, kind: a.foe ? 'dgauge' : 'dpass', val: a.key }; } // 조준한 상대 = 게이지, 팀원 = 패스 (겹치면 상대 우선)
+    if (dc === 'inc') return { u: P, kind: 'dcatch' }; // 오는 공: 캐치 시도 (타이밍 밖 = 실패)
     if (k) return k === 'bw' ? null : { u: P, kind: k }; // 농구 슛 자세: 누름 = 점프/슛 (반전 아님)
     if (c === 'sw') return { u: P, kind: c };
     if (c === 'pa') return { u: P, kind: 'pa', val: aimVal() };
@@ -308,6 +316,14 @@ const DirectPlay = (() => {
     if (Dc && (Dc.phase === 'look' || (Dc.phase === 'warn' && Dc.t > Dc.C.warn * 0.6))) { const tx = 180, ty = 168, yw = Math.atan2(ty - P.y, tx - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, tx, ty, 34, CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h }; }
     const KD = b.bb, ksh = KD && b.bbMan && KD.sh && KD.sh.u === P ? KD.sh : null; // 농구 슛 자세: 골대 쪽 고정
     if (ksh) { const H = KD.S.hoop, yw = Math.atan2(H.y - P.y, H.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, H.x, H.y, 56, CAM.h), CAM.pitch - 0.2, CAM.pitch + 0.3), h: CAM.h, zeroUser: true }; }
+    if (!S.lockOn) S.dgLk = null;
+    if (S.lockOn && dgCtx(b) === 'hold') { // 피구: 공을 쥐고 우클릭(길게 누름) = 조준점에 가장 가까운 상대 자동 조준, 시점을 크게 움직이면 그 방향의 상대로 다시
+      const G = DGX(b), F = G.cands(b).filter(q => q.foe), yawTo = e => Math.atan2(e.y - P.y, e.x - P.x);
+      let T = S.dgLk && F.find(q => q.key === S.dgLk); const base = C.yaw;
+      if (S.dIn) S.dgAcc = (S.dgAcc || 0) + S.dIn[0];
+      if (!T || Math.abs(S.dgAcc || 0) > 0.18) { const vy = base + (T ? S.dgAcc * 2.5 : 0); let bd = 1e9; for (const q of F) { if (T && q === T && F.length > 1) continue; const d = Math.abs(wrap(yawTo(q.e) - vy)); if (d < bd) { bd = d; T = q; } } S.dgAcc = 0; S.dgLk = T ? T.key : null; }
+      if (T) { const yw = yawTo(T.e); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, T.e.x, T.e.y, 18, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, aim: true, zeroUser: true }; }
+    }
     const bl = S.lockOn && ((BS && BS.ball3(b)) || bkBall(b)); // 야구장·농구장: 상대 대신 공을 추적
     if (bl) { const yw = Math.hypot(bl.x - P.x, bl.y - P.y) > 8 ? Math.atan2(bl.y - P.y, bl.x - P.x) : (S.lastYaw || 0); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, bl.x, bl.y, bl.z, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; }
     if (S.lockOn && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
@@ -333,7 +349,8 @@ const DirectPlay = (() => {
   let tex = null, tctx = null, lift = null, lctx = null;
   function floorArea(b) { // 야구장: 구장 전체를 바닥 그림으로 (배율 1). 크기가 바뀌면 캔버스 다시 만듦
     const D = b.bsb, Wd = D && D.on && window.BASEBALL ? BASEBALL.S.world : null;
-    const n = Wd ? [0, 0, Wd.w, Wd.h, 1] : [TX0.x, TX0.y, TX0.w, TX0.h, TR];
+    const Dw = !Wd && b.dg && b.dg.on && window.DODGE ? DODGE.S.world : null; // 피구: 코트 전체(760×520)
+    const n = Wd ? [0, 0, Wd.w, Wd.h, 1] : Dw ? [0, 0, Dw.w, Dw.h, 1] : [TX0.x, TX0.y, TX0.w, TX0.h, TR];
     if (n[0] !== TX.x || n[1] !== TX.y || n[2] !== TX.w || n[3] !== TX.h || n[4] !== FR) { TX.x = n[0]; TX.y = n[1]; TX.w = n[2]; TX.h = n[3]; FR = n[4]; tex = lift = rest = null; bigPool.length = 0; }
   }
   function drawFloorTex(b) {
@@ -577,7 +594,8 @@ const DirectPlay = (() => {
     bbq: { sky: 'evening', wall: 'iron', wh: 23, ground: '#3a2a20', fog: '200,120,90' },
     classroom: { sky: 'classroom', wall: 'classwall', wh: 87, ground: '#3a2e22', fog: '120,110,90' },
     snake: { sky: 'night', wall: null, ground: '#14121c', fog: '20,18,28' },
-    basket: { sky: 'gym', wall: 'gymmat', wh: 60, ground: '#30343c', fog: '60,66,80' }, // 실내 체육관 (천장 조명)
+    basket: { sky: 'gym', wall: 'gymmat', wh: 60, ground: '#30343c', fog: '60,66,80' },
+    dodge: { sky: 'gym', wall: 'gymmat', wh: 60, ground: '#30343c', fog: '60,66,80' }, // 피구대전: 체육관 // 실내 체육관 (천장 조명)
     baseball: { sky: 'stadium', wall: null, ground: '#232634', fog: '150,190,220' }, // 펜스·관중석·백스톱은 drawBsbWalls
   };
   const envOf = b => ENV[b.stageId] || ENV.arena;
@@ -1001,7 +1019,11 @@ const DirectPlay = (() => {
     return 0;
   }
   // ---------- 그리기 ----------
-  function draw(ctx, b, dt, view) {
+  function draw(ctx, b, dt, view) { // 피구: 외곽 벽·경기장 = 코트 전체 (그리는 동안만 AR 바꿈)
+    const wr = DGX(b) ? DODGE.wallRect : null, ar0 = wr ? { x: AR.x, y: AR.y, w: AR.w, h: AR.h } : null; if (wr) Object.assign(AR, wr);
+    try { draw0(ctx, b, dt, view); } finally { if (ar0) Object.assign(AR, ar0); }
+  }
+  function draw0(ctx, b, dt, view) {
     S.battle = b; S.cv = ctx.canvas; b._dp = true; b.bsbView = view; // _dp·bsbView: 그리기 전용 표시 (야구장 HUD·방망이)
     updateCam(b, dt, view);
     ctx.imageSmoothingEnabled = false;
@@ -1029,6 +1051,7 @@ const DirectPlay = (() => {
     if (b.balls && !EXCLUDE.has(b.stageId)) for (const bl of b.balls) { const q = cam(bl.x, bl.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], ball: bl }); }
     for (const g of goalItems(b)) items.push(g);
     const k3 = bkBall(b); if (k3) { const q = cam(k3.x, k3.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - (k3.held ? 1 : 0), ball: { x: k3.x, y: k3.y, z: k3.z, r: 4, color: '#e8792a' } }); } // 농구공
+    const Gd = DGX(b); if (Gd) for (const bl of Gd.ball3(b)) { const q = cam(bl.x, bl.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - (bl.held ? 1 : 0), ball: bl }); } // 피구공 (붉은색 = 지금 캐치 가능)
     const b3 = window.BASEBALL && BASEBALL.ball3(b); if (b3) { const q = cam(b3.x, b3.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - (b3.held ? 1 : 0), ball: { x: b3.x, y: b3.y, z: b3.z, r: 2.4, color: '#f4f4f0' } }); } // 야구공
     if (b.claw && b.claw.crane) { const Cr = b.claw.crane; items.push({ z: cam(Cr.x, Cr.y, 0)[2] - 1, claw: Cr });
       for (const [x, y] of [[AR.x + 4, AR.y + 4], [AR.x + AR.w - 4, AR.y + 4], [AR.x + 4, AR.y + AR.h - 4], [AR.x + AR.w - 4, AR.y + AR.h - 4]]) { const q = cam(x, y, 0); if (q[2] > CAM.near) items.push({ z: q[2], post: [x, y, Cr] }); } }
@@ -1047,14 +1070,14 @@ const DirectPlay = (() => {
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
       if (it.claw) { drawClaw(ctx, it.claw); continue; }
       if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
-      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
+      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; if (it.o.hl) ctx.filter = OUTL; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; ctx.filter = 'none'; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, gz = groundZ(b, u), p = proj(u.x, u.y, gz); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
       const w = BB.w * p.s * v.sq, h = BB.h * p.s;
       let a = 1;
       if (isP && eRect && Math.abs(eRect.x - p.x) < 34 * p.s * 0.5 + eRect.w && eRect.y < p.y && eRect.y > p.y - 58 * p.s) a = 0.55; // 내 캐릭터가 상대를 가리면 반투명
-      ctx.globalAlpha = a; ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1;
+      const hl = Gd && Gd.holder(b, u); if (hl) ctx.filter = OUTL; ctx.globalAlpha = a; ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1; if (hl) ctx.filter = 'none';
       if (u.wSwing && !u.dead) drawSwing(ctx, u, b);
       if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u) + gz); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
@@ -1089,6 +1112,7 @@ const DirectPlay = (() => {
   // 야구: 공을 쥔 내 투수 → 화면 가운데 조준점. 동료 수비수에 맞으면 클릭/탭으로 송구 (모바일·잠금 없는 마우스는 누른 자리의 동료)
   function drawAim(ctx, b, P, view, dt) {
     S.fproj = []; S.aimId = null; if (S.thrFlash > 0) S.thrFlash -= dt;
+    S.dproj = null; S.dgAim = null; if (dgCtx(b) === 'hold') return drawDgAim(ctx, b, view);
     if (bsbCtx(b, P) !== 'th') return;
     const D = b.bsb, ax = W / 2, ay = view.y + view.h * 0.45; let best = null, bd = 1e9;
     for (const n of D.fielders) { if (n.team !== P.team) continue; const q = proj(n.x, n.y, 18); if (!q || q.x < 0 || q.x > W || q.y < view.y || q.y > view.y + view.h) continue;
@@ -1104,7 +1128,22 @@ const DirectPlay = (() => {
     ctx.fillStyle = 'rgba(14,15,24,0.82)'; ctx.fillRect(W / 2 - w / 2, ay + 22, w, 16); ctx.fillStyle = col; ctx.fillText(msg, W / 2, ay + 30);
     ctx.restore();
   }
+  function drawDgAim(ctx, b, view) { // 피구: 화면 가운데 조준점. 상대 = 슛 게이지(빨강), 팀원 = 패스(하늘색), 겹치면 상대 우선
+    const G = DGX(b), ax = W / 2, ay = view.y + view.h * 0.45; let bf = null, bm = null, df = 1e9, dm = 1e9; S.dproj = [];
+    for (const c of G.cands(b)) { const e = c.e, q = proj(e.x, e.y, 20 * (e.size || (e.maxHp != null ? 1 : 0.8))); if (!q || q.x < 0 || q.x > W || q.y < view.y || q.y > view.y + view.h) continue;
+      const f = { key: c.key, foe: c.foe, x: q.x, y: q.y, name: e.def.name }; S.dproj.push(f); const r = Math.max(14, 16 * q.s), d = Math.hypot(q.x - ax, q.y - ay);
+      if (d < r) { if (c.foe && d < df) { df = d; bf = f; } else if (!c.foe && d < dm) { dm = d; bm = f; } } }
+    const best = bf || bm; S.dgAim = best;
+    ctx.save(); ctx.lineWidth = 1.5;
+    for (const f of S.dproj) { ctx.strokeStyle = best === f ? (f.foe ? '#ff5a4a' : '#9ff0ff') : f.foe ? 'rgba(255,120,110,0.45)' : 'rgba(160,240,255,0.4)'; ctx.beginPath(); ctx.arc(f.x, f.y, 9, 0, TAU); ctx.stroke(); }
+    const col = best ? (best.foe ? '#ff5a4a' : '#9ff0ff') : 'rgba(255,255,255,0.85)'; ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(ax, ay, 7, 0, TAU); ctx.moveTo(ax - 13, ay); ctx.lineTo(ax - 4, ay); ctx.moveTo(ax + 4, ay); ctx.lineTo(ax + 13, ay); ctx.moveTo(ax, ay - 13); ctx.lineTo(ax, ay - 4); ctx.moveTo(ax, ay + 4); ctx.lineTo(ax, ay + 13); ctx.stroke();
+    if (best) { ctx.font = 'bold 10px "Galmuri11", "Malgun Gothic", sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; const msg = best.foe ? `클릭: ${best.name}에게 슛 (게이지)` : `클릭: ${best.name}에게 패스`, w = ctx.measureText(msg).width + 14;
+      ctx.fillStyle = 'rgba(14,15,24,0.82)'; ctx.fillRect(W / 2 - w / 2, ay + 22, w, 16); ctx.fillStyle = col; ctx.fillText(msg, W / 2, ay + 30); }
+    ctx.restore();
+  }
   function fresh() { tex = lift = rest = null; tctx = lctx = rctx = null; for (const P of [bigPool, opool, ppool, pool, fpool, mpool]) P.length = 0; } // 녹화: 중간 캔버스 새로 만들기
   return { supported, begin, fresh, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
+    get dproj() { return S.dproj ? S.dproj.map(f => ({ ...f })) : null; }, // 피구 조준 후보 화면 좌표 (확인용, 읽기 전용)
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();

@@ -514,7 +514,7 @@
     const camView = { x: 0, y: hudH + 4, w: W, h: Math.max(120, (botTop || 560) - hudH - 8) };
     if (battle && battle.escape) ESCAPE.updateCam(battle, window.ESC_CAM || 'fit', dt, camView);
     else if (battle && window.BASEBALL) { if (!dpOn) BASEBALL.updateCam(battle, dt, camView); else if (battle._bsbCam) { battle.cam = null; battle._bsbCam = false; } } // 야구장 카메라 (js/baseball.js, 시각 전용). 직접 플레이는 3D 카메라
-    if (battle && window.DODGE && !battle.escape) DODGE.updateCam(battle, dt, camView); // 피구대전 카메라 (js/dodge.js, 일반 시점 전용)
+    if (battle && window.DODGE && !battle.escape) { if (!dpOn) DODGE.updateCam(battle, dt, camView); else if (battle._dgCam) { battle.cam = null; battle._dgCam = false; } } // 피구대전 카메라 (js/dodge.js, 일반 시점 전용). 직접 플레이는 3D 카메라
     cineSync(); // 홈런 시네마틱 바 (DOM, HUD·하단 UI 위)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
     camLast = camView; const vidD = VID.active && VID.active.direct;
