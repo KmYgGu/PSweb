@@ -10,8 +10,8 @@
  * 그리기·카메라는 전투 상태를 바꾸지 않고 Math.random 도 부르지 않음 (그리는 동안 잠깐 바꾸는 u.lookUp·u.facing 은 바로 되돌림) */
 const DirectPlay = (() => {
   const EXCLUDE = new Set(['basket', 'baseball']); // 특수 규칙 스테이지 → 일반 시점
-  const CAM = { dist: 100, h: 80, side: 22, pitch: 0.45, f: 300, near: 6, wallH: 34, bldH: 34 };
-  const PITCH_UP = -0.38; // 올려다보기 한계 (기본 0.45 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
+  const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
+  const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
   const FLIP_CD = 0.45; // 반전 쿨타임 (전투 시간 초)
   const RES = 2, TR = 2; // 화면 내부 배율 (main.js RES) · 바닥 그림 배율
   const TX = { x: AR.x - 30, y: AR.y - 30, w: AR.w + 60, h: AR.h + 60 }; // 바닥 그림 영역 (경기장 + 바깥 테두리)
@@ -429,25 +429,25 @@ const DirectPlay = (() => {
   // ---------- 스테이지별 하늘(천장)·외곽 벽 (화면 전용, 스테이지마다 오프스크린 캔버스에 한 번만 그려 캐시) ----------
   const hh1 = n => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); }; // 결정적 해시 (시뮬 난수 안 씀)
   const ENV = { // sky: 파노라마 종류, wall: 외곽 벽 무늬(null = 벽 없음), wh: 벽 높이, ground: 경기장 밖 바닥색, fog: 지평선 안개색
-    arena: { sky: 'dusk', wall: 'stone', wh: 34, ground: '#2a2420', fog: '120,90,110' },
+    arena: { sky: 'dusk', wall: 'stone', wh: 50, ground: '#2a2420', fog: '120,90,110' },
     island: { sky: 'day', wall: null, ground: '#2a7ab0', fog: '170,210,235' },
-    city: { sky: 'city', wall: 'concrete', wh: 30, ground: '#3a3a40', fog: '150,170,190' },
-    ballInterior: { sky: 'capsule', wall: 'capsule', wh: 40, ground: '#202024', fog: '60,30,34' },
-    ballPit: { sky: 'play', wall: 'padded', wh: 34, ground: '#d8d0e8', fog: '230,220,240' },
-    iceCave: { sky: 'cave', wall: 'ice', wh: 34, ground: '#0e1824', fog: '20,40,60' },
-    trampoline: { sky: 'gym', wall: 'gymmat', wh: 36, ground: '#30343c', fog: '60,66,80' },
-    race: { sky: 'day', wall: 'tire', wh: 18, ground: '#3a6a2a', fog: '170,210,235' },
-    tower: { sky: 'high', wall: 'glass', wh: 22, ground: '#7a96b4', fog: '190,215,235' },
-    street: { sky: 'night', wall: 'brick', wh: 44, ground: '#1a1a20', fog: '30,30,50' },
-    subway: { sky: 'tunnel', wall: 'tile', wh: 50, ground: '#141418', fog: '20,20,24' },
-    idol: { sky: 'concert', wall: 'curtain', wh: 50, ground: '#0a0810', fog: '30,10,40' },
-    diving: { sky: 'day', wall: 'pooltile', wh: 26, ground: '#cfd8e0', fog: '190,225,245' },
-    soccer: { sky: 'stadium', wall: 'adboard', wh: 18, ground: '#2a6a2a', fog: '150,190,220' },
-    fastfood: { sky: 'diner', wall: 'interior', wh: 56, ground: '#2a2026', fog: '80,50,40' },
-    claw: { sky: 'arcade', wall: 'glasscase', wh: 40, ground: '#1a1028', fog: '50,20,70' },
-    bey: { sky: 'arenaNight', wall: 'steel', wh: 24, ground: '#101418', fog: '30,34,50' },
-    bbq: { sky: 'evening', wall: 'iron', wh: 16, ground: '#3a2a20', fog: '200,120,90' },
-    classroom: { sky: 'classroom', wall: 'classwall', wh: 60, ground: '#3a2e22', fog: '120,110,90' },
+    city: { sky: 'city', wall: 'concrete', wh: 44, ground: '#3a3a40', fog: '150,170,190' },
+    ballInterior: { sky: 'capsule', wall: 'capsule', wh: 58, ground: '#202024', fog: '60,30,34' },
+    ballPit: { sky: 'play', wall: 'padded', wh: 50, ground: '#d8d0e8', fog: '230,220,240' },
+    iceCave: { sky: 'cave', wall: 'ice', wh: 50, ground: '#0e1824', fog: '20,40,60' },
+    trampoline: { sky: 'gym', wall: 'gymmat', wh: 52, ground: '#30343c', fog: '60,66,80' },
+    race: { sky: 'day', wall: 'tire', wh: 26, ground: '#3a6a2a', fog: '170,210,235' },
+    tower: { sky: 'high', wall: 'glass', wh: 32, ground: '#7a96b4', fog: '190,215,235' },
+    street: { sky: 'night', wall: 'brick', wh: 64, ground: '#1a1a20', fog: '30,30,50' },
+    subway: { sky: 'tunnel', wall: 'tile', wh: 72, ground: '#141418', fog: '20,20,24' },
+    idol: { sky: 'concert', wall: 'curtain', wh: 72, ground: '#0a0810', fog: '30,10,40' },
+    diving: { sky: 'day', wall: 'pooltile', wh: 38, ground: '#cfd8e0', fog: '190,225,245' },
+    soccer: { sky: 'stadium', wall: 'adboard', wh: 26, ground: '#2a6a2a', fog: '150,190,220' },
+    fastfood: { sky: 'diner', wall: 'interior', wh: 81, ground: '#2a2026', fog: '80,50,40' },
+    claw: { sky: 'arcade', wall: 'glasscase', wh: 58, ground: '#1a1028', fog: '50,20,70' },
+    bey: { sky: 'arenaNight', wall: 'steel', wh: 35, ground: '#101418', fog: '30,34,50' },
+    bbq: { sky: 'evening', wall: 'iron', wh: 23, ground: '#3a2a20', fog: '200,120,90' },
+    classroom: { sky: 'classroom', wall: 'classwall', wh: 87, ground: '#3a2e22', fog: '120,110,90' },
     snake: { sky: 'night', wall: null, ground: '#14121c', fog: '20,18,28' },
   };
   const envOf = b => ENV[b.stageId] || ENV.arena;
