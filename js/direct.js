@@ -21,6 +21,7 @@ const DirectPlay = (() => {
 
   // ---------- 설정 ----------
   const hasGyroApi = () => typeof window.DeviceOrientationEvent !== 'undefined' || typeof window.DeviceMotionEvent !== 'undefined';
+  const phoneLike = () => { try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }; // 주 입력이 손가락인 기기 (PC·노트북 = 아님 → 자이로 무시)
   const touchDevice = () => { try { return matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0; } catch (e) { return false; } };
   function requestGyro() { // iOS 13+: 누른 순간 안에서 권한 요청. 다른 기기는 바로 허용
     const reqs = [];
@@ -39,7 +40,7 @@ const DirectPlay = (() => {
   // ---------- 상태 ----------
   const S = {
     active: false, battle: null, init: false, px: 0, py: 0, autoYaw: 0, userYaw: 0, userPitch: 0, inYaw: 0, inPitch: 0, lastInp: -9,
-    flipReq: false, lastFlipT: -9, flash: 0, locked: false, space: false, mouseUser: false, popup: null, gyroSeen: 0, motionT: 0, ori: null, prevAlpha: null,
+    flipReq: false, lastFlipT: -9, flash: 0, locked: false, space: false, mouseUser: false, popup: null, gyroSeen: 0, motionT: 0, ori: null, prevAlpha: null, gyroT0: 0, gcal: { n: 0, y: 0, p: 0 }, lockT: 0,
     looks: new WeakMap(), pf: { back: true, facing: 1 },
   };
   const $ = s => document.querySelector(s);
@@ -64,7 +65,7 @@ const DirectPlay = (() => {
     try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => { S.lockFail = true; }); } catch (e) { S.lockFail = true; } // 실패(헤드리스·Esc 직후 등) → 잠금 없이 클릭 = 반전
   }
   function unlock() { if (document.pointerLockElement && document.exitPointerLock) try { document.exitPointerLock(); } catch (e) { /* 무시 */ } }
-  document.addEventListener('pointerlockchange', () => { S.locked = !!stageEl() && document.pointerLockElement === stageEl(); if (S.locked) S.lockFail = false; });
+  document.addEventListener('pointerlockchange', () => { S.locked = !!stageEl() && document.pointerLockElement === stageEl(); if (S.locked) { S.lockFail = false; S.lockT = now(); } });
   document.addEventListener('pointerlockerror', () => { S.lockFail = true; });
   document.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') S.mouseUser = true; else if (e.pointerType === 'touch') S.mouseUser = false; }, true);
   function onDown(e) {
@@ -82,9 +83,12 @@ const DirectPlay = (() => {
   document.addEventListener('pointerdown', onDown);
   document.addEventListener('mousemove', e => {
     if (!S.active || !S.locked) return;
+    if (now() - S.lockT < 0.15) return; // 잠금 직후 첫 이동값은 튐 (Chrome)
     const k = Settings.get('mouseSens') || 1, mx = e.movementX || 0, my = e.movementY || 0;
-    S.inYaw += mx * 0.0045 * k; S.inPitch += my * 0.003 * k;
-    if (Math.abs(mx) + Math.abs(my) > 0.5) S.lastInp = now();
+    if (Math.abs(mx) > 160 || Math.abs(my) > 160) return; // 한 번에 크게 튀는 값 무시
+    if (Math.abs(mx) + Math.abs(my) < 1) return;
+    S.inYaw += mx * 0.0045 * k; S.inPitch += my * 0.0018 * k; // 위아래는 덜 민감하게 (클릭하며 살짝 움직여도 하늘로 튀지 않게)
+    S.lastInp = now();
   });
   const isSpace = e => e.code === 'Space' || e.key === ' ';
   addEventListener('keydown', e => {
@@ -101,7 +105,7 @@ const DirectPlay = (() => {
   // 자이로: devicemotion 회전 속도를 지구 위쪽 축으로 투영 = 좌우로 돌린 만큼 (폰을 세우든 눕히든 같게). 회전 속도가 없으면 방위각(alpha) 차이로
   addEventListener('deviceorientation', e => {
     if (e.beta == null) return; S.ori = { b: e.beta, g: e.gamma || 0 }; S.gyroSeen = now();
-    if (!S.active || Settings.get('gyro') !== true || now() - S.motionT < 1 || e.alpha == null) { S.prevAlpha = e.alpha; return; }
+    if (!gyroOn() || now() - S.motionT < 1 || e.alpha == null || now() - S.gyroT0 < 0.6) { S.prevAlpha = e.alpha; return; }
     if (S.prevAlpha != null) { const d = wrap((e.alpha - S.prevAlpha) * Math.PI / 180); if (Math.abs(d) > 0.002 && Math.abs(d) < 0.6) { S.inYaw -= d * (Settings.get('gyroSens') || 1); if (Math.abs(d) > 0.01) S.lastInp = now(); } }
     S.prevAlpha = e.alpha;
   });
@@ -109,11 +113,14 @@ const DirectPlay = (() => {
   addEventListener('devicemotion', e => {
     const r = e.rotationRate; if (!r || r.alpha == null) return;
     const t = now(), dt = clamp(t - (motionPrev || t), 0, 0.1); motionPrev = t; S.motionT = t; S.gyroSeen = t;
-    if (!S.active || Settings.get('gyro') !== true || !dt) return;
+    if (!gyroOn() || !dt) return;
     const o = S.ori || { b: 90, g: 0 }, b = o.b * Math.PI / 180, g = o.g * Math.PI / 180;
     const up = [-Math.sin(g) * Math.cos(b), Math.sin(b), Math.cos(g) * Math.cos(b)]; // 기기 좌표계의 지구 위쪽
-    const rate = (r.beta || 0) * up[0] + (r.gamma || 0) * up[1] + (r.alpha || 0) * up[2]; // 도/초, 위에서 봐서 반시계(왼쪽으로 돎) = +
-    const pr = r.beta || 0; // 기기 가로축 회전 = 위아래 (윗변을 뒤로 젖히면 올려다봄)
+    let rate = (r.beta || 0) * up[0] + (r.gamma || 0) * up[1] + (r.alpha || 0) * up[2]; // 도/초, 위에서 봐서 반시계(왼쪽으로 돎) = +
+    let pr = r.beta || 0; // 기기 가로축 회전 = 위아래 (윗변을 뒤로 젖히면 올려다봄)
+    const G = S.gcal; // 기준값: 켠 뒤(전투 시작·설정 켜기) 0.6초 동안 가만히 있을 때의 값(센서 치우침)을 모아 빼 줌 → 가만히 든 폰이 저절로 돌지 않게
+    if (t - S.gyroT0 < 0.6) { if (Math.abs(rate) < 10 && Math.abs(pr) < 10) { G.n++; G.y += rate; G.p += pr; } return; }
+    if (G.n) { rate -= G.y / G.n; pr -= G.p / G.n; }
     if (Math.abs(pr) >= 6) { S.inPitch += pr * Math.PI / 180 * dt * (Settings.get('gyroSens') || 1) * 0.8; if (Math.abs(pr) > 14) S.lastInp = t; }
     if (Math.abs(rate) < 4) return; // 손떨림
     S.inYaw -= rate * Math.PI / 180 * dt * (Settings.get('gyroSens') || 1);
@@ -137,7 +144,11 @@ const DirectPlay = (() => {
   function toast(msg) { const el = $('#rpToast'); if (!el) return; el.textContent = msg; el.classList.remove('hidden'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.add('hidden'), 1800); }
 
   // ---------- 전투 시작/상태 ----------
+  function gyroOn() { return S.active && Settings.get('gyro') === true && phoneLike(); }
+  function gyroReset() { S.gyroT0 = now(); S.gcal = { n: 0, y: 0, p: 0 }; S.prevAlpha = null; }
+  Settings.on((k, v) => { if (k === 'gyro' && v) gyroReset(); });
   function begin(b) { // main.js startBattle (실전, 직접 플레이 켜짐, 지원 스테이지)
+    gyroReset();
     S.battle = b; S.init = false; S.userYaw = S.userPitch = S.inYaw = S.inPitch = 0; S.lastFlipT = -9; S.flipReq = false; S.flash = 0; S.looks = new WeakMap();
     if (touchDevice() && hasGyroApi() && !Settings.has('gyro')) askGyro();
     else if (Settings.get('gyro') === true && typeof window.DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && now() - S.gyroSeen > 2) { // iOS: 권한을 이번 실행에서 다시 받아야 할 때
@@ -170,8 +181,9 @@ const DirectPlay = (() => {
       const d = wrap(Math.atan2(E.y - P.y, E.x - P.x) - S.autoYaw);
       S.autoYaw = wrap(S.autoYaw + clamp(d * (1 - Math.exp(-3.2 * dt)), -2.6 * dt, 2.6 * dt));
     }
-    S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, -0.95, 0.32); // 위로 약 29° 까지 올려다보기 (크레인 등) S.inYaw = S.inPitch = 0;
-    if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; S.userPitch -= S.userPitch * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
+    S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, -0.95, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 위로 약 29° 까지 올려다보기 (크레인 등)
+    if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
+    if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     C.yaw = S.autoYaw + S.userYaw; C.pitch = CAM.pitch + S.userPitch;
     const fx = Math.cos(C.yaw), fy = Math.sin(C.yaw), rx = -fy, ry = fx;
     C.x = S.px - fx * CAM.dist - rx * CAM.side; C.y = S.py - fy * CAM.dist - ry * CAM.side; C.z = CAM.h;
@@ -586,5 +598,6 @@ const DirectPlay = (() => {
     }
   }
 
-  return { supported, begin, setActive, blocking, takeFlip, flipped, player, draw, EXCLUDE, FLIP_CD, get active() { return S.active; } };
+  return { supported, begin, setActive, blocking, takeFlip, flipped, player, draw, EXCLUDE, FLIP_CD, get active() { return S.active; },
+    get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();
