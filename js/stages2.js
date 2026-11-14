@@ -328,6 +328,7 @@
         const g = ctx.createLinearGradient(AR.x, 0, AR.x + AR.w, 0); g.addColorStop(0, `rgba(255,190,90,${a * 1.6})`); g.addColorStop(1, `rgba(255,190,90,${a * 0.4})`);
         ctx.fillStyle = g; ctx.fillRect(AR.x, T.y + 10, AR.w, T.h - 20);
       }
+      if (!thumb && b._v3d) SUB.tunnel3D(b, sb, b._v3d);
       if (!(thumb || SUB.present(sb))) return;
       ctx.save(); ctx.beginPath(); ctx.rect(AR.x, AR.y, AR.w, AR.h); ctx.clip();
       const y = T.y, h = T.h, L = sb.L;
@@ -374,8 +375,23 @@
       }
       ctx.restore();
     },
+    tunnel3D(b, sb, V) { // 직접 플레이: 선로 좌우 끝 = 아치형 터널 입구 + 바깥으로 이어지는 어두운 터널 벽 (고정)
+      const T = sb.S.train, y0 = T.y - 8, y1 = T.y + T.h + 8, W = y1 - y0, H = 72, LEN = 170;
+      for (const [x, out] of [[AR.x, -1], [AR.x + AR.w, 1]]) {
+        V.wall({ x1: x, y1: y0, x2: x, y2: y1, h: H, draw: (c, L) => { // 입구: 콘크리트 + 아치 구멍(투명 → 안쪽 터널이 보임)
+          c.fillStyle = '#4a4a52'; c.fillRect(0, 0, L, H); c.fillStyle = '#3a3a40'; for (let i = 0; i < L; i += 12) c.fillRect(i, 0, 1, H);
+          c.fillStyle = '#e8c840'; c.fillRect(0, 4, L, 3); c.fillStyle = '#2f7ad0'; c.fillRect(0, 8, L, 2);
+          const r = (L - 16) / 2, cy = H - 44; c.save(); c.globalCompositeOperation = 'destination-out'; c.beginPath(); c.moveTo(8, H); c.lineTo(8, cy); c.arc(L / 2, cy, r, Math.PI, 0); c.lineTo(L - 8, H); c.closePath(); c.fill(); c.restore();
+          c.strokeStyle = '#8a8a92'; c.lineWidth = 3; c.beginPath(); c.moveTo(8, H); c.lineTo(8, cy); c.arc(L / 2, cy, r, Math.PI, 0); c.lineTo(L - 8, H); c.stroke(); } });
+        for (const yy of [y0, y1]) V.wall({ x1: x, y1: yy, x2: x + out * LEN, y2: yy, h: H - 8, draw: (c, L) => { // 터널 옆벽: 어둡게, 안쪽으로 갈수록 더 어둡게 + 작은 등
+          const g = c.createLinearGradient(0, 0, L, 0); g.addColorStop(0, '#2a2a30'); g.addColorStop(1, '#060608'); c.fillStyle = g; c.fillRect(0, 0, L, H);
+          for (let i = 20; i < L; i += 40) { c.fillStyle = `rgba(255,220,150,${0.6 * (1 - i / L)})`; c.fillRect(i, 12, 6, 3); }
+          c.fillStyle = 'rgba(0,0,0,0.5)'; c.fillRect(0, H - 14, L, 6); } });
+        V.box({ x0: Math.min(x, x + out * LEN), y0, z0: H - 10, x1: Math.max(x, x + out * LEN), y1, z1: H - 6, col: '#101014' }); // 아치 천장
+      }
+    },
     walls3D(b, sb, V, x0, door) {
-      const T = sb.S.train, L = sb.L, WH = 44, xa = Math.max(x0, AR.x), xb = Math.min(x0 + L, AR.x + AR.w); if (xb - xa < 1) return;
+      const T = sb.S.train, L = sb.L, WH = 44, xa = Math.max(x0, AR.x - 170), xb = Math.min(x0 + L, AR.x + AR.w + 170); // 터널 안까지 보임 if (xb - xa < 1) return;
       for (const side of ['top', 'bot']) {
         const wy = side === 'top' ? T.y : T.y + T.h;
         V.wall({ x1: xa, y1: wy, x2: xb, y2: wy, h: WH, draw: c => { c.translate(-(xa - x0), 0);
@@ -393,7 +409,7 @@
             for (const px of [d[0] - sl, d[0] + half + sl]) { c.fillStyle = '#e0e4ea'; c.fillRect(px, 3, half, WH - 3); c.fillStyle = 'rgba(159,216,240,0.5)'; c.fillRect(px + 5, 9, half - 10, 14); }
             c.fillStyle = '#e07a3a'; c.fillRect(d[0] - sl + half - 2, 3, 2, WH - 3); c.fillRect(d[0] + half + sl, 3, 2, WH - 3); } } });
       }
-      for (const [ex, front] of [[x0, false], [x0 + L, true]]) if (ex >= AR.x && ex <= AR.x + AR.w) // 앞뒤 끝 (운전실 + 헤드라이트)
+      for (const [ex, front] of [[x0, false], [x0 + L, true]]) if (ex >= AR.x - 170 && ex <= AR.x + AR.w + 170) // 앞뒤 끝 (운전실 + 헤드라이트)
         V.wall({ x1: ex, y1: T.y, x2: ex, y2: T.y + T.h, h: WH, draw: c => { c.fillStyle = '#8a929e'; c.fillRect(0, 0, T.h, WH); c.fillStyle = 'rgba(40,50,70,0.8)'; c.fillRect(14, 6, T.h - 28, 16);
           c.fillStyle = '#2f7ad0'; c.fillRect(0, WH - 14, T.h, 3); if (front) { c.fillStyle = '#fff6c8'; c.fillRect(12, WH - 9, 10, 5); c.fillRect(T.h - 22, WH - 9, 10, 5); } } });
     },

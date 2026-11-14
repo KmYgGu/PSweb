@@ -392,8 +392,9 @@
     drawUnder(ctx, b, thumb) {
       const S = b.jko; if (!S || thumb) return;
       for (const P of S.fires) drawFire(ctx, P, b);
-      for (const L of S.lamps) if (L.state === 'wait' || !L.done) drawLamp(ctx, L, b);
-      for (const T of S.towers) drawTower(ctx, T, b);
+      const V = b._v3d; // 직접 플레이: 램프·타워 몸통은 제자리에 세운 판, 그림자·빛·회전 화살표는 바닥
+      for (const L of S.lamps) if (L.state === 'wait' || !L.done) { if (V) { drawLamp(ctx, L, b, 'floor'); V.stand({ x: L.x, y: L.y, w: 40, h: 50, draw: c => drawLamp(c, L, b, 'up') }); } else drawLamp(ctx, L, b); }
+      for (const T of S.towers) { if (V) { drawTower(ctx, T, b, 'floor'); V.stand({ x: T.x, y: T.y, w: 60, h: 140, draw: c => drawTower(c, T, b, 'up') }); } else drawTower(ctx, T, b); }
     },
     drawOver(ctx, b) {
       const S = b.jko; if (!S) return;
@@ -433,10 +434,11 @@
       ctx.globalAlpha = Math.min(1, k * 1.5); ctx.fillStyle = i % 2 ? '#ff9a3a' : '#ffc860'; ctx.fillRect(X + ox - 1, Math.round(Y - h), 3, Math.round(h)); }
     ctx.restore();
   }
-  function drawTower(ctx, T, b) {
+  function drawTower(ctx, T, b, part) { // part: 'floor' = 그림자·화살표만, 'up' = 몸통만, 없음 = 전부
     const fade = D.tower.fade, rise = Math.min(1, T.t / fade), end = Math.min(1, (T.dur - T.t) / fade), X = Math.round(T.x + (T.pushT > 0 ? Math.sin(b.time * 60) : 0)), Y = Math.round(T.y), H = Math.round(52 * rise * end);
     ctx.save();
-    ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(X, Y + 2, 22, 8, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+    if (part !== 'up') { ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(X, Y + 2, 22, part ? 12 : 8, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+    if (part === 'floor') { if (H > 2) { ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffc070'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X, Y, 28, 28, 0, T.ang - 0.9 * T.sgn, T.ang, T.sgn < 0); ctx.stroke(); } ctx.restore(); return; }
     if (H > 2) {
       ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 12, Y - H, 24, H);      // 기둥 (덩굴) — 기존 픽셀 타워를 약 2배로
       ctx.fillStyle = '#3e3230'; ctx.fillRect(X - 10, Y - H, 20, H - 2);
@@ -451,14 +453,15 @@
       ctx.fillStyle = g; ctx.fillRect(X - 10 + fx, hy - 4, 6, 4); ctx.fillRect(X + 4 + fx, hy - 4, 6, 4); ctx.fillRect(X - 8 + fx, hy + 4, 16, 4);
       ctx.fillStyle = '#5a1a10'; ctx.fillRect(X - 4 + fx, hy + 4, 2, 2); ctx.fillRect(X + 2 + fx, hy + 4, 2, 2);
       // 회전 방향 화살표
-      ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffc070'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X, Y - 2, 28, 10, 0, T.ang - 0.9 * T.sgn, T.ang, T.sgn < 0); ctx.stroke();
+      if (!part) { ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffc070'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(X, Y - 2, 28, 10, 0, T.ang - 0.9 * T.sgn, T.ang, T.sgn < 0); ctx.stroke(); }
     }
     ctx.restore();
   }
-  function drawLamp(ctx, L, b) {
+  function drawLamp(ctx, L, b, part) {
     const X = Math.round(L.x), Y = Math.round(L.y), pul = L.state === 'wait' ? Math.min(1, L.t / L.delay) : 1, bob = Math.round(Math.sin(b.time * 4) * 1.5);
     ctx.save();
-    ctx.globalAlpha = 0.25 + 0.35 * pul; ctx.fillStyle = '#ffd070'; ctx.beginPath(); ctx.ellipse(X, Y, 10 + 6 * pul, 4 + 2 * pul, 0, 0, TAU); ctx.fill();
+    if (part !== 'up') { ctx.globalAlpha = 0.25 + 0.35 * pul; ctx.fillStyle = '#ffd070'; ctx.beginPath(); ctx.ellipse(X, Y, 10 + 6 * pul, (4 + 2 * pul) * (part ? 2 : 1), 0, 0, TAU); ctx.fill(); }
+    if (part === 'floor') { ctx.restore(); return; }
     ctx.globalAlpha = 1; const y0 = Y - 12 + bob;
     ctx.fillStyle = '#2c1e1d'; ctx.fillRect(X - 7, y0 - 1, 14, 7); ctx.fillRect(X - 3, y0 - 4, 6, 3); ctx.fillRect(X + 6, y0, 4, 2); ctx.fillRect(X - 10, y0 + 1, 4, 3);
     ctx.fillStyle = '#c89a3a'; ctx.fillRect(X - 6, y0, 12, 5); ctx.fillStyle = '#ffe08a'; ctx.fillRect(X - 5, y0, 6, 2); ctx.fillStyle = '#8a6020'; ctx.fillRect(X - 6, y0 + 4, 12, 1);

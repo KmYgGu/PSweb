@@ -11,6 +11,7 @@
 const DirectPlay = (() => {
   const EXCLUDE = new Set(['basket', 'baseball']); // 특수 규칙 스테이지 → 일반 시점
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
+  const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
   const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
   const FLIP_CD = 0.45; // 반전 쿨타임 (전투 시간 초)
   const RES = 2, TR = 2; // 화면 내부 배율 (main.js RES) · 바닥 그림 배율
@@ -71,6 +72,11 @@ const DirectPlay = (() => {
   document.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') S.mouseUser = true; else if (e.pointerType === 'touch') S.mouseUser = false; }, true);
   function onDown(e) {
     if (!S.active || S.popup) return;
+    if (e.pointerType === 'mouse' && e.button === 2) { if (!e.target.closest(UI_SEL)) { S.lockOn = 'mouse'; e.preventDefault(); } return; } // 오른쪽 버튼 누르는 동안 상대 추적
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') { // 모바일: 짧게 탭 = 반전(손 뗄 때), 길게 누름(0.45초) = 누르는 동안 상대 추적
+      if (e.target.closest(UI_SEL)) return;
+      S.touch = { id: e.pointerId, t: now(), x: e.clientX, y: e.clientY }; return;
+    }
     if (e.pointerType === 'mouse' && canLock() && !S.lockFail) {
       if (e.button !== 0) return;
       if (S.locked) { S.flipReq = true; e.preventDefault(); return; } // 잠금 중: 커서가 없으므로 어디를 눌러도 반전
@@ -82,6 +88,14 @@ const DirectPlay = (() => {
     if (e.pointerType === 'mouse' && S.lockFail) { S.lockFail = false; lock(); } // 잠금 다시 시도
   }
   document.addEventListener('pointerdown', onDown);
+  function onUp(e) {
+    if (e.pointerType === 'mouse' && e.button === 2 && S.lockOn === 'mouse') S.lockOn = null;
+    if (S.touch && e.pointerId === S.touch.id) { const long = S.lockOn === 'touch' || now() - S.touch.t >= LONG_T; S.touch = null; if (S.lockOn === 'touch') S.lockOn = null; if (!long && e.type === 'pointerup' && S.active && !S.popup) S.flipReq = true; }
+  }
+  document.addEventListener('pointerup', onUp); document.addEventListener('pointercancel', onUp);
+  document.addEventListener('pointermove', e => { if (S.touch && e.pointerId === S.touch.id && S.lockOn !== 'touch' && Math.hypot(e.clientX - S.touch.x, e.clientY - S.touch.y) > 14) S.touch.moved = true; });
+  document.addEventListener('contextmenu', e => { if (S.active && !e.target.closest(UI_SEL)) e.preventDefault(); }); // 오른쪽 버튼·길게 누르기 메뉴 막기 (전장만)
+  addEventListener('blur', () => { S.lockOn = null; S.touch = null; });
   document.addEventListener('mousemove', e => {
     if (!S.active || !S.locked) return;
     if (now() - S.lockT < 0.15) return; // 잠금 직후 첫 이동값은 튐 (Chrome)
@@ -185,14 +199,38 @@ const DirectPlay = (() => {
     S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, PITCH_UP, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 올려다보기는 내 캐릭터 상반신이 화면에 남는 만큼만
     if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
-    C.yaw = S.autoYaw + S.userYaw; C.pitch = CAM.pitch + S.userPitch;
+    if (S.touch && !S.touch.moved && S.lockOn !== 'touch' && t - S.touch.t >= LONG_T) S.lockOn = 'touch'; // 길게 누름 → 추적 (손 뗄 때 반전 안 함)
+    let yaw = S.autoYaw + S.userYaw, pitch = CAM.pitch + S.userPitch, camH = CAM.h;
+    // 시점 덮어쓰기 (우선순위: 공중에 뜬 내 캐릭터 > 교실 선생님이 돌아봄 > 상대 추적). 켜질 때·꺼질 때 부드럽게 섞음, 덮어쓰는 동안 시점 입력은 무시
+    const md = camMode(b, P, E);
+    if (md) { S.ovT = md; S.inYaw = S.inPitch = 0; if (md.zeroUser) { const k = 1 - Math.exp(-6 * dt); S.userYaw -= S.userYaw * k; S.userPitch -= S.userPitch * k; } }
+    S.ov = clamp((S.ov || 0) + (md ? dt / 0.35 : -dt / 0.5), 0, 1);
+    if (S.ov > 0 && S.ovT) { const k = S.ov * S.ov * (3 - 2 * S.ov), o = S.ovT; // smoothstep
+      if (md) { const kk = 1 - Math.exp(-8 * dt); S.oY = S.oY == null ? o.yaw : S.oY + wrap(o.yaw - S.oY) * kk; S.oP = S.oP == null ? o.pitch : S.oP + (o.pitch - S.oP) * kk; S.oH = S.oH == null ? o.h : S.oH + (o.h - S.oH) * kk; }
+      yaw = yaw + wrap(S.oY - yaw) * k; pitch += (S.oP - pitch) * k; camH += (S.oH - camH) * k;
+      if (!md && S.ov === 0) { S.ovT = null; S.oY = S.oP = S.oH = null; } }
+    if (!md && S.ov === 0) S.oY = S.oP = S.oH = null;
+    C.yaw = yaw; C.pitch = pitch;
     const fx = Math.cos(C.yaw), fy = Math.sin(C.yaw), rx = -fy, ry = fx;
-    C.x = S.px - fx * CAM.dist - rx * CAM.side; C.y = S.py - fy * CAM.dist - ry * CAM.side; C.z = CAM.h;
+    C.x = S.px - fx * CAM.dist - rx * CAM.side; C.y = S.py - fy * CAM.dist - ry * CAM.side; C.z = camH;
     const cp = Math.cos(C.pitch), sp = Math.sin(C.pitch);
     C.F = [cp * fx, cp * fy, -sp]; C.R = [rx, ry, 0]; C.U = [sp * fx, sp * fy, cp];
     let f = CAM.f; if (b.zoom) { const z = b.zoom; f *= 1 + z.k * 1.5 * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); }
     C.f = f; C.cx = W / 2; C.cy = view.y + view.h * 0.66;
     if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA, q = t * 60; C.cx += Math.round(Math.sin(q * 1.7) * k); C.cy += Math.round(Math.cos(q * 2.3) * k); }
+  }
+  function launched(u) { const a = u && u.air; return !!(a && !u.dead && (a.tumble || a.spin) && !a.ride && !a.claw && (a.h || 0) >= 14 && (a.dur || 0) >= 0.4); } // 맞아서 떠오른(조종 불가) 공중 상태
+  function aimPitch(P, tx, ty, tz, h) { // 카메라(높이 h, 내 캐릭터 뒤 CAM.dist)에서 (tx,ty,tz) 를 화면 가운데 조금 위에 두는 기울기
+    const cx = S.px - Math.cos(S.lastYaw || 0) * CAM.dist, cy = S.py - Math.sin(S.lastYaw || 0) * CAM.dist, d = Math.max(30, Math.hypot(tx - cx, ty - cy));
+    return Math.atan2(h - tz, d) + 0.08;
+  }
+  function camMode(b, P, E) {
+    if (!P) return null;
+    if (launched(P)) { const h = 44, z = b.airZ(P) + 20; S.lastYaw = S.autoYaw + S.userYaw; return { yaw: S.lastYaw, pitch: Math.atan2(h - z, CAM.dist * 1.1) + 0.12, h }; } // 낮은 카메라에서 공중의 내 캐릭터를 올려다봄
+    const D = b.cls; // 교실: 선생님이 돌아보는 동안 선생님 쪽으로
+    if (D && (D.phase === 'look' || (D.phase === 'warn' && D.t > D.C.warn * 0.6))) { const tx = 180, ty = 168, yw = Math.atan2(ty - P.y, tx - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, tx, ty, 34, CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h }; }
+    if (S.lockOn && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
+    return null;
   }
   function cam(x, y, z) { const dx = x - C.x, dy = y - C.y, dz = z - C.z; return [dx * C.R[0] + dy * C.R[1], dx * C.U[0] + dy * C.U[1] + dz * C.U[2], dx * C.F[0] + dy * C.F[1] + dz * C.F[2]]; }
   function scr(c) { return { x: C.cx + C.f * c[0] / c[2], y: C.cy - C.f * c[1] / c[2], s: C.f / c[2], z: c[2] }; }
@@ -544,7 +582,12 @@ const DirectPlay = (() => {
     const h = E.wh || CAM.wallH, key = E.wall + h, tex = wallC[key] || (wallC[key] = makeWall(E.wall, h));
     const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h;
     const sides = [[[x0, y0], [x1, y0], C.y > y0], [[x1, y0], [x1, y1], C.x < x1], [[x1, y1], [x0, y1], C.y < y1], [[x0, y1], [x0, y0], C.x > x0]];
-    for (const [a, c, vis] of sides) if (vis) texWall(ctx, a[0], a[1], c[0], c[1], h, tex, 16, 1, /glass/.test(E.wall) ? 0.15 : 0.45);
+    const gap = b.sub && b.sub.S && b.sub.S.train ? [b.sub.S.train.y - 8, b.sub.S.train.y + b.sub.S.train.h + 8] : null; // 지하철: 선로가 지나는 좌우 벽은 터널 입구(스테이지 훅이 세움)
+    for (const [a, c, vis] of sides) if (vis) {
+      const ex = /glass/.test(E.wall) ? 0.15 : 0.45;
+      if (gap && a[0] === c[0]) { const dir = Math.sign(c[1] - a[1]), g0 = dir > 0 ? gap[0] : gap[1], g1 = dir > 0 ? gap[1] : gap[0]; texWall(ctx, a[0], a[1], a[0], g0, h, tex, 16, 1, ex); texWall(ctx, a[0], g1, c[0], c[1], h, tex, 16, 1, ex); }
+      else texWall(ctx, a[0], a[1], c[0], c[1], h, tex, 16, 1, ex);
+    }
   }
   // 고정 세로 벽: 두 바닥 끝점 + 높이. 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀, 카메라 바로 앞(near 근처) 조각은 건너뜀 (번져 보이는 것 방지)
   function texWall(ctx, ax0, ay0, bx0, by0, h, tex, seg, alpha = 1, ex = 0.45) { // seg 단위 조각 (무늬 폭 TW 의 약수 → 조각이 무늬 경계를 넘지 않음)
