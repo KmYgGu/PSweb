@@ -30,6 +30,10 @@
   };
 
   // ===================== 농구장 =====================
+  // 직접 플레이 수동 슛 (b.bbMan, 기록된 입력 'bbman'·'bj'·'bs' 로만 바뀜 → 리플레이 그대로, 일반 시점 경기는 영향 없음)
+  // inv: 슛 준비 뒤 가만히 있을 때 무적 시간, auto: 점프 안 하면 기존 자동 슛까지, jd/jh: 점프 시간·높이, apex: 정점 판정 폭(정점에서 벗어난 정도 e, 0~1), bonus: 정점 가까움 보정, cap: 상한
+  const RZ = 64; // 직접 플레이 3D 링 높이 (그리기 전용)
+  const MSHOT = { inv: 1.0, auto: 1.6, jd: 0.8, jh: 30, apex: 0.12, bonus: 0.35, cap: 0.95 };
   const BB = {
     match: st => !!st.basket,
     init(b) {
@@ -42,7 +46,7 @@
     drop(b, x, y) { const B = b.bb.ball; B.state = 'loose'; B.holder = null; B.x = clamp(x, AR.x + 20, AR.x + AR.w - 20); B.y = clamp(y, AR.y + 34, AR.y + AR.h - 14); B.vx = rand(-60, 60); B.vy = rand(-60, 60); B.z = 10; },
     on(b, ev, u, e) { // 일반 공격(충돌 포함)으로 공 뺏기
       const D = b.bb; if (!D || ev !== 'attack' || b.over) return false;
-      const B = D.ball; if (B.state !== 'held' || B.holder !== e || !u || u.summon || u.team === e.team || u.dead) return false;
+      const B = D.ball; if (BB.inv(b, e)) return false; /* 슛 준비·슛 중 무적: 뺏기지 않음 */ if (B.state !== 'held' || B.holder !== e || !u || u.summon || u.team === e.team || u.dead) return false;
       if (b.time - B.gotT < D.S.stealGrace) return false;
       BB.give(b, u); b.stats.bbSteals++; b.text(u.x, u.y - 66, '스틸!', '#ffb46a', 11); b.ring(u.x, u.y - 10, 3, 18, 0.25, '#ffb46a');
       return false;
@@ -51,6 +55,7 @@
       const D = b.bb; if (!D) return;
       const S = D.S, B = D.ball, H = S.hoop;
       if (D.ann) { D.ann.t += dt; if (D.ann.t > 1.6) D.ann = null; }
+      if (D.foul) { D.foul.t += dt; if (D.foul.t > 1.6) D.foul = null; }
       if (b.over) return;
       // ---- 공 ----
       if (B.state === 'held') {
@@ -69,13 +74,14 @@
         if (k >= 1) BB.resolve(b);
       } else if (B.state === 'dead') { D.respawnT -= dt; B.z = Math.max(0, B.z - 60 * dt); if (D.respawnT <= 0) { BB.drop(b, rand(120, 240), rand(300, 400)); B.z = 40; } }
       // ---- 덩크: 잡거나 뺏은 뒤 벽에 한 번도 안 튕기고 골대에 닿음 ----
-      if (B.state === 'held') { const u = B.holder; if (!u.airborne && !u.blocked('blocksAct') && (u.wbnc || 0) === B.wb && Math.hypot(u.x - H.x, u.y - H.y) < S.dunk.r + u.pad) BB.dunk(b, u); }
+      if (b.bbMan && D.man) BB.manStep(b, D, dt);
+      if (B.state === 'held' && !(D.sh && D.sh.u === B.holder)) { const u = B.holder; if (!u.airborne && !u.blocked('blocksAct') && (u.wbnc || 0) === B.wb && Math.hypot(u.x - H.x, u.y - H.y) < S.dunk.r + u.pad) BB.dunk(b, u); }
       // ---- 슛 포인트 ----
       if (!D.point) { D.nextT -= dt; if (D.nextT <= 0) BB.spawnPoint(b); }
       else {
         const P = D.point; P.t += dt;
-        if (P.t > S.point.life && B.state !== 'flight') { D.point = null; D.nextT = 0.3; }
-        else if (B.state === 'held') { const u = B.holder; if (!u.airborne && !u.blocked('blocksAct') && Math.hypot(u.x - P.x, (u.y - P.y) / 0.75) < P.r + u.pad + 4) BB.shoot(b, u); }
+        if (P.t > S.point.life && B.state !== 'flight' && !D.sh) { D.point = null; D.nextT = 0.3; }
+        else if (B.state === 'held' && !D.sh) { const u = B.holder; if (!u.airborne && !u.blocked('blocksAct') && Math.hypot(u.x - P.x, (u.y - P.y) / 0.75) < P.r + u.pad + 4) { if (b.bbMan && u === D.man) BB.manReady(b, D, u); else BB.shoot(b, u); } }
       }
       // ---- AI: 공/포인트 노리기 (그 외엔 원래대로 싸움) ----
       for (const u of mains(b)) {
@@ -86,6 +92,37 @@
         if (A.mode === 'point' && B.holder === u && D.point) steer(u, Math.atan2(D.point.y - u.y, D.point.x - u.x), S.ai.turn, dt);
         else if (A.mode === 'ball' && B.state === 'loose') steer(u, Math.atan2(B.y - u.y, B.x - u.x), S.ai.turn, dt);
       }
+    },
+    // ---- 직접 플레이 수동 슛 ----
+    act(b, u, kind, val) {
+      const D = b.bb; if (!D) return null;
+      if (kind === 'bbman') { b.bbMan = true; D.man = u; return true; }
+      const sh = D.sh; if (b.over || !sh || sh.u !== u) return false;
+      if (kind === 'bj') { if (sh.st !== 'ready' || u.air || u.airborne) return false; u.action = null; u.air = { t: 0, dur: MSHOT.jd, h: MSHOT.jh, bb: true, noLand: true }; sh.st = 'air'; sh.ja = 0; return true; } // 점프
+      if (kind === 'bs') { if (sh.st !== 'air' || !u.air) return false; BB.manShoot(b, D, u, sh); return true; } // 공중에서 슛
+      return false;
+    },
+    inv(b, u) { const D = b.bb, sh = D && D.sh; return !!(sh && sh.u === u && (sh.st !== 'ready' || sh.t < MSHOT.inv)); },
+    preDamage(b, src, tgt) { if (b.bb && b.bbMan && BB.inv(b, tgt) && src !== tgt) return true; },
+    manReady(b, D, u) { u.action = null; D.sh = { st: 'ready', t: 0, u, P: D.point, x: u.x, y: u.y }; b.text(u.x, u.y - 66, '슛 준비! (무적)', '#9ff0ff', 10); },
+    manStep(b, D, dt) {
+      const sh = D.sh; if (!sh) return; const B = D.ball, u = sh.u; sh.t += dt;
+      if (sh.st === 'shot') { if (B.state !== 'flight' || B.fl !== sh.fl) D.sh = null; else if (u.air) { u.x = sh.x; u.y = sh.y; } return; } // 슛이 끝날 때까지 무적
+      if (B.state !== 'held' || B.holder !== u || u.dead) { D.sh = null; return; }
+      u.x = sh.x; u.y = sh.y; // 슛 자세: 제자리
+      if (sh.st === 'ready' && sh.t >= MSHOT.auto) { D.sh = null; BB.shoot(b, u); return; } // 점프 안 함 → 기존 자동 슛
+      if (sh.st === 'air' && !u.air) { // 점프만 하고 착지 = 트래블링 → 공격권 상대에게
+        D.sh = null; const o = mains(b).filter(e => e.team !== u.team && !e.dead && !e.hidden).sort((a, c) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(c.x - u.x, c.y - u.y))[0];
+        if (o) BB.give(b, o); else BB.drop(b, u.x, u.y);
+        D.foul = { t: 0, who: u.def.name, team: u.team }; b.text(u.x, u.y - 70, '트래블링!', '#ff6a5a', 12); sys(b, `${u.def.name} 트래블링! 공격권이 넘어감`);
+      }
+    },
+    manShoot(b, D, u, sh) { // 정점 가까움 e (0 = 정점, 1 = 뛰는 순간·착지): e ≤ apex 면 무조건 성공, 아니면 기존 확률 + bonus×(1−e)² (상한 cap)
+      const S = D.S, B = D.ball, P = sh.P, e = Math.min(1, Math.abs(u.air.t / u.air.dur - 0.5) * 2), p0 = BB.chance(b, P, B.t);
+      const sure = e <= MSHOT.apex, p = sure ? 1 : Math.min(MSHOT.cap, p0 + MSHOT.bonus * (1 - e) * (1 - e)), r = Math.random();
+      B.state = 'flight'; B.holder = null; B.fl = { x0: u.x, y0: u.y, z0: 30 + b.airZ(u), t: 0, d: P.d, p, pts: P.pts, who: u, made: r < p, man: true };
+      b.stats.bbShots++; if (D.point === P) D.point = null; D.nextT = S.point.gap + S.fly; sh.st = 'shot'; sh.fl = B.fl;
+      b.text(u.x, u.y - 74, sure ? `정점 슛! (${P.pts}점·100%)` : `슛! (${P.pts}점·${Math.round(p * 100)}%)`, sure ? '#9ff0ff' : '#ffe08a', sure ? 11 : 10);
     },
     spawnPoint(b) {
       const D = b.bb, S = D.S; let x, y, n = 0;
@@ -165,8 +202,29 @@
       for (let i = -7; i <= 7; i += 3.5) { ctx.beginPath(); ctx.moveTo(H.x + i, H.y - 22); ctx.lineTo(H.x + i * 0.6, H.y - 11); ctx.stroke(); }
       ctx.fillStyle = '#f06a1e'; ctx.fillRect(H.x - 9, H.y - 24, 18, 3); // 링
     },
+    // 직접 플레이 3D: 링 높이 RZ (2D 판정 높이 24 를 사람 키에 맞게 올려 그림), 공 높이는 날아가는 동안 RZ 쪽으로 보정 (그리기 전용)
+    ball3(b) {
+      const D = b.bb; if (!D) return null; const B = D.ball, S = D.S;
+      if (B.state === 'held' && B.holder) return { x: B.x, y: B.y, z: 6 + B.z * 0.8, held: true, holder: B.holder };
+      if (B.state === 'flight') { const F = B.fl, k = Math.min(1, F.t / (F.dunk ? S.dunk.fly : S.fly)); return { x: B.x, y: B.y, z: B.z + (RZ - 24) * k }; }
+      if (B.state === 'dead') return { x: B.x, y: B.y, z: B.z * RZ / 24 };
+      return { x: B.x, y: B.y, z: B.z };
+    },
+    draw3D(b, D, V) { // 골대: 기둥·팔·백보드(상자) + 링(높이 RZ 의 수평 고리) + 그물(세운 판), 슛 포인트 = 바닥
+      const H = D.S.hoop, P = D.point, by = H.y - 9;
+      if (P) V.floor(c => { const k = 0.6 + 0.4 * Math.sin(b.time * 6); c.globalAlpha = 0.25 + 0.25 * k; c.fillStyle = '#ffe08a'; c.beginPath(); c.ellipse(P.x, P.y, P.r, P.r * 0.75, 0, 0, TAU); c.fill();
+        c.globalAlpha = 0.9; c.strokeStyle = '#fff4c0'; c.lineWidth = 1.5; c.beginPath(); c.ellipse(P.x, P.y, P.r, P.r * 0.75, 0, 0, TAU); c.stroke(); c.font = `bold 8px ${FONT}`; c.textAlign = 'center'; c.fillStyle = '#fff4c0'; c.fillText(P.pts + '점', P.x, P.y + 3); });
+      V.shadow(H.x, by - 4, 14, 0.3);
+      V.box({ x0: H.x - 2, y0: by - 8, z0: 0, x1: H.x + 2, y1: by - 4, z1: RZ + 10, col: '#3a3f4e' }); // 기둥
+      V.box({ x0: H.x - 1.5, y0: by - 4, z0: RZ + 6, x1: H.x + 1.5, y1: by - 1, z1: RZ + 9, col: '#3a3f4e' }); // 팔
+      V.box({ x0: H.x - 20, y0: by - 1, z0: RZ - 4, x1: H.x + 20, y1: by, z1: RZ + 22, col: '#f4f4f8' }); // 백보드
+      V.box({ x0: H.x - 7, y0: by, z0: RZ + 1, x1: H.x + 7, y1: by + 0.3, z1: RZ + 11, col: '#d23c2c' }); V.box({ x0: H.x - 5.5, y0: by + 0.3, z0: RZ + 2.5, x1: H.x + 5.5, y1: by + 0.6, z1: RZ + 9.5, col: '#f4f4f8' });
+      V.flat({ x: H.x, y: H.y, z: RZ, r: 12, draw: c => { c.strokeStyle = '#f06a1e'; c.lineWidth = 2; c.beginPath(); c.arc(H.x, H.y, 8, 0, TAU); c.stroke(); } }); // 링
+      V.stand({ x: H.x, y: H.y + 8, z: RZ - 14, w: 26, h: 16, draw: c => { c.strokeStyle = 'rgba(255,255,255,0.85)'; c.lineWidth = 1; for (let i = -7; i <= 7; i += 3.5) { c.beginPath(); c.moveTo(H.x + i, H.y + 8 - 14); c.lineTo(H.x + i * 0.6, H.y + 8 - 3); c.stroke(); } } }); // 그물
+    },
     drawUnder(ctx, b, thumb) {
       const D = b.bb; if (!D) return;
+      if (b._v3d && !thumb) { BB.draw3D(b, D, b._v3d); return; } // 직접 플레이: 공은 js/direct.js 가 3D 구로
       ctx.save();
       const P = D.point;
       if (P && !thumb) { const k = 0.6 + 0.4 * Math.sin(b.time * 6); ctx.globalAlpha = 0.25 + 0.25 * k; ctx.fillStyle = '#ffe08a'; ctx.beginPath(); ctx.ellipse(P.x, P.y, P.r, P.r * 0.75, 0, 0, TAU); ctx.fill();
@@ -177,9 +235,10 @@
       const B = D.ball; if (B.state === 'loose' || B.state === 'dead' || thumb) BB.drawBall(ctx, B.x, B.y, B.z);
       ctx.restore();
     },
-    drawOver(ctx, b) { const D = b.bb; if (!D) return; const B = D.ball; if (B.state === 'held' || B.state === 'flight') { ctx.save(); BB.drawBall(ctx, B.x, B.y, B.z); ctx.restore(); } },
+    drawOver(ctx, b) { const D = b.bb; if (!D || b._v3d) return; const B = D.ball; if (B.state === 'held' || B.state === 'flight') { ctx.save(); BB.drawBall(ctx, B.x, B.y, B.z); ctx.restore(); } },
     drawTop(ctx, b) {
       const D = b.bb; if (!D) return;
+      if (b._v3d) { b._v3d.hud(c => BB.drawTop(c, b)); return; } // 직접 플레이: 점수판·안내 = 화면 고정 HUD (그릴 때는 b._v3d 가 없어 아래 2D 경로)
       ctx.save(); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
       const x0 = AR.x + 6, y0 = AR.y + 3;
       ctx.fillStyle = 'rgba(14,16,24,0.78)'; ctx.fillRect(x0, y0, 62, 15);
@@ -193,6 +252,14 @@
       if (A) { const a = Math.min(1, A.t / 0.15) * Math.min(1, (1.6 - A.t) / 0.3); ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.font = `bold 18px ${FONT}`; ctx.lineWidth = 4; ctx.strokeStyle = '#0e1018';
         const t = A.dunk ? (A.made ? '덩크! +2' : '덩크 실패…') : A.made ? `${A.pts}점 슛!` : '노골…'; ctx.strokeText(t, 180, 260); ctx.fillStyle = A.made ? '#ffe27a' : '#c8d0e0'; ctx.fillText(t, 180, 260);
         ctx.font = `bold 9px ${FONT}`; ctx.fillStyle = TEAM_COL[A.team]; ctx.fillText(`${A.who} · ${D.score[0]} : ${D.score[1]}`, 180, 278); }
+      const Fo = D.foul; if (Fo) { ctx.globalAlpha = Math.min(1, Fo.t / 0.12) * Math.min(1, (1.6 - Fo.t) / 0.3); ctx.textAlign = 'center'; ctx.font = `bold 20px ${FONT}`; ctx.lineWidth = 4; ctx.strokeStyle = '#0e1018'; ctx.strokeText('트래블링!', 180, 240); ctx.fillStyle = '#ff6a5a'; ctx.fillText('트래블링!', 180, 240);
+        ctx.font = `bold 9px ${FONT}`; ctx.fillStyle = '#e8eef8'; ctx.fillText(`${Fo.who} 점프 후 슛 안 함 → 공격권 넘어감`, 180, 258); ctx.globalAlpha = 1; }
+      const sh = D.sh; if (sh && b.bbMan && sh.st !== 'shot') { // 수동 슛 안내 + 남은 시간 막대 / 점프 높이 막대 (정점 = 가운데 표시)
+        const air = sh.st === 'air', y = 452; ctx.textAlign = 'center'; ctx.font = `bold 11px ${FONT}`; ctx.lineWidth = 3; ctx.strokeStyle = '#0e1018';
+        const t = air ? '한 번 더 눌러 슛! (정점 = 100%)' : '클릭/탭: 점프 → 공중에서 한 번 더: 슛'; ctx.strokeText(t, 180, y); ctx.fillStyle = air ? '#9ff0ff' : '#ffe08a'; ctx.fillText(t, 180, y);
+        ctx.fillStyle = 'rgba(14,16,24,0.75)'; ctx.fillRect(120, y + 8, 120, 7);
+        if (air) { const u = sh.u, k = u.air ? u.air.t / u.air.dur : 1; ctx.fillStyle = 'rgba(159,240,255,0.45)'; ctx.fillRect(180 - 60 * MSHOT.apex, y + 8, 120 * MSHOT.apex, 7); ctx.fillStyle = '#ffffff'; ctx.fillRect(120 + 120 * k - 1, y + 6, 2, 11); }
+        else { ctx.fillStyle = sh.t < MSHOT.inv ? '#9ff0ff' : '#ffb46a'; ctx.fillRect(121, y + 9, 118 * Math.max(0, 1 - sh.t / MSHOT.auto), 5); } }
       ctx.restore();
     },
   };

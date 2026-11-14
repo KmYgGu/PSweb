@@ -9,7 +9,7 @@
  * - 농구장·야구장·탈출맵은 일반 시점 (EXCLUDE · supported)
  * 그리기·카메라는 전투 상태를 바꾸지 않고 Math.random 도 부르지 않음 (그리는 동안 잠깐 바꾸는 u.lookUp·u.facing 은 바로 되돌림) */
 const DirectPlay = (() => {
-  const EXCLUDE = new Set(['basket']); // 특수 규칙 스테이지 → 일반 시점 (야구장은 t254u 부터 직접 플레이)
+  const EXCLUDE = new Set([]); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u 부터 직접 플레이)
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
   const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
   const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
@@ -203,7 +203,10 @@ const DirectPlay = (() => {
     else { S.slT = null; S.slK = S.slK == null ? 1 : Math.min(1, S.slK + (1 - S.slK) * (1 - Math.exp(-14 * dt)) + 0.002); }
     return S.slK;
   }
-  function timing(b) { const c = bsbCtx(b, player(b)); return c === 'sw' || c === 'pa'; }
+  function timing(b) { const c = bsbCtx(b, player(b)) || bkCtx(b, player(b)); return c === 'sw' || c === 'pa' || c === 'bj' || c === 'bs'; }
+  // 농구장 수동 슛 상황 (입력 전용 판단, 시뮬은 BB.act 가 다시 확인): 'bj' 점프 · 'bs' 공중 슛 · 'bw' 슛 뒤 (누름은 소비, 반전 없음)
+  function bkCtx(b, P) { const D = b && b.bb; if (!D || !b.bbMan || b.over || !P) return null; const sh = D.sh; if (!sh || sh.u !== P) return null; return sh.st === 'ready' ? 'bj' : sh.st === 'air' ? 'bs' : 'bw'; }
+  const bkBall = b => b.bb && window.StageExt7 ? StageExt7.BB.ball3(b) : null;
   function aimVal() { // 화면 가운데(카메라 정면) 광선이 홈 플레이트 면(y = 홈 − 2)과 만나는 점 → 존 반폭·반높이 단위 [ax, az]
     const BS = window.BASEBALL, Hm = BS.S.home, t = Math.abs(C.F[1]) > 1e-4 ? (Hm.y - 2 - C.y) / C.F[1] : 0; if (!(t > 0)) return [0, 0];
     const x = C.x + C.F[0] * t, z = C.z + C.F[2] * t, r = v => Math.round(v * 100) / 100;
@@ -211,10 +214,12 @@ const DirectPlay = (() => {
   }
   function takeAct(b) { // 입력 → { u, kind?, val? } (kind 없음 = 반전). main.js 가 스텝 사이에 적용하고 리플레이에 기록
     if (b.bsb && b.bsb.on && !b.bsbMan) return { u: player(b), kind: 'man' }; // 야구장 직접 플레이: 수동 조작 켜기 (첫 프레임, 기록됨)
+    if (b.bb && !b.bbMan && player(b)) return { u: player(b), kind: 'bbman' }; // 농구장: 수동 슛 켜기 (첫 프레임, 기록됨)
     if (!S.flipReq) { if (S.relReq) { S.relReq = false; const P = player(b); if (S.active && !b.over && bsbCtx(b, P) === 'pr') return { u: P, kind: 'pr' }; } return null; } // 놓음 (누름과 같은 프레임이면 다음 프레임에)
     S.flipReq = false; const pt = S.pressPt; S.pressPt = null;
     if (!S.active || b.over) return null;
-    const P = player(b), c = bsbCtx(b, P);
+    const P = player(b), c = bsbCtx(b, P), k = bkCtx(b, P);
+    if (k) return k === 'bw' ? null : { u: P, kind: k }; // 농구 슛 자세: 누름 = 점프/슛 (반전 아님)
     if (c === 'sw') return { u: P, kind: c };
     if (c === 'pa') return { u: P, kind: 'pa', val: aimVal() };
     if (c === 'pr') return null;
@@ -291,7 +296,9 @@ const DirectPlay = (() => {
     if (launched(P)) { const h = 44, z = b.airZ(P) + 20; S.lastYaw = S.autoYaw + S.userYaw; return { yaw: S.lastYaw, pitch: Math.atan2(h - z, CAM.dist * 1.1) + 0.12, h }; } // 낮은 카메라에서 공중의 내 캐릭터를 올려다봄
     const Dc = b.cls; // 교실: 선생님이 돌아보는 동안 선생님 쪽으로
     if (Dc && (Dc.phase === 'look' || (Dc.phase === 'warn' && Dc.t > Dc.C.warn * 0.6))) { const tx = 180, ty = 168, yw = Math.atan2(ty - P.y, tx - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, tx, ty, 34, CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h }; }
-    const bl = S.lockOn && BS && BS.ball3(b); // 야구장: 상대 대신 공을 추적
+    const KD = b.bb, ksh = KD && b.bbMan && KD.sh && KD.sh.u === P ? KD.sh : null; // 농구 슛 자세: 골대 쪽 고정
+    if (ksh) { const H = KD.S.hoop, yw = Math.atan2(H.y - P.y, H.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, H.x, H.y, 56, CAM.h), CAM.pitch - 0.2, CAM.pitch + 0.3), h: CAM.h, zeroUser: true }; }
+    const bl = S.lockOn && ((BS && BS.ball3(b)) || bkBall(b)); // 야구장·농구장: 상대 대신 공을 추적
     if (bl) { const yw = Math.hypot(bl.x - P.x, bl.y - P.y) > 8 ? Math.atan2(bl.y - P.y, bl.x - P.x) : (S.lastYaw || 0); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, bl.x, bl.y, bl.z, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; }
     if (S.lockOn && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
     return null;
@@ -560,6 +567,7 @@ const DirectPlay = (() => {
     bbq: { sky: 'evening', wall: 'iron', wh: 23, ground: '#3a2a20', fog: '200,120,90' },
     classroom: { sky: 'classroom', wall: 'classwall', wh: 87, ground: '#3a2e22', fog: '120,110,90' },
     snake: { sky: 'night', wall: null, ground: '#14121c', fog: '20,18,28' },
+    basket: { sky: 'gym', wall: 'gymmat', wh: 60, ground: '#30343c', fog: '60,66,80' }, // 실내 체육관 (천장 조명)
     baseball: { sky: 'stadium', wall: null, ground: '#232634', fog: '150,190,220' }, // 펜스·관중석·백스톱은 drawBsbWalls
   };
   const envOf = b => ENV[b.stageId] || ENV.arena;
@@ -1010,6 +1018,7 @@ const DirectPlay = (() => {
     for (const g of S.bigs) { bigPlace(b, g); const q = cam(g.cx, g.wy, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.6, big: g }); } // 큰 이펙트: 세운 판
     if (b.balls && !EXCLUDE.has(b.stageId)) for (const bl of b.balls) { const q = cam(bl.x, bl.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], ball: bl }); }
     for (const g of goalItems(b)) items.push(g);
+    const k3 = bkBall(b); if (k3) { const q = cam(k3.x, k3.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - (k3.held ? 1 : 0), ball: { x: k3.x, y: k3.y, z: k3.z, r: 4, color: '#e8792a' } }); } // 농구공
     const b3 = window.BASEBALL && BASEBALL.ball3(b); if (b3) { const q = cam(b3.x, b3.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - (b3.held ? 1 : 0), ball: { x: b3.x, y: b3.y, z: b3.z, r: 2.4, color: '#f4f4f0' } }); } // 야구공
     if (b.claw && b.claw.crane) { const Cr = b.claw.crane; items.push({ z: cam(Cr.x, Cr.y, 0)[2] - 1, claw: Cr });
       for (const [x, y] of [[AR.x + 4, AR.y + 4], [AR.x + AR.w - 4, AR.y + 4], [AR.x + 4, AR.y + AR.h - 4], [AR.x + AR.w - 4, AR.y + AR.h - 4]]) { const q = cam(x, y, 0); if (q[2] > CAM.near) items.push({ z: q[2], post: [x, y, Cr] }); } }
