@@ -20,7 +20,7 @@
     freeze: { r: 70, airR: 150, dur: 1.0, airDur: 2.6, splitDelay: 0.9 }, // splitDelay: 공중 빙결 뒤 얼음 쪼개기까지 뜸 (초)
     split: { mult: 2.2, fly: 1.0, h: 48, near: 90, far: 210 },
     monkey: { dur: 0.55, h: 44, over: 46 },
-    regen: { k: 0.5, rate: 0.06, min: 3, tick: 0.5 },
+    regen: { k: 0.5, rate: 0.06, min: 3 },
     ripper: { cost: 0.04, spd: 950, life: 0.45, mult: 1.2, r: 10 },
     extract: { range: 220, decay: 0.06, heal: 0.04 },
     wry: { spd: 700, len: 220, mult: 1.2, push: 780, pushT: 0.6, back: 0.75, backH: 40 },
@@ -59,7 +59,7 @@
 
   // ---------- 스킬 ----------
   // 1. 기화 냉동법
-  SKILLS.dioFreeze = { desc: "'빈약! 빈약! 빈약!' 주변(반경 70) 상대를 1.4초 빙결(이동·행동 불가). 공중에 떠 있던 상대(반경 150)는 그 높이에 얼어붙은 채 2.6초 매달려 있고, 0.9초 뜸을 들인 뒤 얼음 쪼개기로 이어집니다.",
+  SKILLS.dioFreeze = { desc: "'빈약! 빈약! 빈약!' 주변(반경 70) 상대를 1초 빙결(이동·행동 불가). 공중에 떠 있던 상대(반경 150)는 그 높이에 얼어붙은 채 2.6초 매달려 있고, 0.9초 뜸을 들인 뒤 얼음 쪼개기로 이어집니다.",
     canUse: (u, e, d, b) => b.foes(u).some(o => !o.hidden && !o.summon && !o.status('dioFrozen') && (o.airborne ? dist(u, o) < D.freeze.airR + o.pad : dist(u, o) < D.freeze.r + o.pad + u.pad)),
     use(u, e0, b, s) { const F = { ...D.freeze, ...s }; let air = false;
       voice(b, u, '빈약! 빈약! 빈약!', ICE, 11);
@@ -107,7 +107,7 @@
   // 5. 공열안자경
   function drawRipper(ctx, p) { const a = Math.atan2(p.vy, p.vx), L = 26; ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.rotate(a);
     ctx.globalAlpha = 0.45; ctx.fillStyle = '#ffffff'; ctx.fillRect(-L, -3, L + 4, 6); ctx.globalAlpha = 1; ctx.fillStyle = '#e8f4ff'; ctx.fillRect(-L, -1, L + 6, 1); ctx.fillRect(-L, 2, L + 6, 1); ctx.fillStyle = '#ffffff'; ctx.fillRect(2, -2, 4, 5); }
-  SKILLS.dioRipper = { desc: '자기 체력을 최대 체력의 4% 깎고(재생 저장량에도 쌓임) 눈에서 체액 광선을 직선으로 쏩니다(ATK×1.5, 950px/s). 지나가며 닿은 상대의 일반 투사체를 상쇄합니다. 날아오는 투사체가 있으면 막는 용도로도 씁니다.',
+  SKILLS.dioRipper = { desc: '자기 체력을 최대 체력의 4% 깎고(재생 저장량에도 쌓임) 눈에서 체액 광선을 직선으로 쏩니다(ATK×1.2, 950px/s). 지나가며 닿은 상대의 일반 투사체를 상쇄합니다. 날아오는 투사체가 있으면 막는 용도로도 씁니다.',
     canUse: (u, e, d, b) => e && !e.dead && u.hp > u.maxHp * 0.15 && ((d > 90 && d < 400) || b.proj.some(p => p.src && p.src.team !== u.team && p.life > 0 && Math.hypot(p.x - u.x, p.y - u.y + 18) < 160)),
     use(u, e0, b, s) { const R = { ...D.ripper, ...s }, e = foeOf(b, u); if (!e) return; const cost = Math.round(u.maxHp * R.cost);
       u.hp = Math.max(1, u.hp - cost); u.dioRegen = (u.dioRegen || 0) + cost * D.regen.k; b.text(u.x + 8, u.y - 46, '-' + cost, '#ff9aa8', 9);
@@ -167,7 +167,7 @@
     step(b, dt) {
       if (b.over) return;
       for (const u of b.u) {
-        if (isDio(u) && !u.dead && u.dioRegen > 0 && !harmful(u)) { // 재생: 저장량의 12%/초 (최소 6/초)
+        if (isDio(u) && !u.dead && u.dioRegen > 0 && !harmful(u)) { // 재생: 저장량의 6%/초 (최소 3/초)
           const amt = Math.min(u.dioRegen, Math.max(D.regen.min, u.dioRegen * D.regen.rate) * dt, u.maxHp - u.hp); u.dioRegen -= Math.max(amt, 0); if (u.hp >= u.maxHp) u.dioRegen = 0;
           u.hp += Math.max(0, amt); u.dioRegT = (u.dioRegT || 0) + amt; if (u.dioRegT >= 8) { b.text(u.x + 6, u.y - 46, '+' + Math.round(u.dioRegT), '#c8ff9a', 8); u.dioRegT = 0; } }
         if (u.dioZombie && !u.dead) { u.hp -= u.maxHp * D.extract.decay * dt; if (u.hp <= 0) { u.hp = 0; b.kill(u, foeOf(b, u)); } }
@@ -199,7 +199,7 @@
       { id: 'dioRipper', name: '공열안자경', cd: 9 },
       { id: 'dioExtract', name: '흡혈귀의 액기스', cd: 12 },
     ],
-    passiveDesc: '재생: 받은 피해의 절반을 저장해 천천히(저장량의 12%/초, 최소 6/초) 회복. 해로운 상태이상 중엔 멈추고, 풀리면 다시 회복합니다. 빛(파문) 약점 ×1.5.',
+    passiveDesc: '재생: 받은 피해의 절반을 저장해 천천히(저장량의 6%/초, 최소 3/초) 회복. 해로운 상태이상 중엔 멈추고, 풀리면 다시 회복합니다. 빛(파문) 약점 ×1.5.',
     sprite: { // 16x16 절차적 도트 (직접 그림): 금발, 창백한 피부·붉은 눈, 짙은 녹색 상의·금색 하트 장식
       pal: { Y: '#f2d060', y: '#fff0a0', S: '#f4dcc8', R: '#d0203a', m: '#8a3038', G: '#2e5a3a', A: '#e8c050', L: '#22301e', D: '#2a2020' },
       rows: { 0: '....YYYYYYY.....', 1: '...YYYYYYYYY....', 2: '..YYYyYYYYYYY...', 3: '...YYSSSSSSYY...', 4: '....SSRSSRSS....', 5: '....SSSSSSSS....', 6: '.....SSmmSS.....', 7: '...GGGAGGAGGG...',

@@ -146,7 +146,7 @@
   Battle.prototype.damage = function (src, tgt, amt, o = {}) {
     const combing = isJ(tgt) && tgt.action && tgt.action.type === 'jsComb';
     const r = oDmg.call(this, src, tgt, amt, o);
-    if (combing && !tgt.dead && !this.over && src && src !== tgt && src.team !== tgt.team && !o.dot && !o.reflected && isMeleeHit(src, o) && tgt.action && tgt.action.type === 'jsComb') enrage(this, tgt, src);
+    if (combing && r > 0 && !tgt.dead && !this.over && src && src !== tgt && src.team !== tgt.team && !o.dot && !o.reflected && isMeleeHit(src, o) && tgt.action && tgt.action.type === 'jsComb') enrage(this, tgt, src);
     return r;
   };
   function enrage(b, u, src) {
@@ -329,7 +329,7 @@
       { id: 'jsShard', name: '자동 추적탄!', cd: 6.5, mult: 1.1 },
       { id: 'jsComb', name: '머리 손질', cd: 13, dur: 1.5 },
     ],
-    passiveDesc: '도라라라라!(평타): 한 번에 주먹 8연타 러쉬(한 대 ATK×0.24). 첫 주먹은 사거리가 짧고 한 대마다 7px씩 더 뻗음(최대 +60), 러쉬가 끝나면 초기화. 파편: 몸으로 벽·장애물에 부딪히면 그 자리에 파편(최대 6개, 10초)이 생기고, 내구도 있는 오브젝트(건물·철망·얼음벽)의 파편은 원상복구로 그 오브젝트를 되살립니다.',
+    passiveDesc: '도라라라라!(평타): 한 번에 주먹 8연타 러쉬(한 대 ATK×0.32). 첫 주먹은 사거리가 짧고 한 대마다 7px씩 더 뻗음(최대 +60), 러쉬가 끝나면 초기화. 파편: 몸으로 벽·장애물에 부딪히면 그 자리에 파편(최대 6개, 10초)이 생기고, 내구도 있는 오브젝트(건물·철망·얼음벽)의 파편은 원상복구로 그 오브젝트를 되살립니다.',
     sprite: { // 16x16 절차적 도트 (직접 그림): 앞으로 솟은 검은 퐁파두르, 남색 학란·옷깃의 분홍 하트 배지·금 장식
       pal: { H: '#221a2e', h: '#5a4a72', S: '#f2c9a0', E: '#2a2230', m: '#8a4038', B: '#2a2a50', A: '#e8c050', P: '#ff7ac0', L: '#202440', D: '#2a2020' },
       rows: { 0: '....HHHHHH......', 1: '.HHHHhhHHHH.....', 2: 'HHHHHHHHHHHH....', 3: '...HHHHHHHHH....', 4: '....HSESSESH....', 5: '....SSSSSSSS....', 6: '.....SSmmSS.....', 7: '....BBBAABBB....',
