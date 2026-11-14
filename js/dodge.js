@@ -32,7 +32,7 @@
       catchP: { npc: 0.42, main: 0.5 }, backC: 0.3, // 정면 포구 확률 (정면 정도에 따라 ×0.5~1). 시선과 공 방향 cos < backC → 등 뒤 (무조건 명중)
       throwSpd: 430, passSpd: 280, hitR: 17, pickR: 14, lineR: 14, intercept: 0.3,
       dmg: { k: 0.045, perT: 1 / 40, perMate: 0.3, mates: 3 }, // 주인공 피해 = 최대체력 × k × (1 + 경과초 × perT) × (1 + perMate × (mates − 안쪽 팀원 수))
-      slip: { v: 130, side: 50, t: 0.7 }, bounce: { v: 60, k: 8 }, ballR: 4.6, // slip: 놓친 공 미끄러짐 속도·옆 흔들림·못 줍는 시간, bounce: 팀원 충돌 튕김 속도, ballR: 공 반지름 (공끼리 충돌)
+      slip: { v: 130, side: 50, t: 0.7 }, bounce: { v: 60, k: 8 }, vMax: 650, ballR: 4.6, // slip: 놓친 공 미끄러짐 속도·옆 흔들림·못 줍는 시간, bounce: 팀원 충돌 튕김 속도, ballR: 공 반지름 (공끼리 충돌)
       smart: { lead: 0.9, jit: 5, passGain: 1.0, passP: 0.6, passMax: 2 }, // lead: 동선 예측 비율, jit: 조준 흔들림(px), passGain: 동료 쪽 노출 점수가 이만큼 높으면 패스 (passP 확률, 연속 패스 passMax 회까지)
       addT: [75, 150], maxBalls: 3, downT: 1.2, // downT: 체력 0 → 넘어졌다 일어나는 시간
     },
@@ -81,7 +81,7 @@
     const P = PATHS[Z]; for (let i = 0; i < 3; i++) { const [ax, ay] = P[i], [bx, by] = P[i + 1], L = hyp(bx - ax, by - ay); if (s <= L || i === 2) { const k = clamp(s / L, 0, 1); return { x: ax + (bx - ax) * k, y: ay + (by - ay) * k }; } s -= L; }
   }
   function mkProxy(b, n) { // 상대 주인공이 아웃되면 남은 안쪽 팀원에 보이지 않는 대리 유닛 → 주인공 공격·스킬이 노림 (피해 0, 넉백·상태이상만)
-    const p = new Unit({ ...n.def, id: n.def.id + '@dgpx', noDraw: true }, n.team, 8 + n.id, 1); p.summon = { owner: null, key: 'dgProxy', t: 1e9, dur: 1e9, onEnd: null, step: null }; p.dgProxy = n; /* summon 형식(js/ghoul.js stepSummons 와 호환: 주인 = 아웃된 주인공, 시간 무한) */ p.x = n.x; p.y = n.y; p.facing = Math.cos(n.g) >= 0 ? 1 : -1; p.summon.owner = p; n.px = p; b.u.push(p); return p;
+    const p = new Unit({ ...n.def, id: n.def.id + '@dgpx', noDraw: true, onAllyDown: undefined, onHit: undefined, onHurt: undefined }, n.team, 8 + n.id, 1); p.summon = { owner: null, key: 'dgProxy', t: 1e9, dur: 1e9, onEnd: null, step: null }; p.dgProxy = n; /* summon 형식(js/ghoul.js stepSummons 와 호환: 주인 = 아웃된 주인공, 시간 무한) */ p.x = n.x; p.y = n.y; p.facing = Math.cos(n.g) >= 0 ? 1 : -1; p.summon.owner = p; n.px = p; b.u.push(p); return p;
   }
   function mkNpc(D, def, team, out) {
     const n = { id: D.nid++, def, team, out, exiting: false, x: 0, y: 0, g: team === 0 ? 0 : Math.PI, moving: false, walk: 0, hx: 0, hy: 0, homeT: 0, vx: 0, vy: 0 };
@@ -97,16 +97,18 @@
       const used = new Set(); for (const u of b.u) { used.add(u.def.id); if (u.def.partner) used.add(u.def.partner.id); }
       let pool = CHARACTERS.filter(c => !used.has(c.id) && !c.hidden);
       for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-      if (pool.length < 8) { D.reuse = true; const src = pool.length ? pool : CHARACTERS.slice(); while (pool.length < 8) pool = pool.concat(src); }
-      for (let t = 0; t < 2; t++) for (let i = 0; i < 4; i++) {
-        const n = mkNpc(D, pool[t * 4 + i], t, i === 3);
+      const cnt = [0, 1].map(t => Math.max(1, 5 - b.u.filter(u => u.team === t && !u.summon).length)), need = cnt[0] + cnt[1]; // 팀원 수 = 5 − 주인공 수 (브로리+파라가스 같은 듀오 → 3명)
+      D.mates0 = cnt.map(c => c - 1);
+      if (pool.length < need) { D.reuse = true; const src = pool.length ? pool : CHARACTERS.slice(); while (pool.length < need) pool = pool.concat(src); }
+      for (let t = 0; t < 2; t++) for (let i = 0; i < cnt[t]; i++) {
+        const n = mkNpc(D, pool[(t ? cnt[0] : 0) + i], t, i === cnt[t] - 1);
         if (n.out) { const p = outProj(1 - t, t === 0 ? C0.x + C0.w + 30 : C0.x - 30, C0.y + C0.h / 2); n.x = p.x; n.y = p.y; }
         else { const p = zoneClamp(t, t === 0 ? CX - 70 - (i % 2) * 120 : CX + 70 + (i % 2) * 120, C0.y + 50 + i * 90); n.x = p.x; n.y = p.y; }
         n.hx = n.x; n.hy = n.y;
       }
       for (const u of b.u) { if (u.summon) continue; u.x = u.team === 0 ? CX - 150 : CX + 150; u.y = C0.y + C0.h / 2 + (u.n > 1 ? 50 : 0); u.facing = u.team === 0 ? 1 : -1; u.dgG = u.team === 0 ? 0 : Math.PI; }
       D.side0 = Math.random() < 0.5 ? -1 : 1; addBall(b, D, CX + D.side0 * 8, C0.y + C0.h / 2); // 첫 공: 중앙선 바로 옆 (어느 쪽인지 시드 동전) → 그쪽 안쪽 vs 상대 외야
-      Object.assign(b.stats, { dgOut: 0, dgMainOut: 0, dgCatch: 0, dgPass: 0, dgFumble: 0, dgThrow: 0, dgHit: 0, dgBack: 0, dgSteal: 0, dgBalls: 1, dgDmg: 0, dgOutHitTry: 0, dgDownHitTry: 0, dgFast: 0, dgPxHit: 0, dgPxLeak: 0, dgSmartPass: 0, dgPx: 0, dgPathHit: 0, dgBallHit: 0 });
+      Object.assign(b.stats, { dgBump: 0, dgOutSkill: 0, dgDoll: 0, dgOut: 0, dgMainOut: 0, dgCatch: 0, dgPass: 0, dgFumble: 0, dgThrow: 0, dgHit: 0, dgBack: 0, dgSteal: 0, dgBalls: 1, dgDmg: 0, dgOutHitTry: 0, dgDownHitTry: 0, dgFast: 0, dgPxHit: 0, dgPxLeak: 0, dgSmartPass: 0, dgPx: 0, dgPathHit: 0, dgBallHit: 0 });
       D.msg = { big: '피구 시작!', sub: '중앙의 공을 먼저 잡아라', col: '#ffffff', t: 0, dur: 1.6 };
     },
     leave(b) { const D = b.dg; if (!D) return; D.on = false; for (let i = b.u.length - 1; i >= 0; i--) if (b.u[i].dgProxy) b.u.splice(i, 1); /* 대리 유닛 제거 (다른 스테이지 규칙에 섞이지 않게) */ setAR(AR0); if (b.cam) b.cam = null; for (const u of b.u) if (u.dgOut || u.dgDown != null) { if (u.dgPark) { u.x = u.dgPark.x; u.y = u.dgPark.y; u.dgPark = null; } u.hidden = false; u.dead = false; u.statuses = []; u.dgOut = false; u.dgDown = null; u.hp = Math.max(1, u.hp); } sys(b, '피구 중단 — 이제부터는 체력 승부!'); },
@@ -148,7 +150,7 @@
         if (u.dgDown >= S0.downT) {
           u.dgDown = null; u.dgOut = true; u.hidden = true; u.dead = true; u.deadT = 0; u.statuses = []; /* dead: 캐릭터별 상대 고르기(!o.dead)에서도 빠짐 (kill 흐름은 거치지 않음) */
           const n = mkNpc(D, u.def, u.team, true); n.main = u; n.x = u.x; n.y = u.y; n.exiting = true; n.g = u.dgG || 0;
-          u.dgPark = { x: u.x, y: u.y }; u.x = -4000; u.y = -4000; // 숨긴 주인공 본체는 맵 밖으로 (광역기·투사체가 보이지 않는 대상을 맞히지 않게)
+          u.dgPark = { x: u.x, y: u.y }; u.x = n.x; u.y = n.y; u.action = null; /* 숨긴 본체는 외야 분신 위치 (dead 유지 → 대상에서 빠짐, 자기 차례에만 스킬 사용) */
           const p = outProj(1 - u.team, u.team === 0 ? C0.x + C0.w + 30 : C0.x - 30, u.y); n.hx = p.x; n.hy = p.y;
           for (const B of D.balls) if (B.st === 'held' && B.h === u) B.h = n;
         }
@@ -161,6 +163,7 @@
       b.burst(u.x, u.y - 16, u.def.color, 18); b.shake(2.5); b.hitstop(0.15);
       b.text(u.x, u.y - 70, '아웃!', '#ffe27a', 13); sys(b, `피구: ${u.def.name} 체력 0 — 외야로!`);
       for (const B of D.balls) if (B.st === 'held' && B.h === u) DG.drop(B, u.x, u.y);
+      for (const a of b.u) if (a !== u && a.team === u.team && !a.summon && !a.dgProxy && mainIn(a) && a.def.onAllyDown) a.def.onAllyDown(a, u, b); // 같은 팀 주인공 반응 (파라가스 아웃 → 브로리 전설의 슈퍼사이어인)
       D.msg = { big: 'OUT!', sub: `${u.team ? '2P' : '1P'} ${u.def.name} 외야로`, col: COL[u.team], t: 0, dur: 1.4 };
     },
     drop(B, x, y) { B.st = 'loose'; B.h = null; B.x = x; B.y = y + 2; B.vx = (Math.random() - 0.5) * 80; B.vy = (Math.random() - 0.5) * 80; B.kind = null; },
@@ -192,7 +195,7 @@
       const oc = [0, 1].map(t => D.npc.filter(n => n.team === t && n.out).length), OB = S0.outBoost;
       for (const n of ents) {
         let tx = n.hx, ty = n.hy, sp = n.out ? S0.spdOut * Math.min(OB.max, 1 + OB.per * Math.max(0, OB.n - oc[n.team])) : S0.spdIn;
-        const P = n.px && !n.px.dead ? n.px : null; if (P) { if (P.blocked('blocksMove') || P.push || P.pull) { n.moving = false; continue; } sp *= clamp(P.mult('spdMul') * P.smult('spdMul'), 0.2, 1.5); } // 대리 유닛 상태이상: 묶이면 정지, 둔화
+        const P = n.px && !n.px.dead ? n.px : null; if (P) { if (P.blocked('blocksMove') || P.pull) sp = 0; sp *= clamp(P.mult('spdMul') * P.smult('spdMul'), 0.2, 1.5); } // 대리 유닛 상태이상: 묶이면 정지, 둔화
         const lineB = chase.has(n) && n.out && inCourt(chase.get(n).x, chase.get(n).y); // 중앙선 공: 외야 선수가 코트 안으로 들어와 주움
         if (n.exiting) { sp = n.main ? S0.spdMainExit : S0.spdExit; if (hyp(n.x - n.hx, n.y - n.hy) < 4) n.exiting = false; }
         else if (DG.recv(D, n)) { tx = n.x; ty = n.y; } // 패스 받는 중: 제자리
@@ -222,27 +225,47 @@
             if (ax || ay) { tx = n.x + ax; ty = n.y + ay; }
           }
         }
+        let pm = false;
         if (n.out && !n.exiting && !lineB && !n.ret && !(chase.has(n) && (hyp(tx - n.x, ty - n.y) < 40 || Math.abs(pathProj(1 - n.team, tx, ty) - pathProj(1 - n.team, n.x, n.y)) < 24))) { /* 공 근처(경로상 가까움)면 곧장 */ // 외야: 경로(ㄷ자) 위로만 이동 → 모서리를 돌아감
           const Z = 1 - n.team, cs = pathProj(Z, n.x, n.y), ts = pathProj(Z, tx, ty), ds = clamp(ts - cs, -sp * dt, sp * dt), q = pathPos(Z, cs + ds);
-          n.moving = Math.abs(ds) > 0.05 || hyp(q.x - n.x, q.y - n.y) > 0.5; if (n.moving) n.walk += dt * 10; n.x = q.x; n.y = q.y; continue;
+          n.moving = Math.abs(ds) > 0.05 || hyp(q.x - n.x, q.y - n.y) > 0.5; if (n.moving) n.walk += dt * 10; n.x = q.x; n.y = q.y; pm = true;
         }
-        const dx = tx - n.x, dy = ty - n.y, d = hyp(dx, dy), st = Math.min(d, sp * dt);
-        n.moving = d > 2; if (n.moving) { n.x += dx / d * st; n.y += dy / d * st; n.walk += dt * 10; }
-        if (n.kvx || n.kvy) { n.x += n.kvx * dt; n.y += n.kvy * dt; const f = Math.exp(-6 * dt); n.kvx *= f; n.kvy *= f; if (hyp(n.kvx, n.kvy) < 3) n.kvx = n.kvy = 0; } // 부딪혀 튕김
+        if (!pm) { const dx = tx - n.x, dy = ty - n.y, d = hyp(dx, dy), st = Math.min(d, sp * dt); n.moving = d > 2 && st > 0; if (n.moving) { n.x += dx / d * st; n.y += dy / d * st; n.walk += dt * 10; } }
+        if (!n.exiting) DG.phys(n, dt); // 인형뽑기 인형 물리: 속도 감쇠 이동 (모든 이동 방식에서 적용 — 외야 경로 이동 중 쌓인 충돌 속도가 나중에 한꺼번에 터지던 버그 수정)
         if (n.out && !n.exiting && (lineB || n.ret)) { if (lineB) n.ret = true; continue; } // 중앙선 공 줍기·복귀 중: 외야 띠에 묶지 않음
-        if (!n.exiting) { const p = n.out ? outProj(1 - n.team, n.x, n.y) : zoneClamp(n.team, n.x, n.y); n.x = p.x; n.y = p.y; }
+        if (!n.exiting) DG.keep(n);
       }
     },
-    collide(b, D) {
-      const L = [...b.u.filter(u => mainIn(u)), ...D.npc.filter(n => !n.exiting)];
-      for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
-        const a = L[i], c = L[j], dx = c.x - a.x, dy = c.y - a.y, d = hyp(dx, dy), R = 14;
-        if (d >= R || d < 1e-6) continue;
-        const push = (R - d), ux = dx / d, uy = dy / d, wa = isU(a) ? (isU(c) ? 0 : 0.3) : (isU(c) ? 0.7 : 0.5), wc = isU(c) ? (isU(a) ? 0 : 0.3) : (isU(a) ? 0.7 : 0.5);
-        if (wa) { a.x -= ux * push * wa; a.y -= uy * push * wa; } if (wc) { c.x += ux * push * wc; c.y += uy * push * wc; }
-        const kb = S0.bounce.v + push * S0.bounce.k; if (!isU(a)) { a.kvx = (a.kvx || 0) - ux * kb; a.kvy = (a.kvy || 0) - uy * kb; } if (!isU(c)) { c.kvx = (c.kvx || 0) + ux * kb; c.kvy = (c.kvy || 0) + uy * kb; } // 팀원끼리·주인공과 부딪히면 튕겨남
-        for (const e of [a, c]) if (!isU(e) && !e.ret) { const p = e.out ? outProj(1 - e.team, e.x, e.y) : zoneClamp(e.team, e.x, e.y); e.x = p.x; e.y = p.y; }
+    phys(n, dt) {
+      n.hitT = Math.max(0, (n.hitT || 0) - dt);
+      const v = hyp(n.vx, n.vy); if (v < 3) { n.vx = n.vy = 0; return; }
+      if (v > S0.vMax) { n.vx *= S0.vMax / v; n.vy *= S0.vMax / v; }
+      n.x += n.vx * dt; n.y += n.vy * dt; const k = Math.exp(-2.6 * dt); n.vx *= k; n.vy *= k; // stages6.js 인형과 같은 감쇠
+    },
+    keep(n) { // 구역 안으로 + 벽에 닿으면 인형처럼 반사
+      if (n.exiting || (n.out && n.ret)) return;
+      const p = n.out ? outProj(1 - n.team, n.x, n.y) : zoneClamp(n.team, n.x, n.y);
+      if (!n.out) { if (p.x > n.x + 0.01) n.vx = Math.abs(n.vx); else if (p.x < n.x - 0.01) n.vx = -Math.abs(n.vx); if (p.y > n.y + 0.01) n.vy = Math.abs(n.vy); else if (p.y < n.y - 0.01) n.vy = -Math.abs(n.vy); }
+      else { const dx = p.x - n.x, dy = p.y - n.y, d = hyp(dx, dy); if (d > 0.01) { const ux = dx / d, uy = dy / d, vn = n.vx * ux + n.vy * uy; if (vn < 0) { n.vx -= 2 * vn * ux; n.vy -= 2 * vn * uy; } } }
+      n.x = p.x; n.y = p.y;
+    },
+    bump(b, n, ax, ay, sp) { const CL = window.StageExt5 && window.StageExt5.CLAW; if (CL) CL.bump(b, n, ax, ay, sp); else { const m = hyp(ax, ay) || 1; n.vx += ax / m * sp; n.vy += ay / m * sp; n.hitT = 0.3; } },
+    collide(b, D) { // stages6.js 인형뽑기 충돌 규칙 재사용: 팀원끼리 탄성 충돌, 주인공 ↔ 팀원은 인형처럼 튕김 (관통 없음)
+      const N = D.npc.filter(n => !n.exiting), U = b.u.filter(u => mainIn(u) && !u.airborne), rN = n => 15 * S0.npcK * (n.def.size || 1);
+      for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+        const a = N[i], c = N[j], dx = c.x - a.x, dy = c.y - a.y, dd = hyp(dx, dy), R = rN(a) + rN(c); if (dd >= R || dd < 0.01) continue;
+        const nx = dx / dd, ny = dy / dd, p = (R - dd) / 2; a.x -= nx * p; a.y -= ny * p; c.x += nx * p; c.y += ny * p;
+        const rv = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny; if (rv < 0) { a.vx += rv * nx; a.vy += rv * ny; c.vx -= rv * nx; c.vy -= rv * ny; }
+        else if (a.hitT <= 0 && c.hitT <= 0 && p > 1) { DG.bump(b, a, -nx, -ny, S0.bounce.v); DG.bump(b, c, nx, ny, S0.bounce.v); } /* 걸어서 부딪힘 → 살짝 튕김 */
+        b.stats.dgBump++;
       }
+      for (const u of U) for (const d of N) {
+        const dx = d.x - u.x, dy = d.y - u.y, dd = hyp(dx, dy), R = rN(d) + 15 * u.size; if (dd >= R || dd < 0.01) continue;
+        const nx = dx / dd, ny = dy / dd, p = R - dd;
+        d.x += nx * p * 0.7; d.y += ny * p * 0.7; const q = b.clampPos(u.x - nx * p * 0.3, u.y - ny * p * 0.3, u.pad, u); u.x = q.x; u.y = q.y;
+        if (d.hitT <= 0) { DG.bump(b, d, nx, ny, 150 + (u.speed || 0) * 0.3); b.stats.dgBump++; }
+      }
+      for (const n of N) DG.keep(n);
     },
     ballBalls(b, D) { // 공끼리: 같은 질량 탄성 충돌 (법선 속도 교환) → 튕긴 공은 더 이상 유효한 공격이 아님 (굴러가는 공)
       const L = D.balls.filter(B => B.st === 'fly' || B.st === 'loose'), r2 = S0.ballR * 2;
@@ -331,7 +354,7 @@
       b.shock(o.x, o.y - 18, 4, 30, '#ffffff', 0.3, 3);
       if (isU(o)) {
         const mates = D.npc.filter(n => n.team === o.team && !n.out).length, K = S0.dmg;
-        const dmg = Math.round(o.maxHp * K.k * (1 + D.clock * K.perT) * (1 + K.perMate * Math.max(0, K.mates - mates)) * (back ? 1.2 : 1));
+        const dmg = Math.round(o.maxHp * K.k * (1 + D.clock * K.perT) * (1 + K.perMate * Math.max(0, (D.mates0 ? D.mates0[o.team] : K.mates) - mates)) * (back ? 1.2 : 1));
         o.hp -= dmg; o.flash = 0.2; b.stats.dgDmg += dmg; b.text(o.x, o.y - 60, `-${dmg}${back ? ' 등!' : ''}`, '#ff6b6b', 11);
         if (o.hp <= 0) DG.mainOut(b, D, o);
       } else {
@@ -476,7 +499,8 @@
     ctx.globalAlpha = 0.7 * alpha; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash && ctx.setLineDash(n.out ? [2, 2] : []); ctx.beginPath(); ctx.ellipse(n.x, n.y + 1, 11 * K, 4, 0, 0, TAU); ctx.stroke(); ctx.setLineDash && ctx.setLineDash([]);
     if (!n.out) drawGaze(ctx, n.x, n.y, g, n.team);
     ctx.globalAlpha = alpha; ctx.translate(Math.round(n.x), Math.round(n.y + bob));
-    ctx.scale(spriteSX(n.def, back, face) * K, K);
+    const sq = n.hitT > 0 ? Math.sin(n.hitT * 30) * 0.12 : 0, vv = hyp(n.vx, n.vy); if (vv > 40) ctx.rotate(Math.sign(n.vx || 1) * Math.min(0.45, vv / 900)); // 인형뽑기 인형처럼 찌그러짐·기울며 미끄러짐
+    ctx.scale(spriteSX(n.def, back, face) * K * (1 + sq), K * (1 - sq));
     const fr = n.moving ? Math.floor(n.walk * s.fps / 6) : 0;
     Sprites.draw(ctx, s, fr, false);
     ctx.restore();
@@ -515,13 +539,21 @@
       u.flash = Math.max(0, u.flash - dt); u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt); u.action = null;
       for (const q of u.buffs) q.t -= dt; u.buffs = u.buffs.filter(q => q.t > 0);
       if (u.pull) { const P = u.pull, s = P.src, d = dist(u, s), R = 15 * (u.size + s.size) + 4; P.t -= dt; if (d > R) { const k = Math.min(d - R, 640 * dt); u.x += (s.x - u.x) / d * k; u.y += (s.y - u.y) / d * k; const p = this.clampPos(u.x, u.y, u.pad, u); u.x = p.x; u.y = p.y; } if (P.t <= 0 || d <= R) u.pull = null; }
-      if (u.push) this.pushStep(u, dt);
+      if (u.push) { const P = u.push, n = u.dgProxy; DG.bump(this, n, Math.cos(P.ang), Math.sin(P.ang), clamp(1.75 * P.spd * P.dur, 210, 600)); n.squash = 0.25; u.push = null; this.stats.dgDoll++; } // 넉백 → 인형뽑기 인형처럼 튕겨 미끄러짐
       if (!this.over) this.updateStatuses(u, dt);
       if (u.hp < u.maxHp) { this.stats.dgPxLeak += u.maxHp - u.hp; u.hp = u.maxHp; }
       return;
     }
     const D = this.dg; if (!D || !D.on) return _uu.call(this, u, dt);
-    if (u.dgDown != null || u.dgOut) { u.flash = Math.max(0, u.flash - dt); u.moving = false; u.action = null; u.hp = 0; return; }
+    if (u.dgOut && !this.over && !this.freeze) { // 외야로 나간 주인공: 외야 분신 위치에서 스킬 사용 (상대 안쪽 선수에게 피해 0, 넉백·상태이상만)
+      const n = D.npc.find(m => m.main === u);
+      if (n && !n.exiting && !n.ret && !(D.balls.some(B => B.st === 'held' && B.h === n))) {
+        u.x = n.x; u.y = n.y; u.dead = false; u.push = null; u.pull = null; u.air = null;
+        try { _uu.call(this, u, dt); } finally { u.dead = true; u.hidden = true; u.hp = 0; u.x = n.x; u.y = n.y; u.push = null; u.pull = null; u.air = null; u.moving = false; }
+        return;
+      }
+    }
+    if (u.dgDown != null || u.dgOut) { u.flash = Math.max(0, u.flash - dt); u.moving = false; u.action = null; u.hp = 0; if (u.dgOut) { const n = D.npc.find(m => m.main === u); if (n) { u.x = n.x; u.y = n.y; } } return; }
     if (!u.dead && !this.freeze && DG.free(this, u)) { // 상대 주인공·소환수가 모두 아웃 → 공격하지 않고 피구만 (주인공은 DG.npcMove 가 움직임, 소환수는 정지)
       u.flash = Math.max(0, u.flash - dt); u.swing = Math.max(0, u.swing - dt); u.action = null; u.kx *= Math.pow(0.001, dt); u.ky *= Math.pow(0.001, dt);
       if (u.summon) u.moving = false; return;
@@ -533,11 +565,12 @@
   const _dmg = Pp.damage;
   Pp.damage = function (src, tgt, amount, o = {}) {
     if (tgt && tgt.dgOut && this.dg && this.dg.on) { this.stats.dgOutHitTry++; return 0; }
-    if (tgt && tgt.dgProxy) { if (!tgt.dead && !this.over && !o.dot && src && src !== tgt) { tgt.flash = 0.12; this.stats.dgPxHit++; if (o.applies) this.applyList(src, tgt, o.applies); } return 0; }
+    if (src && src.dgOut && this.dg && this.dg.on) { if (tgt && tgt !== src && tgt.team !== src.team && !tgt.dead && !this.over && !o.dot) { this.stats.dgOutSkill++; tgt.flash = 0.12; if (o.applies) this.applyList(src, tgt, o.applies); if (tgt.dgProxy) { DG.bump(this, tgt.dgProxy, tgt.x - src.x, tgt.y - src.y, 210); tgt.dgProxy.squash = 0.25; } } return 0; } // 외야 주인공 스킬: 피해 0
+    if (tgt && tgt.dgProxy) { if (!tgt.dead && !this.over && !o.dot && src && src !== tgt) { tgt.flash = 0.12; this.stats.dgPxHit++; if (o.applies) this.applyList(src, tgt, o.applies); DG.bump(this, tgt.dgProxy, (tgt.x - src.x) || 1, tgt.y - src.y, 210); tgt.dgProxy.squash = 0.25; this.stats.dgDoll++; } return 0; } // 맞은 팀원: 인형뽑기 인형처럼 튕김
     return _dmg.call(this, src, tgt, amount, o);
   };
   const _fd = Pp.fixedDamage;
-  Pp.fixedDamage = function (src, tgt, amount, o = {}) { if (tgt && tgt.dgProxy) return 0; return _fd.call(this, src, tgt, amount, o); };
+  Pp.fixedDamage = function (src, tgt, amount, o = {}) { if ((tgt && tgt.dgProxy) || (src && src.dgOut && this.dg && this.dg.on)) return 0; return _fd.call(this, src, tgt, amount, o); };
   // 주인공 체력 0 → 탈락 대신 외야로 (소환수는 그대로)
   // 대상: 상대 주인공이 코트 안에 있으면 늘 주인공 (대리 유닛은 광역기·밀치기·오브젝트에만 걸림)
   const _en = Pp.enemy;

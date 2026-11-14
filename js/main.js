@@ -609,7 +609,7 @@
       const a = CHARACTERS.find(c => c.id === rec.a), b = CHARACTERS.find(c => c.id === rec.b);
       if (!a || !b || !STAGE_DEFS[rec.stage]) { toast('이 리플레이의 캐릭터/스테이지를 찾을 수 없어요'); return false; }
       if (!this.on) { this.live = { battle, hud, fullLog, pick: pick.slice(), stageId, mode: battleMode, focusMode, log: $('#log').innerHTML, stg: $('#stageName').textContent, result: !$('#result').classList.contains('hidden'), select: !$('#select').classList.contains('hidden'), sfx: Sfx.enabled }; } // 리플레이도 소리 재생 (예전: 여기서 Sfx.toggle(false)로 꺼서 무음이었음)
-      this.on = true; this.rec = rec; if (this.dview == null) this.dview = !!rec.direct; // 처음엔 녹화 때 시점 (직접 플레이로 한 판이면 3D) pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; focusMode = !!rec.focusMode; // 모드 없는 옛 리플레이 = A, focusMode 없는 옛 리플레이 = 끄기
+      this.on = true; this.rec = rec; if (this.dview == null) this.dview = !!rec.direct; /* 처음엔 녹화 때 시점 (직접 플레이로 한 판이면 3D) */ pick[0] = a; pick[1] = b; stageId = rec.stage; battleMode = rec.mode === 'B' ? 'B' : 'A'; focusMode = !!rec.focusMode; // 모드 없는 옛 리플레이 = A, focusMode 없는 옛 리플레이 = 끄기
       this.range = rec.range ? rec.range.slice() : [0, rec.dur]; this.A = this.B = null; this.stopAt = null; this.warned = false; $('#rpWarn').textContent = rec.build !== BUILD ? '다른 버전에서 저장됨' : '';
       $('#select').classList.add('hidden'); $('#speed').classList.add('hidden');
       ['#rpBar', '#rpCtl', '#rpTop'].forEach(s => $(s).classList.remove('hidden')); $('#rpSave').classList.add('hidden');
