@@ -544,21 +544,18 @@ const DirectPlay = (() => {
     const h = E.wh || CAM.wallH, key = E.wall + h, tex = wallC[key] || (wallC[key] = makeWall(E.wall, h));
     const x0 = AR.x, y0 = AR.y, x1 = AR.x + AR.w, y1 = AR.y + AR.h;
     const sides = [[[x0, y0], [x1, y0], C.y > y0], [[x1, y0], [x1, y1], C.x < x1], [[x1, y1], [x0, y1], C.y < y1], [[x0, y1], [x0, y0], C.x > x0]];
-    for (const [a, c, vis] of sides) if (vis) texWall(ctx, a[0], a[1], c[0], c[1], h, tex, 16);
+    for (const [a, c, vis] of sides) if (vis) texWall(ctx, a[0], a[1], c[0], c[1], h, tex, 16, 1, /glass/.test(E.wall) ? 0.15 : 0.45);
   }
   // 고정 세로 벽: 두 바닥 끝점 + 높이. 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀, 카메라 바로 앞(near 근처) 조각은 건너뜀 (번져 보이는 것 방지)
-  function texWall(ctx, ax0, ay0, bx0, by0, h, tex, seg, alpha = 1) {
+  function texWall(ctx, ax0, ay0, bx0, by0, h, tex, seg, alpha = 1, ex = 0.45) { // seg 단위 조각 (무늬 폭 TW 의 약수 → 조각이 무늬 경계를 넘지 않음)
     const L = Math.hypot(bx0 - ax0, by0 - ay0); if (L < 1) return;
-    const N = Math.max(1, Math.ceil(L / seg)), sh = h * TR;
+    const N = Math.ceil(L / seg), sh = h * TR, P = d => [ax0 + (bx0 - ax0) * d / L, ay0 + (by0 - ay0) * d / L];
     if (alpha < 1) ctx.globalAlpha = alpha;
-    for (let k = 0; k < N; k++) {
-      const t0 = k / N, t1 = (k + 1) / N, ax = ax0 + (bx0 - ax0) * t0, ay = ay0 + (by0 - ay0) * t0, bx = ax0 + (bx0 - ax0) * t1, by = ay0 + (by0 - ay0) * t1;
-      if (cam(ax, ay, 0)[2] < CAM.near + 8 || cam(bx, by, 0)[2] < CAM.near + 8) continue;
-      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl) continue;
-      const len = (t1 - t0) * L * TR, sx = ((k * L / N) * TR) % tex.width, sw = Math.min(len, tex.width - sx);
-      ctx.save(); ctx.transform((bb.x - a.x) / len, (bb.y - a.y) / len, (a.x - tl.x) / sh, (a.y - tl.y) / sh, tl.x, tl.y);
-      ctx.drawImage(tex, sx, 0, sw, sh, 0, 0, sw + 0.6, sh); if (sw < len - 0.5) ctx.drawImage(tex, 0, 0, len - sw, sh, sw, 0, len - sw + 0.6, sh);
-      ctx.restore();
+    let pb = null, pt = null;
+    for (let k = 0; k <= N; k++) {
+      const d = Math.min(L, k * seg), [x, y] = P(d), ok = cam(x, y, 0)[2] >= CAM.near + 8, qb = ok ? proj(x, y, 0) : null, qt = ok ? proj(x, y, h) : null;
+      if (k > 0 && pb && pt && qb && qt) { const s0 = (((k - 1) * seg) % TW) * TR; texQuad(ctx, tex, s0, s0 + (d - (k - 1) * seg) * TR, sh, pb, qb, pt, qt, ex); }
+      pb = qb; pt = qt;
     }
     if (alpha < 1) ctx.globalAlpha = 1;
   }
@@ -808,6 +805,24 @@ const DirectPlay = (() => {
     }
   }
 
+  // 텍스처 삼각형: 원본 삼각형(s) → 화면 삼각형(d) 정확한 아핀 + 그 삼각형만 클립(경계 ex 만큼 살짝 넓혀 이음매 숨김)
+  function texTri(ctx, img, s0x, s0y, s1x, s1y, s2x, s2y, d0, d1, d2, ex = 0.4) {
+    const det = (s1x - s0x) * (s2y - s0y) - (s2x - s0x) * (s1y - s0y); if (Math.abs(det) < 1e-6) return;
+    const ux = d1.x - d0.x, uy = d1.y - d0.y, vx = d2.x - d0.x, vy = d2.y - d0.y, p1y = s1y - s0y, p2y = s2y - s0y, p1x = s1x - s0x, p2x = s2x - s0x;
+    const a = (ux * p2y - vx * p1y) / det, c = (vx * p1x - ux * p2x) / det, b2 = (uy * p2y - vy * p1y) / det, d = (vy * p1x - uy * p2x) / det;
+    const e = d0.x - a * s0x - c * s0y, f = d0.y - b2 * s0x - d * s0y;
+    const cx = (d0.x + d1.x + d2.x) / 3, cy = (d0.y + d1.y + d2.y) / 3, X = q => { const dx = q.x - cx, dy = q.y - cy, l = Math.hypot(dx, dy) || 1; return [q.x + dx / l * ex, q.y + dy / l * ex]; };
+    ctx.save(); ctx.beginPath(); ctx.moveTo(...X(d0)); ctx.lineTo(...X(d1)); ctx.lineTo(...X(d2)); ctx.closePath(); ctx.clip();
+    ctx.transform(a, b2, c, d, e, f);
+    const mx = Math.max(0, Math.min(s0x, s1x, s2x) - 2), Mx = Math.min(img.width, Math.max(s0x, s1x, s2x) + 2), my = Math.max(0, Math.min(s0y, s1y, s2y) - 2), My = Math.min(img.height, Math.max(s0y, s1y, s2y) + 2);
+    if (Mx > mx && My > my) ctx.drawImage(img, mx, my, Mx - mx, My - my, mx, my, Mx - mx, My - my);
+    ctx.restore();
+  }
+  // 세로 벽 한 조각: 원본 [sx0, sx1] × [0, sh] → 화면 네 점 (아래 A·B, 위 TA·TB). 이웃 조각과 같은 경계 점을 써서 틈 없음
+  function texQuad(ctx, img, sx0, sx1, sh, A, B, TA, TB, ex) {
+    texTri(ctx, img, sx0, sh, sx1, sh, sx0, 0, A, B, TA, ex);
+    texTri(ctx, img, sx1, sh, sx1, 0, sx0, 0, B, TB, TA, ex);
+  }
   function drawWall3(ctx, m, i) { // 고정 세로 판: 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀
     const L = Math.min(900, Math.hypot(m.x2 - m.x1, m.y2 - m.y1)), h = m.h || 16; if (L < 1) return;
     const cw = Math.ceil(L * TR) + 2, ch = Math.ceil(h * TR) + 2, B = poolC(mpool, i, cw, ch);
@@ -818,13 +833,12 @@ const DirectPlay = (() => {
     const U = S.P, dx = m.x2 - m.x1, dy = m.y2 - m.y1, sd = (px, py) => dx * (py - m.y1) - dy * (px - m.x1);
     let al = 1; if (U) { const tU = ((U.x - m.x1) * dx + (U.y - m.y1) * dy) / (L * L); if (sd(C.x, C.y) * sd(U.x, U.y) < 0 && tU > -0.1 && tU < 1.1) al = 0.3; }
     ctx.save(); ctx.globalAlpha *= al;
-    for (let k = 0; k < N; k++) {
-      const t0 = k / N, t1 = (k + 1) / N, [ax, ay] = P(t0), [bx, by] = P(t1);
-      if (cam(ax, ay, 0)[2] < CAM.near + 8 || cam(bx, by, 0)[2] < CAM.near + 8) continue; // 카메라 바로 앞·뒤 조각은 건너뜀 (번짐 방지)
-      const a = proj(ax, ay, 0), bb = proj(bx, by, 0), tl = proj(ax, ay, h); if (!a || !bb || !tl) continue;
-      const sw = (t1 - t0) * L * TR, sx = t0 * L * TR, sh = h * TR;
-      ctx.save(); ctx.transform((bb.x - a.x) / sw, (bb.y - a.y) / sw, (a.x - tl.x) / sh, (a.y - tl.y) / sh, tl.x, tl.y);
-      ctx.drawImage(B.c, sx, 0, sw + 0.6, sh, 0, 0, sw + 0.6, sh); ctx.restore();
+    const sh = h * TR, ex = al < 1 || m.glass ? 0.2 : 0.45; // 경계 점은 한 번만 투영 → 이웃 조각이 정확히 같은 모서리 공유
+    let pb = null, pt = null, pz = 0;
+    for (let k = 0; k <= N; k++) {
+      const t = k / N, [x, y] = P(t), z = cam(x, y, 0)[2], ok = z >= CAM.near + 8, qb = ok ? proj(x, y, 0) : null, qt = ok ? proj(x, y, h) : null;
+      if (k > 0 && pb && pt && qb && qt) texQuad(ctx, B.c, (k - 1) / N * L * TR, t * L * TR, sh, pb, qb, pt, qt, ex); // 카메라 바로 앞 조각은 건너뜀 (번짐 방지)
+      pb = qb; pt = qt; pz = z;
     }
     ctx.restore();
   }
