@@ -73,26 +73,29 @@ const DirectPlay = (() => {
   function onDown(e) {
     if (!S.active || S.popup) return;
     if (e.pointerType === 'mouse' && e.button === 2) { if (!e.target.closest(UI_SEL)) { S.lockOn = 'mouse'; e.preventDefault(); } return; } // 오른쪽 버튼 누르는 동안 상대 추적
+    if (e.pointerType === 'mouse' && e.button === 0 && S.lockOn === 'mouse' && !e.target.closest(UI_SEL)) { S.flipReq = true; S.pressPt = null; S.mDown = true; e.preventDefault(); return; } // 추적 중 왼쪽 클릭 = 반전 (야구: 조준점이 동료면 송구, 잠금 여부와 무관)
     if (e.pointerType === 'touch' || e.pointerType === 'pen') { // 모바일: 짧게 탭 = 반전(손 뗄 때), 길게 누름(0.45초) = 누르는 동안 상대 추적
       if (e.target.closest(UI_SEL)) return;
+      if (S.touch && e.pointerId !== S.touch.id) { if (S.lockOn === 'touch') { S.flipReq = true; S.pressPt = toCanvas(e); } return; } // 길게 눌러 추적하는 동안 다른 손가락 탭 = 반전 (그 밖의 두 번째 손가락은 무시)
       S.touch = { id: e.pointerId, t: now(), x: e.clientX, y: e.clientY };
       if (S.battle && timing(S.battle)) { S.touch.used = true; S.flipReq = true; S.pressPt = toCanvas(e); } // 야구 스윙·게이지: 누르는 순간 (손 뗄 때가 아니라)
       return;
     }
     if (e.pointerType === 'mouse' && canLock() && !S.lockFail) {
       if (e.button !== 0) return;
-      if (S.locked) { S.flipReq = true; e.preventDefault(); return; } // 잠금 중: 커서가 없으므로 어디를 눌러도 반전
+      if (S.locked) { S.flipReq = true; S.mDown = true; e.preventDefault(); return; } // 잠금 중: 커서가 없으므로 어디를 눌러도 반전
       if (S.space || e.target.closest(UI_SEL)) return; // 스페이스로 푼 상태의 UI 클릭: 반전 아님
       lock(); e.preventDefault(); return; // 풀린 상태에서 전장 클릭: 다시 잠그기만 (반전 아님)
     }
     if (e.target.closest(UI_SEL)) return; // 로그·버튼 영역 제외
-    S.flipReq = true; S.pressPt = toCanvas(e);
+    S.flipReq = true; S.pressPt = toCanvas(e); if (e.pointerType === 'mouse') S.mDown = true;
     if (e.pointerType === 'mouse' && S.lockFail) { S.lockFail = false; lock(); } // 잠금 다시 시도
   }
   document.addEventListener('pointerdown', onDown);
   function onUp(e) {
     if (e.pointerType === 'mouse' && e.button === 2 && S.lockOn === 'mouse') S.lockOn = null;
-    if (S.touch && e.pointerId === S.touch.id) { const t0 = S.touch; const long = S.lockOn === 'touch' || now() - S.touch.t >= LONG_T; S.touch = null; if (S.lockOn === 'touch') S.lockOn = null; const used = t0.used; if (!long && !used && e.type === 'pointerup' && S.active && !S.popup) { S.flipReq = true; S.pressPt = toCanvas(e); } }
+    if (e.pointerType === 'mouse' && e.button === 0 && S.mDown) { S.mDown = false; S.relReq = true; } // 왼쪽 버튼 놓음 (야구 투구: 놓으면 던짐)
+    if (S.touch && e.pointerId === S.touch.id) { const t0 = S.touch; const long = S.lockOn === 'touch' || now() - S.touch.t >= LONG_T; S.touch = null; if (S.lockOn === 'touch') S.lockOn = null; const used = t0.used; if (used) S.relReq = true; if (!long && !used && e.type === 'pointerup' && S.active && !S.popup) { S.flipReq = true; S.pressPt = toCanvas(e); } }
   }
   function toCanvas(e) { const cv = S.cv; if (!cv || !cv.getBoundingClientRect) return null; const r = cv.getBoundingClientRect(); if (!r.width) return null; return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; } // 화면 점 → 논리 좌표 (송구 대상 고르기)
   document.addEventListener('pointerup', onUp); document.addEventListener('pointercancel', onUp);
@@ -187,24 +190,32 @@ const DirectPlay = (() => {
   function bsbCtx(b, P) {
     const D = b && b.bsb; if (!D || !D.on || !b.bsbMan || b.over || !P) return null; const p = D.pitch;
     if (D.batU === P && (D.autoBat || (D.phase === 'pitch' && p && p.man && !p.done))) return 'sw';
-    if (D.pitU === P && D.phase === 'pitch' && p && p.gauge && p.gauge.q == null) return 'pg';
+    if (D.pitU === P && D.phase === 'pitch' && p && p.gauge && p.gauge.q == null) return p.gauge.st === 'hold' ? 'pr' : 'pa';
     if (BS_FIX.has(D.phase) && (D.batU === P || D.pitU === P)) return 'hold';
     if (D.phase === 'live' && D.ball && D.ball.st === 'held' && D.ball.holder === P) return 'th';
     return null;
   }
-  function timing(b) { const c = bsbCtx(b, player(b)); return c === 'sw' || c === 'pg'; }
+  function timing(b) { const c = bsbCtx(b, player(b)); return c === 'sw' || c === 'pa'; }
+  function aimVal() { // 화면 가운데(카메라 정면) 광선이 홈 플레이트 면(y = 홈 − 2)과 만나는 점 → 존 반폭·반높이 단위 [ax, az]
+    const BS = window.BASEBALL, Hm = BS.S.home, t = Math.abs(C.F[1]) > 1e-4 ? (Hm.y - 2 - C.y) / C.F[1] : 0; if (!(t > 0)) return [0, 0];
+    const x = C.x + C.F[0] * t, z = C.z + C.F[2] * t, r = v => Math.round(v * 100) / 100;
+    return [r(clamp((x - Hm.x) / 6, -2.6, 2.6)), r(clamp((z - 18) / 8, -2.2, 2.2))];
+  }
   function takeAct(b) { // 입력 → { u, kind?, val? } (kind 없음 = 반전). main.js 가 스텝 사이에 적용하고 리플레이에 기록
     if (b.bsb && b.bsb.on && !b.bsbMan) return { u: player(b), kind: 'man' }; // 야구장 직접 플레이: 수동 조작 켜기 (첫 프레임, 기록됨)
-    if (!S.flipReq) return null; S.flipReq = false; const pt = S.pressPt; S.pressPt = null;
+    if (!S.flipReq) { if (S.relReq) { S.relReq = false; const P = player(b); if (S.active && !b.over && bsbCtx(b, P) === 'pr') return { u: P, kind: 'pr' }; } return null; } // 놓음 (누름과 같은 프레임이면 다음 프레임에)
+    S.flipReq = false; const pt = S.pressPt; S.pressPt = null;
     if (!S.active || b.over) return null;
     const P = player(b), c = bsbCtx(b, P);
-    if (c === 'sw' || c === 'pg') return { u: P, kind: c };
+    if (c === 'sw') return { u: P, kind: c };
+    if (c === 'pa') return { u: P, kind: 'pa', val: aimVal() };
+    if (c === 'pr') return null;
     if (c === 'hold') return null;
     if (c === 'th') { let id = S.aimId; if (pt && !S.locked) { id = null; let bd = 34; for (const f of S.fproj) { const d = Math.hypot(f.x - pt.x, f.y - pt.y); if (d < bd) { bd = d; id = f.id; } } } if (id != null) return { u: P, kind: 'th', val: id }; }
     if (b.time - S.lastFlipT < FLIP_CD) return null;
     return { u: P };
   }
-  function acted(b, A, ok) { if (!A.kind) { if (ok) { S.lastFlipT = b.time; S.flash = 0.45; } } else if (ok && A.kind === 'th') S.thrFlash = 0.4; }
+  function acted(b, A, ok) { if (!A.kind) { if (ok) { S.lastFlipT = b.time; S.flash = 0.45; } } else if (ok && A.kind === 'th') S.thrFlash = 0.4; else if (ok && A.kind === 'pr' && !Settings.get('bsbHoldSeen')) Settings.set('bsbHoldSeen', true); } // 처음 한 번 '누른 채 유지' 안내 (설정에 저장)
   function takeFlip(b) { const A = takeAct(b); return A && !A.kind ? A.u : null; } // 이전 이름 (호환)
   function flipped(b, ok) { acted(b, {}, ok); }
 
@@ -218,6 +229,7 @@ const DirectPlay = (() => {
       const d = wrap(Math.atan2(E.y - P.y, E.x - P.x) - S.autoYaw);
       S.autoYaw = wrap(S.autoYaw + clamp(d * (1 - Math.exp(-3.2 * dt)), -2.6 * dt, 2.6 * dt));
     }
+    S.dIn = [S.inYaw, S.inPitch]; // 야구 투구 조준용 (이번 프레임 회전 입력)
     S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, PITCH_UP, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 올려다보기는 내 캐릭터 상반신이 화면에 남는 만큼만
     if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
@@ -228,7 +240,7 @@ const DirectPlay = (() => {
     if (md) { S.ovT = md; S.inYaw = S.inPitch = 0; if (md.zeroUser) { const k = 1 - Math.exp(-6 * dt); S.userYaw -= S.userYaw * k; S.userPitch -= S.userPitch * k; } }
     S.ov = clamp((S.ov || 0) + (md ? dt / 0.35 : -dt / 0.5), 0, 1);
     if (S.ov > 0 && S.ovT) { const k = S.ov * S.ov * (3 - 2 * S.ov), o = S.ovT; // smoothstep
-      if (md) { const kk = 1 - Math.exp(-8 * dt); S.oY = S.oY == null ? o.yaw : S.oY + wrap(o.yaw - S.oY) * kk; S.oP = S.oP == null ? o.pitch : S.oP + (o.pitch - S.oP) * kk; S.oH = S.oH == null ? o.h : S.oH + (o.h - S.oH) * kk;
+      if (md) { const kk = md.aim && S.ov >= 1 ? 1 : 1 - Math.exp(-8 * dt); /* 조준 중에는 바로 따라감 */ S.oY = S.oY == null ? o.yaw : S.oY + wrap(o.yaw - S.oY) * kk; S.oP = S.oP == null ? o.pitch : S.oP + (o.pitch - S.oP) * kk; S.oH = S.oH == null ? o.h : S.oH + (o.h - S.oH) * kk;
         S.posKK = kk; }
       yaw = yaw + wrap(S.oY - yaw) * k; pitch += (S.oP - pitch) * k; camH += (S.oH - camH) * k;
       S.posK = k; if (!md && S.ov === 0) { S.ovT = null; S.oY = S.oP = S.oH = S.oX = S.oY2 = null; } } else S.posK = 0;
@@ -256,7 +268,14 @@ const DirectPlay = (() => {
     if (D && D.on && BS && b.bsbMan && !b.over && BS_FIX.has(D.phase) && (D.batU === P || D.pitU === P)) { // 야구 플레이 볼: 회전 없는 고정 시점
       const Hm = BS.S.home, M = BS.S.mound;
       if (D.batU === P) { const cx = Hm.x + 4 * (D.side || 1), cy = Hm.y + 46; S.lastYaw = Math.atan2(M.y - cy, M.x - cx); return { yaw: S.lastYaw, pitch: 0.16, h: 40, cx, cy }; } // 포수 자리 (포수는 그리지 않음) // 타석: 홈 뒤에서 투수 쪽
-      const cx = M.x + 24, cy = M.y - 100; S.lastYaw = Math.atan2(Hm.y - cy, Hm.x - cx); return { yaw: S.lastYaw, pitch: 0.3, h: 66, cx, cy }; // 투구: 마운드 뒤에서 포수 쪽
+      const cx = M.x + 24, cy = M.y - 100, p = D.pitch, g = p && D.phase === 'pitch' && p.gauge; // 투구: 마운드 뒤에서 포수 쪽
+      if (g && g.q == null) { // 내 조준: 존 가운데를 정면으로, 회전 입력은 조준점이 존 둘레(반폭 ×2.4, 반높이 ×2.2)를 넘지 않게. 누른 뒤(게이지)는 고정
+        if (S.aimFor !== p) { S.aimFor = p; S.aimY = S.aimP = 0; }
+        const dx = Hm.x - cx, dy = Hm.y - 2 - cy, L = Math.hypot(dx, dy), ly = Math.atan2(2.4 * 6, L), lp = Math.atan2(2.2 * 8, L);
+        if (g.st === 'aim' && S.dIn) { S.aimY = clamp(S.aimY + S.dIn[0] * 0.3, -ly, ly); S.aimP = clamp(S.aimP + S.dIn[1] * 0.5, -lp, lp); }
+        S.lastYaw = Math.atan2(dy, dx) + S.aimY; return { yaw: S.lastYaw, pitch: Math.atan2(66 - 18, L) + S.aimP, h: 66, cx, cy, aim: true };
+      }
+      S.lastYaw = Math.atan2(Hm.y - cy, Hm.x - cx); return { yaw: S.lastYaw, pitch: 0.3, h: 66, cx, cy };
     }
     if (launched(P)) { const h = 44, z = b.airZ(P) + 20; S.lastYaw = S.autoYaw + S.userYaw; return { yaw: S.lastYaw, pitch: Math.atan2(h - z, CAM.dist * 1.1) + 0.12, h }; } // 낮은 카메라에서 공중의 내 캐릭터를 올려다봄
     const Dc = b.cls; // 교실: 선생님이 돌아보는 동안 선생님 쪽으로
@@ -350,7 +369,9 @@ const DirectPlay = (() => {
     beam(it) { S.beams.push(it); },
     wall(it) { S.walls.push(it); },
     box(it) { S.boxes.push(it); },
-    cam() { return { x: C.x, y: C.y, z: C.z }; }, // 카메라 위치 (월드) — 앞/뒷모습 고르기 등
+    cam() { return { x: C.x, y: C.y, z: C.z, yaw: C.yaw }; },
+    center() { return { x: C.cx, y: C.cy }; }, // 화면에서 카메라 정면 점
+    input() { return { mouse: !!S.mouseUser }; }, // 카메라 위치 (월드) — 앞/뒷모습 고르기 등
     hud(fn) { S.huds.push(fn); },
     proj(x, y, z) { return proj(x, y, z); }, // 월드 → 화면 (HUD 용, 카메라 뒤면 null) // 화면 고정 HUD (3D 그림 위, 2D 화면 좌표) // {x0,y0,z0,x1,y1,z1,col,a?}: 축 정렬 3D 상자 (떨어지는 상자 등) // {x1,y1,x2,y2,h,draw(c,L)}: 두 바닥 점 사이에 선 세로 판 (벽처럼 고정, draw 는 (0,0)=왼쪽 위, 바닥 = y h)
     shadow(x, y, r, a = 0.3) { tctx.save(); tctx.globalAlpha = a; tctx.fillStyle = '#000'; tctx.beginPath(); tctx.ellipse(x, y, r, r * 0.6, 0, 0, TAU); tctx.fill(); tctx.restore(); },

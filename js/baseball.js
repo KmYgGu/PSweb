@@ -164,10 +164,10 @@
   const batSpot = D => ({ x: S0.home.x - 23 * (D.side || 1), y: SPOT.bat.y });
   // ---------- 직접 플레이 수동 조작 (v t254u, b.bsbMan 일 때만 — 직접 플레이 입력 'man' 으로 켜짐, 리플레이도 같은 입력으로 재현) ----------
   //  타격: 클릭/탭 타이밍만 (높이·코스 자동). 투구: 바늘 게이지 (구종·코스는 AI 그대로). 수비: 공을 쥔 내 투수가 동료에게 송구
-  const MAN = { lag: 0.08, late: 0.14, win: [0.035, 0.075, 0.125], gAuto: 3.2, hold: 1.2 }; // lag: 누른 뒤 방망이가 공에 닿기까지, late: 늦은 스윙 허용, win: 완벽/좋음/파울 오차(초), gAuto: 게이지 자동 투구(초), hold: 공 쥔 뒤 AI 송구까지 기다림(초)
+  const MAN = { lag: 0.08, late: 0.14, win: [0.035, 0.075, 0.125], gAim: 6, gHold: 3, hold: 1.2, zw: 6, zh: 8, zc: 18 }; // lag: 누른 뒤 방망이가 공에 닿기까지, late: 늦은 스윙 허용, win: 완벽/좋음/파울 오차(초), gAim: 조준 중 입력 없으면 자동 투구(초), gHold: 누른 채 이만큼이면 자동으로 놓음, hold: 공 쥔 뒤 AI 송구까지 기다림(초), zw/zh/zc: 스트라이크 존 반폭·반높이·가운데 높이
   const manBat = (b, D) => !!(b.bsbMan && D.batU && D.batU.team === 0 && !D.autoBat);
   const gaugeSpec = g => ({ spd: 0.8 + 1.6 * (1 - g.hp), wP: 0.05 + 0.07 * g.hp, wG: 0.17 + 0.13 * g.hp }); // 체력이 낮을수록 바늘이 빠르고 가운데가 좁음
-  const gaugePos = g => { const ph = (g.t * gaugeSpec(g).spd) % 1; return ph < 0.5 ? -1 + 4 * ph : 3 - 4 * ph; }; // -1 ~ 1 왕복 (0 = 가운데)
+  const gaugePos = g => { const ph = ((g.h || 0) * gaugeSpec(g).spd) % 1; return ph < 0.5 ? -1 + 4 * ph : 3 - 4 * ph; }; // -1 ~ 1 왕복 (0 = 가운데)
   function mkHit(D, bs, o) { // 타구 (newPitch 와 같은 식, o: 종류 가중·비거리 범위)
     const r = Math.random(), typ = r < o.g ? 'ground' : r < o.l ? 'line' : 'fly';
     const pow = (150 + bs.atk * 7) * D.S.hitK * rand(o.lo, o.hi) * (typ === 'fly' ? 1.15 : typ === 'line' ? 1 : 0.55) * (o.k || 1);
@@ -297,7 +297,8 @@
       if (b.bsbMan) { // 직접 플레이: 내 타석이면 AI 스윙 판단을 버리고 입력 타이밍으로, 내 투구면 게이지를 멈출 때까지 와인드업 대기
         const p = D.pitch;
         if (manBat(b, D)) { p.man = 'bat'; p.swing = false; p.contact = false; p.foul = false; p.hit = null; D.abMan = true; }
-        else if (pu.team === 0) p.gauge = { t: 0, hp: clamp(pu.hp / Math.max(1, pu.maxHp), 0, 1), q: null };
+        else if (pu.team === 0) { p.gauge = { st: 'aim', t: 0, h: 0, hp: clamp(pu.hp / Math.max(1, pu.maxHp), 0, 1), q: null }; // 내 투구: 조준 → 누른 채 게이지 → 놓으면 던짐
+          p.bctx = { full, two, ahead, ns, cp0: D.S.contact.base + (bs.def || 0) * 0.005 + Math.min(bs.range || 50, 140) * 0.0011 - (ps.atk - 30) * 0.004 - (brk ? 0.07 : 0) }; } // 놓은 뒤 타자 반응을 다시 정할 값 (newPitch 와 같은 식)
       }
       tension(b, D); // 화면 전용 (난수 사용 없음)
       b.stats.bsPitch++;
@@ -305,12 +306,14 @@
     pitchStep(b, D, dt) {
       const p = D.pitch; if (!p) return;
       const B = D.ball;
-      if (p.gauge && p.gauge.q == null) { p.gauge.t += dt; if (p.gauge.t >= MAN.gAuto) BB.gaugeStop(b, D, true); else { B.x = p.x0; B.y = p.y0; B.z = 24; return; } } // 내 투구: 게이지 (입력 없으면 자동)
+      const g = p.gauge; if (g && g.q == null) { // 내 투구: 조준 중(입력 없으면 gAim 초 뒤 자동) / 누른 채 게이지(gHold 초면 자동으로 놓음)
+        if (g.st === 'hold') { g.h += dt; if (g.h >= MAN.gHold) BB.release(b, D); } else { g.t += dt; if (g.t >= MAN.gAim) BB.gaugeStop(b, D, true); }
+        if (g.q == null) { B.x = p.x0; B.y = p.y0; B.z = 24; return; } } // 내 투구: 게이지 (입력 없으면 자동)
       p.t += dt;
       if (p.t < p.rel) { const k = p.t / p.rel; B.x = p.x0 - 4 * Math.sin(k * Math.PI); B.y = p.y0; B.z = 24 + 14 * Math.sin(k * Math.PI); return; } // 와인드업
       if (p.t - dt < p.rel) { B.st = 'pitch'; playSfx('dash'); D.info = { txt: `${p.kname} ${p.kmh}km/h`, t: 0 }; }
       const k = Math.min(p.man ? 1.25 : 1, (p.t - p.rel) / p.dur), ex = Math.sin(Math.min(1, k) * Math.PI) * p.curve * (p.brk ? 1 : 1); // 내 타석: 늦은 스윙을 기다리는 동안 공이 포수 쪽으로 계속
-      B.x = p.x0 + (p.x1 - p.x0) * k + (p.brk ? (k * k) * p.curve : ex); B.y = p.y0 + (p.y1 - p.y0) * k; B.z = 24 - 10 * k - (p.brk && p.kname === '포크' ? 8 * k * k : 0);
+      B.x = p.x0 + (p.x1 - p.x0) * k + (p.brk ? (k * k) * p.curve : ex); B.y = p.y0 + (p.y1 - p.y0) * k; B.z = (p.zt != null ? 24 + (p.zt - 24) * k : 24 - 10 * k) - (p.brk && p.kname === '포크' ? 8 * k * k : 0); // zt: 내가 조준한 높이
       if (p.swing && p.swingT < 0 && k >= 0.78) p.swingT = p.t;
       if (p.man) { if (p.done) return; const tA = p.rel + p.dur, tR = p.swingT >= 0 ? Math.max(tA, Math.min(p.swingT + MAN.lag, tA + MAN.late)) : tA + MAN.late; if (p.t < tR) return; BB.manSwing(b, D); }
       else if (k < 1 || p.done) return;
@@ -361,6 +364,25 @@
       }
       if (pu) b.text(pu.x, pu.y - 76, { P: '완벽한 투구!', G: '좋은 공', B: '실투…', M: '자동 투구' }[q], { P: '#ffe27a', G: '#9fffb8', B: '#ff9a8a', M: '#c8d0e0' }[q], q === 'P' ? 12 : 10);
     },
+    // 내 투구 놓음: 게이지 정확도 → 조준점 흩어짐(완벽 0, 좋음 ±0.35, 나쁨 ±1.0 존 반폭 단위)·공 속도. 조준점이 존 안이면 스트라이크 존 공 (구석일수록 맞히기 어려움)
+    //  타자의 스윙·타격은 newPitch 와 같은 식으로 다시 정함 (완벽 = 맞힐 확률 ×0.55, 나쁨 = ×1.35)
+    release(b, D) {
+      const p = D.pitch, g = p.gauge, sp = gaugeSpec(g), off = Math.abs(gaugePos(g)), pu = D.pitU, c = p.bctx, S = D.S.contact;
+      const q = off < sp.wP ? 'P' : off < sp.wG ? 'G' : 'B'; g.q = q; g.off = off; g.at = D.clock;
+      const sc = { P: 0, G: 0.35, B: 1.0 }[q]; let ax = g.ax || 0, az = g.az || 0;
+      if (sc) { ax += (Math.random() * 2 - 1) * sc; az += (Math.random() * 2 - 1) * sc; }
+      ax = clamp(ax, -2.6, 2.6); az = clamp(az, -2.2, 2.2);
+      const zone = Math.abs(ax) <= 1 && Math.abs(az) <= 1; p.zone = zone; p.x1 = S0.home.x + ax * MAN.zw; p.zt = MAN.zc + az * MAN.zh; p.curve *= 0.3; g.fx = ax; g.fz = az; // 변화는 약하게 (조준점 근처로)
+      if (q === 'P') { p.dur /= 1.3; p.kmh = Math.round(p.kmh * 1.15); } else if (q === 'B') p.dur *= 1.12;
+      const nb = D.balls, ns = c.ns, full = c.full, two = c.two, ahead = c.ahead;
+      p.swing = Math.random() < (full && !ns ? (zone ? 0.55 : 0.06) : two ? (zone ? 0.93 : 0.34) : ahead ? (zone ? 0.88 : 0.18) : (zone ? 0.82 : 0.28));
+      let cp = c.cp0; if (!zone) cp *= S.out; cp *= { P: 0.55, G: 1, B: 1.35 }[q] * (zone ? 1 - 0.22 * Math.max(Math.abs(ax), Math.abs(az)) : 1); cp = clamp(cp, S.min * 0.5, S.max);
+      p.contact = p.swing && Math.random() < cp; p.foul = p.contact && Math.random() < S.foul + (two && !zone ? 0.18 : two ? 0.06 : 0); p.hit = null;
+      if (p.contact && !p.foul) p.hit = mkHit(D, D.batU.st, { g: 0.42, l: 0.72, lo: 0.6, hi: 1.25, k: ahead && zone ? 1.08 : two ? 0.92 : 1 });
+      else if (p.foul) p.hit = { typ: 'foul', a: (Math.random() < 0.5 ? -1 : 1) * rand(0.95, 1.6), dist: rand(90, 200) * D.S.hitK };
+      void nb;
+      if (pu) b.text(pu.x, pu.y - 76, { P: '완벽한 투구!', G: '좋은 공', B: '실투…' }[q], { P: '#ffe27a', G: '#9fffb8', B: '#ff9a8a' }[q], q === 'P' ? 12 : 10);
+    },
     // 직접 플레이 입력 (Battle.playerAct → 여기). 'man' = 수동 조작 켜기(전투 시작 때 한 번), 'sw' = 스윙, 'pg' = 게이지 멈춤, 'th' = 동료 수비수(id)에게 송구. 받아들이면 true (리플레이에 기록)
     act(b, u, kind, val) {
       const D = b.bsb; if (!D) return null;
@@ -373,7 +395,11 @@
         if (D.phase !== 'pitch' || !p || !p.man || p.done || p.swingT >= 0 || p.t < p.rel) return false;
         p.swingT = p.t; D.abIn = true; return true;
       }
-      if (kind === 'pg') { if (u !== D.pitU || D.phase !== 'pitch' || !p || !p.gauge || p.gauge.q != null) return false; BB.gaugeStop(b, D, false); return true; }
+      if (kind === 'pa' || kind === 'pr') { // 'pa' = 조준점 [ax, az] 로 누름(게이지 시작), 'pr' = 놓음(던짐)
+        const g = p && p.gauge; if (u !== D.pitU || D.phase !== 'pitch' || !g || g.q != null) return false;
+        if (kind === 'pa') { if (g.st !== 'aim') return false; const v = Array.isArray(val) ? val : [0, 0]; g.st = 'hold'; g.h = 0; g.ax = clamp(+v[0] || 0, -2.6, 2.6); g.az = clamp(+v[1] || 0, -2.2, 2.2); return true; }
+        if (g.st !== 'hold') return false; BB.release(b, D); return true;
+      }
       if (kind === 'th') {
         const B = D.ball, f = D.fielders.find(n => n.id === val);
         if (D.phase !== 'live' || !B || B.st !== 'held' || B.holder !== u || !f || (u.blocked && u.blocked('blocksAct'))) return false;
@@ -912,8 +938,9 @@
       const D = b.bsb; if (!D || !D.on || !(b.cam || b._v3d)) return [];
       const V = !!b._v3d; // 직접 플레이: x 를 주면 game.js 가 발 위치에 세워 그림
       const myBat = V && b.bsbMan && D.batU && D.batU.team === 0 && PITCHING.has(D.phase); // 직접 플레이 내 타석: 카메라가 포수 자리 → 포수는 그리지 않음
-      const L = D.fielders.filter(n => !(myBat && n.pos === 'C')).concat(D.runners).map(n => ({ y: n.y, x: V ? n.x : undefined, draw: ctx => drawNpc(ctx, b, D, n) }));
-      if (D.gone) for (const g of D.gone) L.push({ y: g.n.y, x: V ? g.n.x : undefined, draw: ctx => drawNpc(ctx, b, D, g.n, g) });
+      const v3 = V ? b._v3d.cam() : null;
+      const L = D.fielders.filter(n => !(myBat && n.pos === 'C')).concat(D.runners).map(n => ({ y: n.y, x: V ? n.x : undefined, draw: ctx => drawNpc(ctx, b, D, n, null, v3) }));
+      if (D.gone) for (const g of D.gone) L.push({ y: g.n.y, x: V ? g.n.x : undefined, draw: ctx => drawNpc(ctx, b, D, g.n, g, v3) });
       return L;
     },
     // 그리기 전용: 타석에서 자기 근접 무기를 들고 있는 타자 → game.js 가 평소 무기(라인하르트 해머)를 따로 안 그림
@@ -1139,8 +1166,19 @@
     if (hyp(n.x - (B.x + B.vx * tc), n.y - (B.y + B.vy * tc)) >= JUMP_NEAR) return 0;
     return JUMP_H * easeOut(1 - tc / JUMP_UP);
   }
-  function drawNpc(ctx, b, D, n, gone) {
-    const s0 = Sprites.get(n.def), back = (n.back || catcherBack(D, n)) && !!s0.back, s = back ? s0.back : s0, K = S0.npcK, col = TEAM_COL[n.team];
+  // 그리기 전용 보는 방향 (월드 벡터): 홈런 타구가 나는 동안 모두 공 쪽, 투구 중 포수는 마운드 쪽. null = 평소 (이동 방향)
+  function npcDir(D, n) {
+    const R = D.hr, B = D.ball;
+    if (R && B && (B.st === 'hrfly' || B.st === 'hrstop' || (R.outT >= 0 && D.clock - R.outT < 1.2))) { const q = B.st === 'hrfly' ? hrPos(R, R.k) : R.outT >= 0 ? hrPos(R, 1) : { x: R.x0, y: R.y0 }, dx = q.x - n.x, dy = q.y - n.y; if (hyp(dx, dy) > 1) return { d: [dx, dy], hr: true }; }
+    if (catcherBack(D, n)) return { d: [S0.mound.x - n.x, S0.mound.y - n.y], hr: false };
+    return null;
+  }
+  function drawNpc(ctx, b, D, n, gone, v3) { // v3: 직접 플레이 카메라 {x, y, yaw} → 카메라 기준 앞·뒷모습과 좌우
+    const s0 = Sprites.get(n.def), K = S0.npcK, col = TEAM_COL[n.team], nd = gone ? null : npcDir(D, n);
+    let back = n.back || catcherBack(D, n), face = n.face;
+    if (v3) { const d = nd ? nd.d : n.back ? [0.35 * n.face, -1] : [n.face, 0.5]; back = d[0] * (v3.x - n.x) + d[1] * (v3.y - n.y) < 0; face = d[0] * -Math.sin(v3.yaw) + d[1] * Math.cos(v3.yaw) >= 0 ? 1 : -1; }
+    else if (nd && nd.hr) { face = nd.d[0] >= 0 ? 1 : -1; back = nd.d[1] < -Math.abs(nd.d[0]) * 0.3; } // 일반 시점: 홈런 타구 쪽을 봄
+    back = back && !!s0.back; const s = back ? s0.back : s0;
     let alpha = 1, oy = 0; if (gone) { alpha = Math.max(0, 1 - gone.t / 0.8); oy = gone.home ? -gone.t * 20 : 0; }
     if (!gone && n.bornT != null && D.clock - n.bornT < 0.3) { const p = (D.clock - n.bornT) / 0.3; alpha = p; oy = -6 * (1 - p); } // 플레이 볼: 주자 등장
     const jz = gone ? 0 : jumpLift(b, D, n);
@@ -1150,7 +1188,7 @@
     ctx.globalAlpha = alpha; ctx.translate(Math.round(n.x), Math.round(n.y + bob + oy - jz));
     if (n.stun > 0) ctx.rotate(Math.sin(n.stun * 30) * 0.12);
     const jst = jz > 0 ? 1 + 0.06 * Math.min(1, jz / JUMP_H) : 1; // 점프: 살짝 늘어남
-    ctx.scale(spriteSX(n.def, back, n.face) * K / jst, K * jst);
+    ctx.scale(spriteSX(n.def, back, face) * K / jst, K * jst);
     const fr = n.moving ? Math.floor(n.walk * s.fps / 6) : 0; Sprites.draw(ctx, s, fr, false);
     const C = capInfo(n.def, back), cw = clamp(C.w * 0.95, 10, 18); // 모자 (팀 색)
     ctx.fillStyle = '#16141e'; ctx.fillRect(Math.round(C.x - cw / 2) - 1, Math.round(C.y - 5), Math.round(cw) + 2, 7);
@@ -1243,15 +1281,24 @@
       if (a && c) { ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.setLineDash && ctx.setLineDash([3, 2]); ctx.strokeRect(Math.min(a.x, c.x), a.y, Math.abs(c.x - a.x), c.y - a.y); ctx.setLineDash && ctx.setLineDash([]); }
       hint(ctx, D.autoBat ? '자동 타석 · 누르면 다음 공부터 직접' : p && p.man && !p.done && p.swingT < 0 ? '클릭·탭 = 스윙 (타이밍)' : '타석', 180, V.y + V.h - 50, D.autoBat ? '#c8d0e0' : '#ffe27a');
     }
-    if (p && p.gauge && D.phase === 'pitch' && me(D.pitU)) { // 투구 게이지
-      const g = p.gauge, sp = gaugeSpec(g), x0 = 60, w = 240, y = V.y + V.h - 62, cx = x0 + w / 2, done = g.q != null;
-      const pos = done ? (g.off || 0) * Math.sign(gaugePos(g) || 1) : gaugePos(g);
-      ctx.fillStyle = 'rgba(14,15,24,0.85)'; ctx.fillRect(x0 - 4, y - 10, w + 8, 20);
-      ctx.fillStyle = '#5a2a2a'; ctx.fillRect(x0, y - 6, w, 12);
-      ctx.fillStyle = '#c8a03a'; ctx.fillRect(cx - sp.wG * w / 2, y - 6, sp.wG * w, 12);
-      ctx.fillStyle = '#7ae08a'; ctx.fillRect(cx - sp.wP * w / 2, y - 6, sp.wP * w, 12);
-      const nx = cx + pos * w / 2; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(nx) - 1, y - 9, 3, 18);
-      if (!done) hint(ctx, `클릭·탭 = 멈추기 (${Math.max(0, MAN.gAuto - g.t).toFixed(1)}초 뒤 자동)`, 180, y - 20);
+    if (p && p.gauge && D.phase === 'pitch' && me(D.pitU)) { // 내 투구: 조준 (존 + 가운데 조준점) → 누른 채 게이지
+      const g = p.gauge, sp = gaugeSpec(g), x0 = 60, w = 240, y = V.y + V.h - 62, cx = x0 + w / 2, done = g.q != null, H = S0.home;
+      const a = V3.proj(H.x - MAN.zw, H.y - 2, MAN.zc + MAN.zh), c = V3.proj(H.x + MAN.zw, H.y - 2, MAN.zc - MAN.zh);
+      if (a && c) { const zx = Math.min(a.x, c.x), zw = Math.abs(c.x - a.x), zh = c.y - a.y; ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(zx, a.y, zw, zh); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1; ctx.strokeRect(zx, a.y, zw, zh);
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.beginPath(); for (const t of [1 / 3, 2 / 3]) { ctx.moveTo(zx + zw * t, a.y); ctx.lineTo(zx + zw * t, c.y); ctx.moveTo(zx, a.y + zh * t); ctx.lineTo(zx + zw, a.y + zh * t); } ctx.stroke(); }
+      const ctr = V3.center(), rp = g.st === 'aim' ? ctr : V3.proj(H.x + (g.ax || 0) * MAN.zw, H.y - 2, MAN.zc + (g.az || 0) * MAN.zh); // 조준점: 조준 중엔 화면 가운데, 누른 뒤엔 고정된 조준 위치
+      if (rp && !done) { ctx.strokeStyle = g.st === 'aim' ? '#ffe27a' : '#ff9a5a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(rp.x, rp.y, 5, 0, TAU); ctx.moveTo(rp.x - 10, rp.y); ctx.lineTo(rp.x - 3, rp.y); ctx.moveTo(rp.x + 3, rp.y); ctx.lineTo(rp.x + 10, rp.y); ctx.moveTo(rp.x, rp.y - 10); ctx.lineTo(rp.x, rp.y - 3); ctx.moveTo(rp.x, rp.y + 3); ctx.lineTo(rp.x, rp.y + 10); ctx.stroke(); }
+      if (g.st === 'hold' || done) {
+        const pos = done ? (g.off || 0) * Math.sign(gaugePos(g) || 1) : gaugePos(g);
+        ctx.fillStyle = 'rgba(14,15,24,0.85)'; ctx.fillRect(x0 - 4, y - 10, w + 8, 20);
+        ctx.fillStyle = '#5a2a2a'; ctx.fillRect(x0, y - 6, w, 12);
+        ctx.fillStyle = '#c8a03a'; ctx.fillRect(cx - sp.wG * w / 2, y - 6, sp.wG * w, 12);
+        ctx.fillStyle = '#7ae08a'; ctx.fillRect(cx - sp.wP * w / 2, y - 6, sp.wP * w, 12);
+        const nx = cx + pos * w / 2; ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(nx) - 1, y - 9, 3, 18);
+      }
+      if (!done) { const inp = V3.input ? V3.input() : {}, first = !Settings.get('bsbHoldSeen');
+        if (g.st === 'aim') hint(ctx, first ? (inp.mouse ? '마우스를 누른 채 유지하세요' : '화면을 누른 채 유지하세요') : `조준 후 누른 채 유지 → 놓으면 투구 (${Math.max(0, MAN.gAim - g.t).toFixed(1)}초)`, 180, y - 20, first ? '#ffffff' : '#ffe27a');
+        else hint(ctx, '가운데에서 놓으세요!', 180, y - 20); }
       else { const q = g.q; hint(ctx, { P: '완벽! 강속구', G: '좋은 공', B: '실투…', M: '자동 투구' }[q], 180, y - 20, { P: '#ffe27a', G: '#9fffb8', B: '#ff9a8a', M: '#c8d0e0' }[q]); }
     }
   }
