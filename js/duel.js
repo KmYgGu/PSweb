@@ -837,10 +837,11 @@
         if (D.gardner && !u.dead) { const G = D.gardner; ctx.save(); ctx.globalAlpha = 0.45 + 0.4 * G.hp / G.max; ctx.strokeStyle = '#c8d0ff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(u.x, u.y - 18, 22 + u.pad, -1.1, 1.1); ctx.stroke(); ctx.beginPath(); ctx.arc(u.x, u.y - 18, 22 + u.pad, Math.PI - 1.1, Math.PI + 1.1); ctx.stroke(); ctx.restore(); }
         if (D.magnet && D.magnet.tgt) { const t = D.magnet.tgt; ctx.save(); ctx.globalAlpha = 0.5 + 0.3 * Math.sin(b.time * 20); ctx.strokeStyle = '#a0d8ff'; ctx.lineWidth = 1.5 + D.magnet.strain * 0.5; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(u.x, u.y - 18); ctx.lineTo(t.x, t.y - 18 - b.airZ(t)); ctx.stroke(); ctx.restore(); }
         if (D.repel && !u.dead) { ctx.save(); ctx.globalAlpha = 0.25; ctx.strokeStyle = '#ffd0a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(u.x, u.y - 14, u.pad + 30, 0, TAU); ctx.stroke(); ctx.restore(); }
-        if (!u.dead) { const P = D.pops, n = P.length; P.forEach((p, i) => { if (n - 1 - i < 3) drawPop(ctx, b, u, p, n - 1 - i); }); }
+        if (!u.dead) { const P = D.pops, n = P.length, f = c => P.forEach((p, i) => { if (n - 1 - i < 3) drawPop(c, b, u, p, n - 1 - i); });
+          if (V3 && n) V3.push({ x: u.x, y: u.y, w: 140, h: 300, maxS: 1.5, draw: f }); else f(ctx); } // 직접 플레이: 머리 위에 층층이 세움
       }
       if (b.duelSpirits) for (const s of b.duelSpirits) drawSpirit(ctx, b, s);
-      if (b.duelPops) b.duelPops.forEach(p => drawPop(ctx, b, p.u, p, 0));
+      if (b.duelPops) b.duelPops.forEach(p => { if (V3 && p.u) V3.push({ x: p.u.x, y: p.u.y, w: 140, h: 300, maxS: 1.5, draw: c => drawPop(c, b, p.u, p, 0) }); else drawPop(ctx, b, p.u, p, 0); });
       if (b.duelFx) for (const f of b.duelFx) { if (f.type === 'fist') drawFist(ctx, f); else if (f.type === 'exodia') drawExodia(ctx, b, f); }
     }
   }

@@ -153,7 +153,9 @@
     },
     sortItems(b) {
       const K = b.claw; if (!K) return [];
-      return K.dolls.map(d => ({ y: d.y, x: d.x, draw: ctx => CLAW.drawDoll(ctx, b, d) }));
+      const sc = (K.C && K.C.scale) || 0.62;
+      return K.dolls.map(d => { const sp = Sprites.get(d.def), k = sc * (d.def.size || 1); // w/h: 직접 플레이에서 인형을 세울 캔버스 크기 (스프라이트 전체가 들어가게)
+        return { y: d.y, x: d.x, w: Math.ceil((sp ? sp.dw : 60) * k * 1.3) + 10, h: Math.ceil((sp ? sp.dh : 60) * k + Math.max(0, d.z || 0)) + 20, draw: ctx => CLAW.drawDoll(ctx, b, d) }; });
     },
     drawDoll(ctx, b, d, thumb) {
       const C = (b.claw && b.claw.C) || { scale: 0.62 };

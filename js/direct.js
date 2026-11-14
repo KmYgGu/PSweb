@@ -11,6 +11,7 @@
 const DirectPlay = (() => {
   const EXCLUDE = new Set(['basket', 'baseball']); // 특수 규칙 스테이지 → 일반 시점
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.45, f: 300, near: 6, wallH: 34, bldH: 34 };
+  const PITCH_UP = -0.38; // 올려다보기 한계 (기본 0.45 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
   const FLIP_CD = 0.45; // 반전 쿨타임 (전투 시간 초)
   const RES = 2, TR = 2; // 화면 내부 배율 (main.js RES) · 바닥 그림 배율
   const TX = { x: AR.x - 30, y: AR.y - 30, w: AR.w + 60, h: AR.h + 60 }; // 바닥 그림 영역 (경기장 + 바깥 테두리)
@@ -181,7 +182,7 @@ const DirectPlay = (() => {
       const d = wrap(Math.atan2(E.y - P.y, E.x - P.x) - S.autoYaw);
       S.autoYaw = wrap(S.autoYaw + clamp(d * (1 - Math.exp(-3.2 * dt)), -2.6 * dt, 2.6 * dt));
     }
-    S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, -0.95, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 위로 약 29° 까지 올려다보기 (크레인 등)
+    S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, PITCH_UP, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 올려다보기는 내 캐릭터 상반신이 화면에 남는 만큼만
     if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     C.yaw = S.autoYaw + S.userYaw; C.pitch = CAM.pitch + S.userPitch;
@@ -216,7 +217,7 @@ const DirectPlay = (() => {
     if (!lift) { lift = document.createElement('canvas'); lift.width = tex.width; lift.height = tex.height; lctx = lift.getContext('2d'); }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, tex.width, tex.height); c.setTransform(TR, 0, 0, TR, -TX.x * TR, -TX.y * TR); c.imageSmoothingEnabled = false; }
     // 바닥(tex) = 바닥 그림·바닥 이펙트, 세울 그림(lift) = 물체·특수 건물·기믹·위층 이펙트·입자. 투사체는 따로 (공중)
-    S.stand = []; Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route });
+    S.stand = []; S.bigs = []; S.bigN = 0; Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route });
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; }
   }
   // ---------- 큰 이펙트 → 바닥에 눕힘 ----------
@@ -246,16 +247,35 @@ const DirectPlay = (() => {
     });
     return tproxy;
   }
+  // 큰 이펙트는 각자 전용 캔버스(bigPool)에 그리고, 이번 프레임에 잰 범위만 잘라 그 위치에 세움 (캐릭터 허리 높이 BIG_Z 가 가운데)
+  const bigPool = [], MAXBIG = 4, BIG_Z = 24;
+  function bigCanvas(i) {
+    if (!bigPool[i]) { const c = document.createElement('canvas'); c.width = lift.width; c.height = lift.height; bigPool[i] = { c, x: c.getContext('2d') }; }
+    const B = bigPool[i], x = B.x; x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; x.clearRect(0, 0, B.c.width, B.c.height);
+    x.setTransform(lctx.getTransform()); x.imageSmoothingEnabled = false; return B; // 위층과 같은 변환
+  }
   function tflush() {
-    if (TK.key == null) return; const B = TK.box;
-    if (B[2] > B[0] && ((B[2] - B[0]) / TR > BIGW || (B[3] - B[1]) / TR > BIGH)) { if (typeof TK.key === 'object') bigObj.set(TK.key, true); else bigKey[TK.key] = true; }
-    TK.key = null;
+    if (TK.key == null) return; const B = TK.box, ok = B[2] > B[0] && B[3] > B[1];
+    if (TK.bigC) { if (ok) S.bigs.push({ c: TK.bigC, x0: TX.x + B[0] / TR - 2, y0: TX.y + B[1] / TR - 2, x1: TX.x + B[2] / TR + 2, y1: TX.y + B[3] / TR + 2 }); }
+    else if (ok && ((B[2] - B[0]) / TR > BIGW || (B[3] - B[1]) / TR > BIGH)) { if (typeof TK.key === 'object') bigObj.set(TK.key, true); else bigKey[TK.key] = true; }
+    TK.key = null; TK.bigC = null;
   }
   function route(k) { // Render.draw 가 그림 단위마다 부름 (null = 끝)
     tflush(); if (k == null) return lctx;
-    const big = typeof k === 'object' ? bigObj.get(k) : bigKey[k];
-    TK.ctx = big ? tctx : lctx; TK.key = big ? null : k; TK.box[0] = TK.box[1] = 1e9; TK.box[2] = TK.box[3] = -1e9; // 이미 큰 것은 더 잴 필요 없음
+    const big = (typeof k === 'object' ? bigObj.get(k) : bigKey[k]) && S.bigN < MAXBIG;
+    if (big) { const B = bigCanvas(S.bigN++); TK.ctx = B.x; TK.bigC = B.c; } else { TK.ctx = lctx; TK.bigC = null; }
+    TK.key = k; TK.box[0] = TK.box[1] = 1e9; TK.box[2] = TK.box[3] = -1e9;
     return tracker();
+  }
+  function bigPlace(b, g) { // 세울 위치: 가까운 캐릭터 발(그 캐릭터 몸에 걸친 이펙트) 또는 이펙트 가운데
+    const cx = (g.x0 + g.x1) / 2, cy = (g.y0 + g.y1) / 2; let wy = cy, best = 1e9;
+    for (const u of b.u) { if (u.hidden || u.def.noDraw) continue; const dx = Math.abs(u.x - cx), dy = u.y - cy; if (dx < 40 && dy > -12 && dy < 70 && dx + dy < best) { best = dx + dy; wy = u.y; } }
+    g.cx = cx; g.wy = wy; return g;
+  }
+  function drawBig(ctx, g) {
+    const p = proj(g.cx, g.wy, BIG_Z); if (!p || p.s > 9) return;
+    const w = g.x1 - g.x0, h = g.y1 - g.y0, dw = w * p.s, dh = h * p.s;
+    ctx.drawImage(g.c, (g.x0 - TX.x) * TR, (g.y0 - TX.y) * TR, w * TR, h * TR, p.x - dw / 2, p.y - dh / 2, dw, dh);
   }
 
   // ---------- 세울 그림 나누기 (픽셀을 읽지 않음: file:// 에서 PNG 를 그린 캔버스는 읽을 수 없음) ----------
@@ -508,23 +528,38 @@ const DirectPlay = (() => {
     line3(ctx, [g0, y0, GH], [g1, y0, GH], 3, '#f4f6ff'); line3(ctx, [g0, y0, GH - 1.5], [g1, y0, GH - 1.5], 1, col);
     ctx.lineCap = 'butt';
   }
-  const CR_TOP = 210; // 크레인 레일 높이 (올려다보면 보임)
-  function drawCrane3(ctx, Cr) {
-    const x0 = AR.x + 4, x1 = AR.x + AR.w - 4, y0 = AR.y + 4, y1 = AR.y + AR.h - 4, T = CR_TOP, hz = (Cr.z || 0) + 44;
-    ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); ctx.lineCap = 'round';
-    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) line3(ctx, [x, y, 0], [x, y, T], 3, '#8a8ea0'); // 기계 모서리 기둥
-    line3(ctx, [x0, y0, T], [x0, y1, T], 4, '#c8ccd8'); line3(ctx, [x1, y0, T], [x1, y1, T], 4, '#c8ccd8'); // 옆 레일
-    line3(ctx, [x0, Cr.y, T], [x1, Cr.y, T], 5, '#c8ccd8'); line3(ctx, [x0, Cr.y, T - 2], [x1, Cr.y, T - 2], 2, '#8a8ea0'); // 갠트리
-    line3(ctx, [Cr.x, Cr.y, T], [Cr.x, Cr.y, hz], 2, '#d8dce8'); // 케이블
-    const t = proj(Cr.x, Cr.y, T); if (t) { ctx.fillStyle = '#ff7ab8'; ctx.fillRect(t.x - 12 * t.s, t.y - 6 * t.s, 24 * t.s, 12 * t.s); ctx.fillStyle = '#ffd0ec'; ctx.fillRect(t.x - 12 * t.s, t.y - 6 * t.s, 24 * t.s, 3 * t.s); }
-    const h = proj(Cr.x, Cr.y, hz);
-    if (h && h.s < 12) { // 집게 머리 + 3갈래 집게 (stages6 drawCrane 과 같은 모양, 2배)
-      const k = h.s * 2, R = (dx, dy, w, hh, c) => { ctx.fillStyle = c; ctx.fillRect(h.x + dx * k, h.y + dy * k, w * k, hh * k); };
-      const o = Cr.open || 0, sw = Math.round(3 + o * 5);
-      R(-7, -1, 14, 9, '#3a3448'); R(-6, 0, 12, 7, '#e8ecf4'); R(-6, 5, 12, 2, '#a8aec0'); R(-1, 2, 2, 2, '#ffd860');
-      for (const s of [-1, 1]) { R(s * sw - 1, 8, 2, 8, '#b8bccc'); R(s * (sw - 2) - 1, 15, 2, 2, '#b8bccc'); R(s * Math.max(1, sw - 3) - 1, 16, 2, 2, '#b8bccc'); }
-      R(-1, 8, 2, 9, '#b8bccc');
-    }
+  const CR_TOP = 150; // 크레인 레일 높이
+  function box3(ctx, x0, y0, z0, x1, y1, z1, col) { // 축 정렬 상자 (보이는 면만, 면마다 음영) = 벽처럼 고정된 3D
+    const F = [];
+    if (C.x < x0) F.push([[[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], 0.8]); if (C.x > x1) F.push([[[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], 0.8]);
+    if (C.y < y0) F.push([[[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], 0.95]); if (C.y > y1) F.push([[[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], 0.95]);
+    if (C.z > z1) F.push([[[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], 1.15]); if (C.z < z0) F.push([[[x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0]], 0.6]);
+    for (const [f, k] of F) if (poly(ctx, f)) { ctx.fillStyle = Sprites.shade(col, k); ctx.fill(); }
+  }
+  function craneBoxes(Cr) { // 고정 구조: 모서리 기둥 · 옆 레일 · 갠트리 · 트롤리 · 케이블 (월드 좌표)
+    const x0 = AR.x + 4, x1 = AR.x + AR.w - 4, y0 = AR.y + 4, y1 = AR.y + AR.h - 4, T = CR_TOP, hz = (Cr.z || 0) + 44, L = [];
+    for (const [x, y] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) L.push([x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, T + 1, '#8a8ea0', 'post']);
+    L.push([x0 - 2.5, y0, T - 3, x0 + 2.5, y1, T + 1, '#c8ccd8'], [x1 - 2.5, y0, T - 3, x1 + 2.5, y1, T + 1, '#c8ccd8']);
+    L.push([x0, Cr.y - 3, T - 4, x1, Cr.y + 3, T + 1, '#b8bccc']);
+    L.push([Cr.x - 12, Cr.y - 7, T - 11, Cr.x + 12, Cr.y + 7, T + 2, '#ff7ab8']);
+    if (T - 11 > hz) L.push([Cr.x - 0.9, Cr.y - 0.9, hz, Cr.x + 0.9, Cr.y + 0.9, T - 11, '#d8dce8']);
+    return L;
+  }
+  function drawCraneTop(ctx, Cr, posts) { // posts=false: 위쪽 구조(레일·갠트리·트롤리·케이블), true: 기둥만
+    const L = craneBoxes(Cr).filter(q => (q[7] === 'post') === posts);
+    L.sort((a, c) => cam((c[0] + c[3]) / 2, (c[1] + c[4]) / 2, (c[2] + c[5]) / 2)[2] - cam((a[0] + a[3]) / 2, (a[1] + a[4]) / 2, (a[2] + a[5]) / 2)[2]);
+    ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0);
+    for (const q of L) box3(ctx, q[0], q[1], q[2], q[3], q[4], q[5], q[6]);
+    ctx.restore();
+  }
+  function drawClaw(ctx, Cr) { // 집게만 카메라를 바라봄 (stages6 drawCrane 과 같은 모양, 2배)
+    const h = proj(Cr.x, Cr.y, (Cr.z || 0) + 44); if (!h || h.s > 12) return;
+    ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0);
+    const k = h.s * 2, R = (dx, dy, w, hh, c) => { ctx.fillStyle = c; ctx.fillRect(h.x + dx * k, h.y + dy * k, w * k, hh * k); };
+    const o = Cr.open || 0, sw = Math.round(3 + o * 5);
+    R(-7, -1, 14, 9, '#3a3448'); R(-6, 0, 12, 7, '#e8ecf4'); R(-6, 5, 12, 2, '#a8aec0'); R(-1, 2, 2, 2, '#ffd860');
+    for (const s of [-1, 1]) { R(s * sw - 1, 8, 2, 8, '#b8bccc'); R(s * (sw - 2) - 1, 15, 2, 2, '#b8bccc'); R(s * Math.max(1, sw - 3) - 1, 16, 2, 2, '#b8bccc'); }
+    R(-1, 8, 2, 9, '#b8bccc');
     ctx.restore();
   }
 
@@ -541,6 +576,7 @@ const DirectPlay = (() => {
     const fog = ctx.createLinearGradient(0, hz, 0, hz + 70); fog.addColorStop(0, 'rgba(20,22,34,0.75)'); fog.addColorStop(1, 'rgba(20,22,34,0)');
     ctx.fillStyle = fog; ctx.fillRect(0, hz, W, 70);
     drawWalls(ctx, b);
+    if (b.claw && b.claw.crane) drawCraneTop(ctx, b.claw.crane, false); // 크레인 위쪽 구조 (모두보다 높음 → 먼저)
     // 깊이 정렬 (먼 것부터)
     const P = player(b), E = focus(b, P), items = [];
     for (const u of b.u) { if (u.hidden || u.def.noDraw) continue; const c = cam(u.x, u.y, 0); if (c[2] > CAM.near + 2) items.push({ z: c[2], u }); }
@@ -549,19 +585,23 @@ const DirectPlay = (() => {
       const g = proj(p.x, p.y, 0); if (g && g.s < 9) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 6 * g.s, 2.2 * g.s, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; } } // 투사체 그림자
     for (const c of cells) { const q = cam(c.x, c.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.5, c }); } // 캐릭터 둘레 위층 그림: 그 캐릭터 바로 앞
     for (const o of S.stand) { const q = cam(o.x, o.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], o }); }
+    for (const g of S.bigs) { bigPlace(b, g); const q = cam(g.cx, g.wy, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.6, big: g }); } // 큰 이펙트: 세운 판
     if (b.balls && !EXCLUDE.has(b.stageId)) for (const bl of b.balls) { const q = cam(bl.x, bl.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], ball: bl }); }
     for (const g of goalItems(b)) items.push(g);
-    if (b.claw && b.claw.crane) items.push({ z: cam(b.claw.crane.x, b.claw.crane.y, 0)[2] - 1, crane: b.claw.crane });
+    if (b.claw && b.claw.crane) { const Cr = b.claw.crane; items.push({ z: cam(Cr.x, Cr.y, 0)[2] - 1, claw: Cr });
+      for (const [x, y] of [[AR.x + 4, AR.y + 4], [AR.x + AR.w - 4, AR.y + 4], [AR.x + 4, AR.y + AR.h - 4], [AR.x + AR.w - 4, AR.y + AR.h - 4]]) { const q = cam(x, y, 0); if (q[2] > CAM.near) items.push({ z: q[2], post: [x, y, Cr] }); } }
     items.sort((a, c) => c.z - a.z);
     const eRect = (() => { if (!E || E.hidden) return null; const p = proj(E.x, E.y, 0); return p ? { x: p.x, y: p.y, w: 30 * p.s, h: 60 * p.s } : null; })();
     let bi = 0, pi = 0, oi = 0;
     for (const it of items) {
       if (it.bl) { drawBox(ctx, it.bl); continue; }
       if (it.c) { drawCell(ctx, it.c); continue; }
+      if (it.big) { drawBig(ctx, it.big); continue; }
       if (it.ball) { drawBall(ctx, it.ball); continue; }
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
-      if (it.crane) { drawCrane3(ctx, it.crane); continue; }
-      if (it.o) { const p = proj(it.o.x, it.o.y, 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o); ctx.drawImage(B.c, p.x - B.w / 2 * p.s, p.y - B.fy * p.s, B.w * p.s, B.h * p.s); continue; }
+      if (it.claw) { drawClaw(ctx, it.claw); continue; }
+      if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
+      if (it.o) { const p = proj(it.o.x, it.o.y, 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, p = proj(u.x, u.y, 0); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
