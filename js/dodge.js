@@ -255,7 +255,7 @@
     collide(b, D) { // stages6.js 인형뽑기 충돌 규칙 재사용: 팀원끼리 탄성 충돌, 주인공 ↔ 팀원은 인형처럼 튕김 (관통 없음)
       const N = D.npc.filter(n => !n.exiting), U = b.u.filter(u => mainIn(u) && !u.airborne), rN = n => 15 * S0.npcK * (n.def.size || 1);
       for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
-        const a = N[i], c = N[j], dx = c.x - a.x, dy = c.y - a.y, dd = hyp(dx, dy), R = rN(a) + rN(c); if (dd >= R || dd < 0.01) continue;
+        const a = N[i], c = N[j]; if (a.out && c.out) continue; /* 외야끼리는 충돌 없음 (서로 길을 막지 않게) */ const dx = c.x - a.x, dy = c.y - a.y, dd = hyp(dx, dy), R = rN(a) + rN(c); if (dd >= R || dd < 0.01) continue;
         const nx = dx / dd, ny = dy / dd, p = (R - dd) / 2; a.x -= nx * p; a.y -= ny * p; c.x += nx * p; c.y += ny * p;
         const rv = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny; if (rv < 0) { a.vx += rv * nx; a.vy += rv * ny; c.vx -= rv * nx; c.vy -= rv * ny; }
         else if (a.hitT <= 0 && c.hitT <= 0 && p > 1) { DG.bump(b, a, -nx, -ny, S0.bounce.v); DG.bump(b, c, nx, ny, S0.bounce.v); } /* 걸어서 부딪힘 → 살짝 튕김 */

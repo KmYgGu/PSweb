@@ -252,7 +252,7 @@ const DirectPlay = (() => {
       const d = wrap(Math.atan2(E.y - P.y, E.x - P.x) - S.autoYaw);
       S.autoYaw = wrap(S.autoYaw + clamp(d * (1 - Math.exp(-3.2 * dt)), -2.6 * dt, 2.6 * dt));
     }
-    S.dIn = [S.inYaw, S.inPitch]; // 야구 투구 조준용 (이번 프레임 회전 입력)
+    S.view = view; S.dIn = [S.inYaw, S.inPitch]; // 야구 투구 조준용 (이번 프레임 회전 입력)
     S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, PITCH_UP, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 올려다보기는 내 캐릭터 상반신이 화면에 남는 만큼만
     if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
@@ -316,18 +316,31 @@ const DirectPlay = (() => {
     if (Dc && (Dc.phase === 'look' || (Dc.phase === 'warn' && Dc.t > Dc.C.warn * 0.6))) { const tx = 180, ty = 168, yw = Math.atan2(ty - P.y, tx - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, tx, ty, 34, CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h }; }
     const KD = b.bb, ksh = KD && b.bbMan && KD.sh && KD.sh.u === P ? KD.sh : null; // 농구 슛 자세: 골대 쪽 고정
     if (ksh) { const H = KD.S.hoop, yw = Math.atan2(H.y - P.y, H.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, H.x, H.y, 56, CAM.h), CAM.pitch - 0.2, CAM.pitch + 0.3), h: CAM.h, zeroUser: true }; }
-    if (!S.lockOn) S.dgLk = null;
-    if (S.lockOn && dgCtx(b) === 'hold') { // 피구: 공을 쥐고 우클릭(길게 누름) = 조준점에 가장 가까운 상대 자동 조준, 시점을 크게 움직이면 그 방향의 상대로 다시
-      const G = DGX(b), F = G.cands(b).filter(q => q.foe), yawTo = e => Math.atan2(e.y - P.y, e.x - P.x);
+    if (!S.lockOn) { S.dgLk = null; S.dgBall = null; }
+    const G = S.lockOn ? DGX(b) : null, dc = G ? dgCtx(b) : null;
+    if (G && dc === 'hold') { // 피구: 공을 쥐고 우클릭(길게 누름) = 조준점에 가장 가까운 상대 자동 조준, 시점을 크게 움직이면 그 방향의 상대로 다시
+      S.dgBall = null; const F = G.cands(b).filter(q => q.foe), yawTo = e => Math.atan2(e.y - S.py, e.x - S.px);
       let T = S.dgLk && F.find(q => q.key === S.dgLk); const base = C.yaw;
       if (S.dIn) S.dgAcc = (S.dgAcc || 0) + S.dIn[0];
       if (!T || Math.abs(S.dgAcc || 0) > 0.18) { const vy = base + (T ? S.dgAcc * 2.5 : 0); let bd = 1e9; for (const q of F) { if (T && q === T && F.length > 1) continue; const d = Math.abs(wrap(yawTo(q.e) - vy)); if (d < bd) { bd = d; T = q; } } S.dgAcc = 0; S.dgLk = T ? T.key : null; }
-      if (T) { const yw = yawTo(T.e); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, T.e.x, T.e.y, 18, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, aim: true, zeroUser: true }; }
+      if (T) { const a = aimAt(T.e.x, T.e.y, dgBodyZ(T.e)); if (a) return a; }
+    } else if (G) { // 피구: 공 없이 우클릭 = 누른 순간 가장 가까운 공을 계속 추적 (떼었다 다시 누르면 다시 고름)
+      const L = G.ball3(b);
+      if (S.dgBall == null || !L[S.dgBall]) { let bd = 1e9; S.dgBall = null; L.forEach((q, i) => { const d = Math.hypot(q.x - P.x, q.y - P.y); if (d < bd) { bd = d; S.dgBall = i; } }); }
+      const q = S.dgBall != null ? L[S.dgBall] : null; if (q) { const a = aimAt(q.x, q.y, (q.z || 0) + q.r); if (a) return a; }
     }
     const bl = S.lockOn && ((BS && BS.ball3(b)) || bkBall(b)); // 야구장·농구장: 상대 대신 공을 추적
     if (bl) { const yw = Math.hypot(bl.x - P.x, bl.y - P.y) > 8 ? Math.atan2(bl.y - P.y, bl.x - P.x) : (S.lastYaw || 0); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, bl.x, bl.y, bl.z, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; }
     if (S.lockOn && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
     return null;
+  }
+  const dgBodyZ = e => (e.maxHp != null ? 24 * (e.size || 1) : 24 * (window.DODGE ? DODGE.S.npcK : 0.8)) + (e.maxHp != null && S.battle ? S.battle.airZ(e) : 0); // 피구 조준 높이: 몸 가운데
+  function aimAt(tx, ty, tz) { // (tx,ty,tz) 가 화면 조준점(가로 가운데, 세로 view 45%)에 오게 하는 시점: 카메라는 내 캐릭터 뒤(dist)·옆(side)에 있으므로 카메라 위치 기준으로 반복 계산
+    if (Math.hypot(tx - S.px, ty - S.py) < 12) return null; let yaw = Math.atan2(ty - S.py, tx - S.px), cx = 0, cy = 0;
+    for (let i = 0; i < 5; i++) { const fx = Math.cos(yaw), fy = Math.sin(yaw); cx = S.px - fx * CAM.dist + fy * CAM.side; cy = S.py - fy * CAM.dist - fx * CAM.side; yaw = Math.atan2(ty - cy, tx - cx); }
+    const V = S.view || { y: 112, h: 410 }, f = CAM.f * (S.zm || 1), k = (V.h * (0.66 - 0.45)) / f, L = Math.max(1, Math.hypot(tx - cx, ty - cy)); // 조준점은 화면 중심(66%)보다 위(45%)
+    const pitch = clamp(Math.atan(k) - Math.atan2(tz - CAM.h, L), -0.6, 1.3); S.lastYaw = yaw;
+    return { yaw, pitch, h: CAM.h, aim: true, zeroUser: true };
   }
   function cam(x, y, z) { const dx = x - C.x, dy = y - C.y, dz = z - C.z; return [dx * C.R[0] + dy * C.R[1], dx * C.U[0] + dy * C.U[1] + dz * C.U[2], dx * C.F[0] + dy * C.F[1] + dz * C.F[2]]; }
   function scr(c) { return { x: C.cx + C.f * c[0] / c[2], y: C.cy - C.f * c[1] / c[2], s: C.f / c[2], z: c[2] }; }
@@ -1130,7 +1143,7 @@ const DirectPlay = (() => {
   }
   function drawDgAim(ctx, b, view) { // 피구: 화면 가운데 조준점. 상대 = 슛 게이지(빨강), 팀원 = 패스(하늘색), 겹치면 상대 우선
     const G = DGX(b), ax = W / 2, ay = view.y + view.h * 0.45; let bf = null, bm = null, df = 1e9, dm = 1e9; S.dproj = [];
-    for (const c of G.cands(b)) { const e = c.e, q = proj(e.x, e.y, 20 * (e.size || (e.maxHp != null ? 1 : 0.8))); if (!q || q.x < 0 || q.x > W || q.y < view.y || q.y > view.y + view.h) continue;
+    for (const c of G.cands(b)) { const e = c.e, q = proj(e.x, e.y, dgBodyZ(e)); if (!q || q.x < 0 || q.x > W || q.y < view.y || q.y > view.y + view.h) continue;
       const f = { key: c.key, foe: c.foe, x: q.x, y: q.y, name: e.def.name }; S.dproj.push(f); const r = Math.max(14, 16 * q.s), d = Math.hypot(q.x - ax, q.y - ay);
       if (d < r) { if (c.foe && d < df) { df = d; bf = f; } else if (!c.foe && d < dm) { dm = d; bm = f; } } }
     const best = bf || bm; S.dgAim = best;
@@ -1144,6 +1157,7 @@ const DirectPlay = (() => {
   }
   function fresh() { tex = lift = rest = null; tctx = lctx = rctx = null; for (const P of [bigPool, opool, ppool, pool, fpool, mpool]) P.length = 0; } // 녹화: 중간 캔버스 새로 만들기
   return { supported, begin, fresh, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
+    get aimPt() { if (!S.view) return null; const G = DGX(S.battle), q = G && S.dgBall != null ? G.ball3(S.battle)[S.dgBall] : null, p = q ? proj(q.x, q.y, (q.z || 0) + q.r) : null; return { x: W / 2, y: S.view.y + S.view.h * 0.45, lk: S.dgLk || null, ball: S.dgBall, bs: p ? { x: p.x, y: p.y } : null }; }, // 확인용 (읽기 전용)
     get dproj() { return S.dproj ? S.dproj.map(f => ({ ...f })) : null; }, // 피구 조준 후보 화면 좌표 (확인용, 읽기 전용)
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();
