@@ -17,6 +17,7 @@ const B_MODE = {
 const bMeleeCdK = u => B_MODE.cdBase + Math.max(0, u.st.range - B_MODE.cdRefRange) * B_MODE.cdPerPx;
 // 원거리 공통(v2 밸런스): 사거리 ≥ MELEE_RANGE 캐릭터(듀얼리스트 포함)는 적과 부딪히면 혼자 더 멀리 튕겨 나감
 const RANGED_PUSH = { sep: 1.6, boost: 1.4, aim: 0.85 }; // sep: 위치 분리 배율, boost: 충돌 가속(일반 0.45), aim: 정반대 방향으로 꺾는 비율 // 충돌·무기 공격은 서로 독립 (별도 쿨타임)
+const FLIP_HOLD = 0.5; // 직접 플레이 모드: 반전 뒤 이 시간(초) 동안 AI 방향 전환을 되돌림 (벽·건물·캐릭터 충돌 반사는 그대로)
 const RAMP_START = 25, RAMP_RATE = 0.13; // 장기전 방지 피해 증가 (시작 초, 초당 증가율)
 const PROJ_COL = { flame: '#ffae6b', holy: '#fff0a0', magic: '#a8d8ff', arrow: '#e8e0c8', arrowG: '#a8f07a', wire: '#ffb070' };
 const TEAM_COL = ['#6aa8ff', '#ff7b7b'];
@@ -203,7 +204,7 @@ class Battle {
     const dot = vx * nx + vy * ny;
     if (dot > 0) { // 법선 기준 반사
       vx -= 2 * dot * nx; vy -= 2 * dot * ny;
-      u.dir = Math.atan2(vy, vx) + rand(-0.25, 0.25);
+      u.dir = Math.atan2(vy, vx) + rand(-0.25, 0.25); u.bnc = (u.bnc || 0) + 1;
       if (this.time - (u.wallT || -1) > 0.12) { u.wallT = this.time; this.dust(u.x, u.y); this.ring(u.x + nx * 10, u.y, 2, 10, 0.2, '#f0e8e0'); playSfx('wall'); }
     }
   }
@@ -274,7 +275,7 @@ class Battle {
         let vx = Math.cos(u.dir), vy = Math.sin(u.dir);
         const dot = vx * nx + vy * ny;
         if (dot > 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; }
-        u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.2, 0.2));
+        u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.2, 0.2)); u.bnc = (u.bnc || 0) + 1;
         u.boost = Math.max(u.boost, B.boost ?? 0.45);
         u.kx -= nx * 5; u.ky -= ny * 5;
         u.x -= nx * 1.5; u.y -= ny * 1.5;
@@ -342,6 +343,7 @@ class Battle {
     }
     for (const u of this.u) { this.updateAir(u, dt); if (!u.airborne) this.resolveBuildings(u); this.circleWall(u); if (!u.airborne) this.updateTerrain(u, dt); }
     this.updateBalls(dt);
+    for (const u of this.u) if (u.flipHold) this.holdFlip(u); // 직접 플레이 모드 반전 유지 (반전한 적 없으면 아무 일 없음)
     for (const h of STAGE_HOOKS) h.step && h.step(this, dt);
     for (const bl of this.buildings) bl.hitT = Math.max(0, bl.hitT - dt);
     this.updateProj(dt);
@@ -386,6 +388,22 @@ class Battle {
     this.freeze = { timers: [], winner: winner || null };
     this.proj = [];
     for (const u of this.u) { u.action = null; u.push = null; u.vx = 0; u.vy = 0; u.kx = 0; u.ky = 0; u.boost = 0; }
+  }
+  // ---------- 직접 플레이 모드 (js/direct.js) ----------
+  // 플레이어 입력 = 진행 방향 반전 (난수 안 씀). 리플레이는 입력이 들어간 스텝 번호로 똑같이 다시 넣어 재현 (main.js REC.inp)
+  playerFlip(u) {
+    if (!u || u.dead || this.over || this.freeze || u.action) return false; // 돌진·스킬 동작 중에는 동작이 이동을 정함
+    u.dir = fixAngle(u.dir + Math.PI);
+    if (u.v) { u.v[0] = -u.v[0]; u.v[1] = -u.v[1]; } // 빙판 관성도 반대로
+    u.flipHold = { until: this.time + FLIP_HOLD, dir: u.dir, n: u.bnc || 0 };
+    return true;
+  }
+  // 반전 직후 FLIP_HOLD 초: 벽·건물·캐릭터 충돌 반사(u.bnc 증가)는 받아들이고, 그 밖의 방향 전환(스킬 끝·캐릭터 AI 등)은 반전 방향으로 되돌림
+  holdFlip(u) {
+    const H = u.flipHold;
+    if (u.dead || u.action || this.time >= H.until) { u.flipHold = null; return; }
+    if ((u.bnc || 0) !== H.n) { H.n = u.bnc || 0; H.dir = u.dir; return; }
+    if (u.dir !== H.dir) { u.dir = H.dir; if (u.v) { const sp = Math.hypot(u.v[0], u.v[1]); u.v = [Math.cos(H.dir) * sp, Math.sin(H.dir) * sp]; } }
   }
   freezeLater(t, fn) { if (this.freeze) this.freeze.timers.push({ t, fn }); }
   updateUnit(u, dt) {
@@ -648,11 +666,11 @@ class Battle {
         const a = u.action;
         if (a && (a.type === 'dash' || a.type === 'chase')) { // 돌진: 강한 충돌
           this.hitBuilding(b, 90, true, u.x - nx * 10, u.y - 14, u, 'dash');
-          if (!b.dead) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); }
+          if (!b.dead) { u.action = null; u.dir = fixAngle(Math.atan2(ny, nx) + rand(-0.5, 0.5)); u.bnc = (u.bnc || 0) + 1; }
         } else {
           let vx = Math.cos(u.dir), vy = Math.sin(u.dir);
           const dot = vx * nx + vy * ny;
-          if (dot < 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.25, 0.25)); }
+          if (dot < 0) { vx -= 2 * dot * nx; vy -= 2 * dot * ny; u.dir = fixAngle(Math.atan2(vy, vx) + rand(-0.25, 0.25)); u.bnc = (u.bnc || 0) + 1; }
           if (this.time - u.bldT > 0.15) {
             u.bldT = this.time;
             this.hitBuilding(b, this.rules.bumpDmg + u.speed * this.rules.bumpSpeedK, false, u.x - nx * 11, u.y - 8, u, 'bump');
@@ -741,7 +759,7 @@ class Battle {
     if (hit) {
       // 순수 반사: 법선 기준 반사각 + ±0.25rad 무작위 흔들림 (상대 방향 보정 없음 — 전투·탈출맵 공통)
       const ang = Math.atan2(vy, vx) + rand(-0.25, 0.25);
-      u.dir = fixAngle(ang); this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); }
+      u.dir = fixAngle(ang); u.bnc = (u.bnc || 0) + 1; this.dust(u.x, u.y); this.ring(u.x, u.y, 2, 9, 0.18, '#cfd8c8'); playSfx('wall'); }
   }
 
   collide(a, b) {
@@ -767,6 +785,7 @@ class Battle {
     a.dir = fixAngle(Math.atan2(va[1], va[0]) + rand(-0.2, 0.2));
     if (a.v) a.v = [va[0], va[1]]; if (b.v) b.v = [vb[0], vb[1]]; // 빙판: 충돌은 즉시 반영
     b.dir = fixAngle(Math.atan2(vb[1], vb[0]) + rand(-0.2, 0.2));
+    a.bnc = (a.bnc || 0) + 1; b.bnc = (b.bnc || 0) + 1; // 충돌 반사 표시 (직접 플레이 반전 유지 판정용, 그 밖엔 안 씀)
     a.kx -= nx * 5; a.ky -= ny * 5; b.kx += nx * 5; b.ky += ny * 5;
     for (const u of [a, b]) { const kk = Math.hypot(u.kx, u.ky); if (kk > 10) { u.kx *= 10 / kk; u.ky *= 10 / kk; } } // 연속 충돌 시 시각 반동 누적 상한
     a.boost = Math.max(a.boost, 0.45); b.boost = Math.max(b.boost, 0.45); // 충돌 직후 가속
@@ -1065,7 +1084,7 @@ class Battle {
     if ((Math.cos(tgt.dir) * sx + Math.sin(tgt.dir) * sy) / L <= B_MODE.flipDot) return;
     tgt.dir = fixAngle(tgt.dir + Math.PI);
     if (tgt.v) { tgt.v[0] = -tgt.v[0]; tgt.v[1] = -tgt.v[1]; } // 빙판 관성
-    tgt.bFlips = (tgt.bFlips || 0) + 1;
+    tgt.bFlips = (tgt.bFlips || 0) + 1; tgt.bnc = (tgt.bnc || 0) + 1;
   }
   bumpAttack(u, e) {
     if (this.modeB) return; // B타입: 몸 부딪힘 피해 없음 (튕김·소리는 collide 에서 그대로)
@@ -1288,7 +1307,7 @@ class Battle {
     const nx = u.x + c * k, ny = u.y + s * k, q = this.clampPos(nx, ny, u.pad, u), bl = this.blockAt(nx, ny - 4, 9 + u.pad);
     if (bl || Math.abs(q.x - nx) > 0.3 || Math.abs(q.y - ny) > 0.3) {
       u.push = null; playSfx('wall'); this.dust(u.x, u.y); this.ring(u.x + c * 12, u.y - 6, 2, 14, 0.25, '#f0e8d8');
-      u.dir = fixAngle(P.ang + Math.PI + rand(-0.6, 0.6)); P.onWall && P.onWall(bl); return;
+      u.dir = fixAngle(P.ang + Math.PI + rand(-0.6, 0.6)); u.bnc = (u.bnc || 0) + 1; P.onWall && P.onWall(bl); return;
     }
     u.x = q.x; u.y = q.y; if (Math.random() < 0.6) this.dust(u.x, u.y);
     if (P.t <= 0 || u.climb || u.airborne) u.push = null;
@@ -2419,7 +2438,20 @@ const Render = (() => {
     ctx.restore();
   }
 
-  function draw(ctx, b) {
+  // 직접 플레이 모드 바닥 그림자 (3D 화면은 캐릭터를 세운 그림으로 따로 그리므로 바닥에는 그림자·팀 링만, js/direct.js)
+  function shadow3(ctx, u, b) {
+    if (u.hidden || u.def.noDraw || u.fallen) return;
+    const z = b.airZ(u) + (u.jkLiftZ || 0), sk = Math.max(0.15, 1 - z / 70), zs = u.size, x = u.x + u.kx, y = u.y + u.ky;
+    const alpha = u.dead ? Math.max(0, 1 - u.deadT / 1.2) : u.buff('invis') ? 0.35 : u.spirit ? 0.5 : 1;
+    ctx.globalAlpha = 0.35 * alpha * sk; ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.ellipse(x, y + 2, 14 * sk * zs, 5 * sk * zs, 0, 0, 6.28); ctx.fill();
+    ctx.globalAlpha = 0.75 * alpha * sk; ctx.strokeStyle = TEAM_COL[u.team]; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(x, y + 2, 16 * sk * zs, 6 * sk * zs, 0, 0, 6.28); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  // o.v3d: 직접 플레이 모드의 바닥 그림 (js/direct.js 가 원근으로 눕혀 그림). 캐릭터·기본 건물·글자·K.O.·줌/흔들림은 빼고 그림 (3D 쪽에서 따로)
+  function draw(ctx, b, o) {
+    const V = !!(o && o.v3d);
     if (b && window.BattleVFX) BattleVFX.begin(b);
     const sid = b ? b.stageId : 'arena';
     if (!floors[sid]) floors[sid] = makeFloor(sid);
@@ -2427,11 +2459,11 @@ const Render = (() => {
     if (!b) { ctx.drawImage(floors[sid], 0, 0); return; }
     ctx.fillStyle = '#14121c'; ctx.fillRect(0, 0, W, H);
     ctx.save(); // 공용 카메라: 바닥/스테이지/유닛/이펙트 모두 동일 변환 (UI는 DOM)
-    if (b.zoom) { // 짧은 줌 펄스
+    if (b.zoom && !V) { // 짧은 줌 펄스
       const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur));
       ctx.translate(z.x, z.y); ctx.scale(k, k); ctx.translate(-z.x, -z.y);
     }
-    b._shk = [0, 0]; if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA; b._shk = [Math.round(rand(-k, k)), Math.round(rand(-k, k))]; ctx.translate(b._shk[0], b._shk[1]); }
+    b._shk = [0, 0]; if (b.shakeT > 0 && !V) { const k = b.shakeT / 0.18 * b.shakeA; b._shk = [Math.round(rand(-k, k)), Math.round(rand(-k, k))]; ctx.translate(b._shk[0], b._shk[1]); }
     if (b.cam) { ctx.scale(b.cam.k, b.cam.k); ctx.translate(-b.cam.x, -b.cam.y); } // 탈출맵 카메라 (js/escape.js, 일반 전투엔 없음)
     if (!b.cam) ctx.drawImage(floors[sid], 0, 0);
     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
@@ -2463,23 +2495,24 @@ const Render = (() => {
     }
     if (window.BattleVFX) BattleVFX.drawExtras(ctx, b, 0);
     for (const t of b.tele) drawTele(ctx, t);
-    if (b.finisher && b.finisher.t < b.finisher.dur) {
+    if (b.finisher && b.finisher.t < b.finisher.dur && !V) {
       const f = b.finisher, p = f.t / f.dur;
       ctx.save(); ctx.fillStyle = '#090b18'; ctx.globalAlpha = 0.45 * Math.sin(Math.PI * p) ** 0.5;
       ctx.fillRect(0, 0, W, H); ctx.restore();
       if (f.winner) glowAt(ctx, f.winner.x, f.winner.y - 20, 65, '#ffe3a0', 0.6 * Math.sin(Math.PI * p));
     }
     // 유닛과 건물을 y 순서로 그림
-    const list = [...b.u.map(u => ({ y: u.y, u })), ...b.buildings.filter(x => !x.dead).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
+    if (V) for (const u of b.u) shadow3(ctx, u, b);
+    const list = [...(V ? [] : b.u.map(u => ({ y: u.y, u }))), ...b.buildings.filter(x => !x.dead && !(V && !x.draw)).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
     for (const it of list) {
       if (it.u) { drawUnit(ctx, it.u, b); if (!it.u.aoHid) drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); } // aoHid: 아오오니 옷장·문 숨김 중엔 산소 게이지도 숨김
       else if (it.draw) it.draw(ctx);
       else drawBuilding(ctx, it.bl);
     }
     for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(ctx, b);
-    for (const u of b.u) drawBarrier(ctx, u, b);
+    if (!V) for (const u of b.u) drawBarrier(ctx, u, b);
     for (const f of b.fx) { if (f.type === 'wire') drawWireFx(ctx, f, b); else if (f.type === 'garrote') drawGarrote(ctx, f, b); }
-    for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
+    if (!V) for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
     for (const p of b.proj) drawProj(ctx, p);
     for (const f of b.fx) drawFx(ctx, f, 1);
     for (const f of b.visualFx) drawFx(ctx, f, 1);
@@ -2498,6 +2531,7 @@ const Render = (() => {
     ctx.globalAlpha = 1;
     for (const h of STAGE_HOOKS) h.drawTop && h.drawTop(ctx, b); // 최상단 레이어 (아이돌 무대 관객/중계 화면 등; 글자 HUD 아래)
     ctx.globalAlpha = 1;
+    if (V) { ctx.restore(); return; } // 글자·말풍선·K.O. 는 3D 화면에서 세워서 그림
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const t of b.texts) if (t.bubble) { // 말풍선 (캐릭터를 따라감, 화면 안으로 보정)
       const p = t.t / t.dur, u = t.u;
@@ -2524,10 +2558,13 @@ const Render = (() => {
     ctx.globalAlpha = 1;
     ctx.restore();
     // 카메라 흔들림에서 분리된 결정타 타이틀. HUD를 가리지 않는다.
+    drawKO(ctx, b, AR.y + 48);
+  }
+  function drawKO(ctx, b, ty) {
     if (b.finisher && b.finisher.t < b.finisher.dur) {
       const f = b.finisher, p = f.t / f.dur;
       ctx.save(); ctx.globalAlpha = Math.min(1, f.t / 0.09, (f.dur - f.t) / 0.22);
-      ctx.translate(W / 2, AR.y + 48); ctx.scale(1 + 0.22 * (1 - easeOut(Math.min(1, p * 5))), 1);
+      ctx.translate(W / 2, ty); ctx.scale(1 + 0.22 * (1 - easeOut(Math.min(1, p * 5))), 1);
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '900 italic 32px "Malgun Gothic", sans-serif';
       ctx.strokeStyle = '#171321'; ctx.lineWidth = 6; ctx.strokeText('K.O.', 0, 0);
       ctx.fillStyle = '#ffe3a0'; ctx.fillText('K.O.', 0, 0);
@@ -2550,5 +2587,6 @@ const Render = (() => {
     const TS = b.gTS && b.gTS.foe && b.gTS.foe.status('gStop') ? b.gTS : null; // 시간 정지 회색조
     try { for (const u of L.sort((a, c) => a.y - c.y)) { c2.filter = TS && u !== TS.owner ? 'grayscale(1)' : 'none'; drawUnit(c2, u, b); c2.globalAlpha = 1; } c2.filter = TS ? 'grayscale(1)' : 'none'; for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
-  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon };
+  const BLD_COL = b => { const s = b.style % 3; return { wall: WALL[s], roof: ROOF[s] }; }; // 직접 플레이 3D 건물 상자 색
+  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon, drawBarrier, drawCounter, drawPips, drawO2, drawKO, BLD_COL };
 })();

@@ -241,10 +241,10 @@ img { image-rendering: pixelated; }
 .modesel .swlab.on { color: #ffd66b; font-weight: bold; }
 .modesel .swtitle { color: #cfd6e6; }
 .modesel.on .swtitle { color: #ffd66b; }
-.modesel .switch { position: relative; flex: none; width: 48px; height: 28px; padding: 0; border-radius: 14px; background: #252a38; border: 1px solid #4a5268; cursor: pointer; -webkit-touch-callout: none; }
-.modesel .switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #ffd66b; box-shadow: 0 1px 2px rgba(0,0,0,.45); transition: left .16s ease; pointer-events: none; }
-.modesel .switch.on { background: #3a3420; border-color: #ffd66b; }
-.modesel .switch.on .knob { left: 22px; }
+.modesel .switch, .setrow .switch { position: relative; flex: none; width: 48px; height: 28px; padding: 0; border-radius: 14px; background: #252a38; border: 1px solid #4a5268; cursor: pointer; -webkit-touch-callout: none; }
+.modesel .switch .knob, .setrow .switch .knob { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #ffd66b; box-shadow: 0 1px 2px rgba(0,0,0,.45); transition: left .16s ease; pointer-events: none; }
+.modesel .switch.on, .setrow .switch.on { background: #3a3420; border-color: #ffd66b; }
+.modesel .switch.on .knob, .setrow .switch.on .knob { left: 22px; }
 #stageSel > .vsline { margin-bottom: 6px; }
 #stageSel > .modesel { width: 100%; margin: 0 0 8px; cursor: pointer; }
 #modeTip { position: absolute; z-index: 15; max-width: 328px; width: max-content; padding: 8px 10px 9px; border-radius: 8px; background: #161822; border: 1px solid #ffd66b; color: #eef0f6; font-size: 12px; line-height: 1.45; word-break: keep-all; overflow-wrap: break-word; box-shadow: 0 4px 14px rgba(0,0,0,.5); visibility: hidden; pointer-events: none; left: 0; top: 0; -webkit-touch-callout: none; }
@@ -349,3 +349,31 @@ img { image-rendering: pixelated; }
 #cineT, #cineB { position: absolute; left: 0; width: 360px; height: 0; background: #000; z-index: 4; pointer-events: none; display: none; box-sizing: content-box; }
 #cineT { top: 0; box-shadow: 0 1px 0 rgba(255,226,122,.55); }
 #cineB { bottom: 0; box-shadow: 0 -1px 0 rgba(255,226,122,.55); }
+
+/* 직접 플레이 모드 (js/direct.js): 스테이지 카드 '일반 시점' 표시 · 자이로 묻는 창 */
+.scard { position: relative; }
+.scard .dpno { display: none; position: absolute; top: 9px; left: 50%; transform: translateX(-50%); padding: 1px 6px; border-radius: 4px; background: rgba(14,15,24,.85); border: 1px solid #ffd66b; color: #ffd66b; font-size: 10px; white-space: nowrap; pointer-events: none; }
+#stageSel.dpon .scard .dpno { display: block; }
+#stageSel > .modesel + .modesel { margin-top: -4px; }
+.dpPop { position: absolute; inset: 0; z-index: 12; background: rgba(10,11,18,.6); display: flex; align-items: center; justify-content: center; }
+.dpPop .dpbox { width: 270px; padding: 16px 14px; border-radius: 10px; background: #262a3c; border: 3px solid #ffd75e; text-align: center; color: #eef0f6; }
+.dpPop b { font-size: 16px; color: #ffe27a; }
+.dpPop p { font-size: 12px; line-height: 1.5; margin: 8px 0 12px; color: #cfd6e6; word-break: keep-all; }
+.dpPop small { color: #9aa3b8; font-size: 11px; }
+.dpPop .dprow { display: flex; gap: 8px; }
+.dpPop .dprow button { flex: 1; height: 40px; }
+#select .extrabtns #setOpen { flex: 0 0 auto; padding: 0 12px; }
+
+/* 설정 창 (js/settings.js) */
+#settings { position: absolute; inset: 0; z-index: 16; background: rgba(10,11,18,.82); display: flex; align-items: center; justify-content: center; }
+#settings .setbox { width: 324px; max-height: 580px; overflow-y: auto; padding: 12px 12px 6px; border-radius: 10px; background: #262a3c; border: 2px solid #ffd75e; }
+#settings .sethead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+#settings .sethead b { font-size: 16px; color: #ffe27a; }
+#settings .sethead button { height: 32px; padding: 0 14px; border-radius: 6px; background: #3a4058; color: #dfe3f0; font-size: 13px; }
+.setrow { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-top: 1px solid rgba(255,255,255,.07); }
+.setrow .setlab { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.setrow .setlab b { font-size: 13px; color: #eef0f6; }
+.setrow .setdesc { font-size: 11px; color: #9aa3b8; line-height: 1.4; word-break: keep-all; }
+.setrange { display: flex; align-items: center; gap: 6px; flex: none; }
+.setrange input { width: 112px; accent-color: #ffd66b; }
+.setval { width: 38px; text-align: right; font-size: 12px; color: #ffd66b; }

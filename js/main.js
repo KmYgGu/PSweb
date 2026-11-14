@@ -201,6 +201,31 @@
     `<div class="tiprow${focusMode ? ' cur' : ''}"><span class="k">켜면:</span> ${FOCUS_TIP.on}</div>` +
     `<div class="tiprow${!focusMode ? ' cur' : ''}"><span class="k">끄면:</span> ${FOCUS_TIP.off}</div>`);
   refreshFocus();
+  // ---------- 직접 플레이 모드 (스테이지 선택 화면, js/direct.js). 내 캐릭터 = P1(블루). 농구장·야구장·탈출맵은 일반 시점. 기본 끄기, 기억 ----------
+  const DP = window.DirectPlay || null;
+  let directMode = false; try { if (DP && localStorage.getItem('psDirectMode') === '1') directMode = true; } catch (e) {}
+  const DIRECT_TIP = {
+    on: '내 캐릭터(P1 · 블루)를 뒤에서 따라가는 3D 시점. 화면을 누르면(로그 제외) 진행 방향이 반대로 바뀌고, 스킬은 자동입니다. PC: 마우스로 시점 회전 (스페이스를 누르는 동안 마우스 잠금 해제). 모바일: 자이로로 시점 회전 (⚙ 설정).',
+    off: '기존처럼 위에서 내려다보는 시점.', note: '농구장·야구장은 특수 규칙이라 일반 시점으로 진행합니다 (탈출맵도 일반 시점).' };
+  function refreshDirect() {
+    const sw = $('#directSw'); if (!sw) return;
+    sw.classList.toggle('on', directMode); sw.setAttribute('aria-checked', directMode ? 'true' : 'false');
+    $('#directSel').classList.toggle('on', directMode); $('#stageSel').classList.toggle('dpon', directMode);
+    if ($('#directSel')._refreshModeTip) $('#directSel')._refreshModeTip();
+  }
+  if (DP) {
+    $('#directSel').addEventListener('click', () => {
+      directMode = !directMode;
+      try { localStorage.setItem('psDirectMode', directMode ? '1' : '0'); } catch (err) {}
+      refreshDirect();
+    });
+    ModeTip.bind($('#directSel'), () =>
+      `<div class="tiprow${directMode ? ' cur' : ''}"><span class="k">켜면:</span> ${DIRECT_TIP.on}</div>` +
+      `<div class="tiprow${!directMode ? ' cur' : ''}"><span class="k">끄면:</span> ${DIRECT_TIP.off}</div>` +
+      `<div class="tiprow"><span class="k">참고:</span> ${DIRECT_TIP.note}</div>`);
+    refreshDirect();
+  } else if ($('#directSel')) $('#directSel').classList.add('hidden');
+  if (window.Settings && $('#setOpen')) $('#setOpen').onclick = () => Settings.open();
   // ---------- 스테이지 선택 ----------
   let stageId = 'arena';
   function openStages() {
@@ -213,7 +238,7 @@
     const items = [...Object.keys(STAGE_DEFS).map(id => ({ id, ...STAGE_DEFS[id] })), { id: STAGE_RANDOM, name: '무작위', desc: '스테이지를 무작위로 고릅니다.' }];
     for (const s of items) {
       const el = document.createElement('div'); el.className = 'scard'; el.dataset.id = s.id;
-      el.innerHTML = (s.id === STAGE_RANDOM ? '<div class="rnd">?</div>' : `<img src="${Render.thumb(s.id)}" alt="">`) + `<div class="n">${s.name}</div><div class="d">${s.desc || ''}</div>`;
+      el.innerHTML = (s.id === STAGE_RANDOM ? '<div class="rnd">?</div>' : `<img src="${Render.thumb(s.id)}" alt="">`) + `<div class="n">${s.name}</div><div class="d">${s.desc || ''}</div>` + (DP && DP.EXCLUDE.has(s.id) ? '<div class="dpno">일반 시점</div>' : ''); // 직접 플레이 모드를 켜도 일반 시점인 스테이지 표시
       el.onclick = () => {
         const ids = Object.keys(STAGE_DEFS);
         stageId = s.id === STAGE_RANDOM ? ids[Math.floor(Math.random() * ids.length)] : s.id;
@@ -367,8 +392,10 @@
       : { onSkill: (u, sk, l) => { REC.skill(u, sk); addLog(u, sk, l); }, onVoice: addVoice, onEnd: w => { REC.finish(); showResult(w); }, onSystem: t => { REC.sys(t); addSys(t); }, onStatus: addStatus };
     hooks.mode = battleMode; hooks.focusMode = focusMode;
     seeded(() => { battle = new Battle(pick[0], pick[1], hooks, stageId); if (em) ESCAPE.apply(battle, em); });
-    if (!opt.replay) { REC.begin(battle, seed); if (em) REC.cur.escape = em; }
-    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name) + (battleMode === 'B' ? ' · B타입' : '') + (focusMode ? ' · 경기 집중' : ''); if (em) $('#stageName').textContent = '🚪 ' + em.name; // short: 하단 바용 짧은 이름. 탈출맵은 🚪 이름만 (교체 거부라 경기 집중 표기 불필요)
+    const dpGo = !opt.replay && directMode && DP && DP.supported(battle); // 직접 플레이 (실전만, 리플레이·동영상은 일반 시점)
+    if (!opt.replay) { REC.begin(battle, seed); if (em) REC.cur.escape = em; if (dpGo) REC.cur.direct = true; }
+    if (dpGo) DP.begin(battle);
+    $('#stageName').textContent = '🗺 ' + (STAGE_DEFS[stageId].short || STAGE_DEFS[stageId].name) + (battleMode === 'B' ? ' · B타입' : '') + (focusMode ? ' · 경기 집중' : '') + (directMode && DP && !em ? (DP.supported(battle) ? ' · 직접 플레이' : ' · 일반 시점') : ''); if (em) $('#stageName').textContent = '🚪 ' + em.name; // short: 하단 바용 짧은 이름. 탈출맵은 🚪 이름만 (교체 거부라 경기 집중 표기 불필요)
     seeded(buildHud);
     window.__battle = battle;
   }
@@ -467,13 +494,18 @@
   }
   function loop(now) {
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
+    const dpOn = !!(battle && directMode && DP && !RP.on && !VID.active && !escMap && DP.supported(battle)); // 직접 플레이 3D 시점 (스테이지가 농구장·야구장으로 바뀌면 일반 시점)
+    if (DP) DP.setActive(dpOn && $('#result').classList.contains('hidden') && $('#fullLog').classList.contains('hidden')); // 결과·로그 창에서는 입력 끔 (마우스 잠금 해제)
     if (RP.on) RP.frame(dt);
     else if (battle) {
-      const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
-      battle.updateVisual(dt * tk);
-      acc += dt * speed * tk;
-      let n = 0;
-      seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
+      if (!(dpOn && DP.blocking())) { // 자이로 묻는 창이 떠 있는 동안 전투 정지
+        const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
+        battle.updateVisual(dt * tk);
+        if (dpOn) { const fu = DP.takeFlip(battle); if (fu) { const ok = battle.playerFlip(fu); DP.flipped(battle, ok); if (ok) REC.input(battle.u.indexOf(fu)); } } // 반전 입력은 스텝 사이에만 (리플레이 재현)
+        acc += dt * speed * tk;
+        let n = 0;
+        seeded(() => { while (acc >= STEP && n < 60) { battle.update(STEP); acc -= STEP; n++; REC.step(battle); } });
+      }
       updateHud(dt);
     }
     if (wideWant() !== wideOn) fit();
@@ -483,8 +515,11 @@
     else if (battle && window.BASEBALL) BASEBALL.updateCam(battle, dt, camView); // 야구장 카메라 (js/baseball.js, 시각 전용)
     cineSync(); // 홈런 시네마틱 바 (DOM, HUD·하단 UI 위)
     ctx.setTransform(RES, 0, 0, RES, 0, 0);
+    if (dpOn) { DP.draw(ctx, battle, dt, camView); Render.drawTopUnits(ctxTop, battle, RES, 0); } // 3D 시점: HUD 위 캐릭터 덧그림 없음 (지우기만)
+    else {
     Render.draw(ctx, battle);
     Render.drawTopUnits(ctxTop, battle, RES, battle && !wideOn && !hudEl.classList.contains('hidden') ? hudEl.offsetHeight : 0); // 넓은 화면: HUD가 맵 위에 없음
+    }
     if (VID.active) VID.frame();
     bgmSync(); charDeathSync();
     requestAnimationFrame(loop);
@@ -515,7 +550,7 @@
   const HL_NAME = { dmg: '대량 피해', kill: '처치', end: '결정타', stage: '스테이지 변경', castle: '백은성 붕괴', exodia: '엑조디아', fusion: '융합', transform: '변신·각성', ult: '필살기', card: '상급 카드', comeback: '역전', timestop: '시간 정지', big: '큰 기술' };
   const REC = {
     cur: null, last: null,
-    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, mode: battleMode, focusMode, dur: 0, samples: [], ev: [], check: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
+    begin(b, seed) { this.cur = { format: 'psreplay', v: 1, build: BUILD, seed, a: pick[0].id, b: pick[1].id, stage: stageId, mode: battleMode, focusMode, dur: 0, samples: [], ev: [], check: [], inp: [], created: new Date().toISOString() }; this.b = b; this.n = 0; this.nextS = 0; this.dead = new Set(); this.stg = b.stageId; this.seen = new WeakSet(); this.bigT = -9; this.overSeen = false; },
     ev(type, team, w) { if (this.cur && !this.cur.done) this.cur.ev.push([Math.round(this.b.time * 100) / 100, type, team, w]); },
     step(b) {
       const R = this.cur; if (!R || R.done || b !== this.b) return;
@@ -535,6 +570,7 @@
       else if (u.def.duelist && window.CARD_DEFS) { const c = Object.values(CARD_DEFS).find(c => c.name === sk); if (c && c.level >= 7) this.ev('card', u.team, 6 + c.level); }
     },
     sys(t) { /* 스테이지 교체는 stageId 변화로 감지 */ },
+    input(k) { const R = this.cur; if (R && !R.done && R.inp) R.inp.push([this.n, k]); }, // 직접 플레이 반전: [몇 번째 스텝 앞, battle.u 번호] → 리플레이에서 같은 스텝에 다시 넣음
     finish() { const R = this.cur; if (!R || R.done) return; R.dur = Math.round(this.b.time * 100) / 100; R.done = true; R.hl = computeHL(R); R.names = [pick[0].name, pick[1].name]; R.stageName = STAGE_DEFS[stageId].name; this.last = R; },
   };
   function computeHL(R) { // 하이라이트: 8초 창마다 점수 (피해량 + 이벤트 가중치 + 역전), 상위 3개 (서로 겹치지 않음, 처치·결정타 가중치 낮음)
@@ -588,8 +624,10 @@
       else { battle = null; $('#hud').classList.add('hidden'); $('#bottom').classList.add('hidden'); $('#result').classList.add('hidden'); $('#select').classList.remove('hidden'); refresh(); }
       this.live = null;
     },
-    restart() { startBattle({ seed: this.rec.seed, replay: true }); this.steps = 0; this.acc = 0; },
+    restart() { startBattle({ seed: this.rec.seed, replay: true }); this.steps = 0; this.acc = 0; this.inpI = 0; },
     step1() {
+      const I = this.rec.inp; // 직접 플레이 반전 입력 재현
+      if (I) while (this.inpI < I.length && I[this.inpI][0] <= this.steps) { const u = battle.u[I[this.inpI++][1]]; if (u) battle.playerFlip(u); }
       seeded(() => battle.update(STEP)); this.steps++;
       if (this.steps % CHECK_EVERY === 0 && !this.warned) { const c = this.rec.check && this.rec.check[this.steps / CHECK_EVERY - 1]; if (c && c[1] !== hashB(battle)) { this.warned = true; $('#rpWarn').textContent = '⚠ 재현 불일치 (버전 차이?)'; console.warn('[replay] desync at', battle.time.toFixed(2)); } }
     },
@@ -647,7 +685,7 @@
       if (kind === 'hl') { const h = R.hl[this.potgI || 0] || R.hl[0]; range = [Math.max(this.range[0], h.s), Math.min(this.range[1], h.e)]; }
       else if (kind === 'seg') range = [Math.min(this.A, this.B), Math.max(this.A, this.B)];
       else range = this.range.slice();
-      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, mode: R.mode || 'A', focusMode: !!R.focusMode, names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
+      const o = { format: 'psreplay', v: 1, build: R.build, seed: R.seed, a: R.a, b: R.b, stage: R.stage, mode: R.mode || 'A', focusMode: !!R.focusMode, ...(R.inp && R.inp.length ? { inp: R.inp, direct: true } : {}), names: R.names, stageName: R.stageName, dur: R.dur, range: range.map(x => Math.round(x * 1000) / 1000), kind,
         hl: (R.hl || []).filter(h => h.e > range[0] && h.s < range[1]).map(h => ({ ...h, s: Math.max(h.s, range[0]), e: Math.min(h.e, range[1]) })), check: (R.check || []).filter(c => c[0] <= range[1] + 0.05), created: R.created, saved: new Date().toISOString() };
       return o;
     },

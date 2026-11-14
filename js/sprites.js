@@ -108,6 +108,8 @@ const Sprites = (() => {
       const pal = { ...DEF_PAL, B: def.color || DEF_PAL.B, ...cfg.pal };
       const g = grid(def);
       s = { img: render(g, pal, false), white: render(g, pal, true), fw: 18, fh: 18, frames: 1, fps: 0, dw: 54, dh: 54, foot: 3 };
+      const BK = cfg.backRows ? { rows: cfg.backRows, pal: cfg.backPal } : typeof BACK_SPRITES !== 'undefined' && BACK_SPRITES[def.id]; // 뒷모습 도트 (js/sprites_back.js)
+      if (BK && BK.rows) { const bg = BK.rows.map(r => r.padEnd(16, '.').slice(0, 16).split('')), bp = { ...pal, ...(BK.pal || {}) }; s.back = { img: render(bg, bp, false), white: render(bg, bp, true), fw: 18, fh: 18, frames: 1, fps: 0, dw: 54, dh: 54, foot: 3 }; }
       s.portrait = portraits[def.id] || portraitCanvas(def, s.img, 2, 0, 14, 14).toDataURL();
     }
     if (portraits[def.id]) s.portrait = portraits[def.id];

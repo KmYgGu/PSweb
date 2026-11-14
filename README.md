@@ -25,6 +25,9 @@ HTML/CSS/바닐라 JS + Canvas. 빌드 과정 없음. `python3 -m http.server 80
 | `js/sprites.js` | 16x16 픽셀 스프라이트/초상화 절차적 생성 |
 | `js/game.js` | 전투 엔진 (`Battle`, `Unit`, AI, 피해 계산) + 렌더러 |
 | `js/main.js` | 화면 흐름, HUD, 배속, 메인 루프(1/120초 고정 스텝) |
+| `js/sprites_back.js` | 절차적 캐릭터의 **뒷모습 16x16 그림** (BACK_SPRITES, 직접 플레이·야구 포수가 사용) |
+| `js/settings.js` | **설정 창** (메인 화면 ⚙ 설정, localStorage 저장, `Settings.define` 으로 항목 추가) |
+| `js/direct.js` | **직접 플레이 모드** (3인칭 3D 시점 · 클릭 반전 · 마우스 잠금/자이로) |
 | `js/skillicons.js` | HP 바 아래 스킬 아이콘 줄 (픽셀 아이콘 그림 + 쿨타임 표시, 화면 전용) |
 
 ## 스킬 아이콘 줄 (HP 바 아래)
@@ -274,6 +277,27 @@ skills: [{ id, cost: { ember: 50 } /* 소모 */, requires: { mark: 3 } /* 조건
 - 상대보다 위(y가 작음)에 있으면 앞모습, 아래면 뒷모습 (데드존 10px). 좌우는 상대 쪽을 바라보도록 반전 (데드존 8px, 행동 불가 중엔 유지).
 - `sprite.faces: { front: 'left'|'right', back: 'left'|'right' }` = 원본 그림이 바라보는 방향. 없으면 'right'로 가정(절차적 스프라이트). 잔상/넘어짐/해머/와이어도 같은 기준(`spriteSX`)을 사용.
 - 판정: 라인하르트 front=left, back=right / 이블린 front=left, back=left.
+
+## 직접 플레이 모드 (`js/direct.js`)
+- 스테이지 선택 화면의 **직접 플레이 모드** 토글(경기 집중 모드 아래, 마우스 올리기/길게 누르기로 설명). 켜면 플레이어 = P1(블루 팀, 0번 팀 첫 캐릭터). A·B 타입 모두. 저장: localStorage `psDirectMode`.
+- 제외: 농구장(`basket`)·야구장(`baseball`)·탈출맵 → 일반 시점 (카드에 '일반 시점' 표시, 하단 바 ` · 일반 시점`). 리플레이·영상 저장 재생도 일반 시점.
+- 조작: 로그·버튼 밖 아무 곳 클릭/탭 = 진행 방향 반전 (쿨타임 0.45초). 반전 뒤 0.5초(`FLIP_HOLD`, game.js) 동안 AI 가 방향을 되돌리지 못함 (벽·충돌 튕김 `u.bnc` 는 그대로 적용). 스킬은 자동.
+  - 반전은 시뮬 스텝 사이에 적용되고 리플레이에 `inp: [[스텝, 유닛 번호]]` 로 기록 → 리플레이 재생 때 같은 스텝에 다시 적용.
+- 시점: three.js 없이 캔버스 2D 원근 계산. 바닥 = `Render.draw(ctx, b, { v3d: true })` 로 그린 2D 전장(스테이지·기믹·이펙트·투사체)을 원근으로 눕혀 가로 띠·칸 단위 아핀 변환으로 그림. 경기장 테두리 = 벽, 기본 건물 = 3D 상자, 캐릭터·소환수 = `Render.drawUnit` 그림을 세운 판(멀리→가까이 정렬), 투사체 = 바닥 그림 + 공중 빛 구슬.
+  - 카메라: 내 캐릭터 뒤 어깨 너머(거리 100·높이 80·옆 22). 상대는 자연스럽게(이징) 카메라 쪽으로 돌아봄. 내 캐릭터는 뒷모습.
+  - 회전 입력이 없으면 0.7초 뒤부터 시점이 천천히 상대 쪽으로 돌아감. 상대가 화면 밖이면 가장자리 화살표.
+  - PC: 마우스 잠금(Pointer Lock) + 마우스 이동 = 시점 회전. **스페이스를 누르는 동안 잠금 해제**(배속 버튼 등 클릭, 이때 클릭은 반전 안 함), 떼거나 다음 클릭에 다시 잠금.
+  - 모바일: 자이로(처음 직접 플레이 때 '자이로를 켤까요?' 한 번 물어봄, iOS 는 그 탭 안에서 권한 요청, 선택은 설정에 저장).
+- 대체 표현(평면): 스테이지 전용 물체·훅 그림(sortItems·drawTop 등)·특수 건물·이펙트는 바닥에 눕혀 그려짐. 시간 정지 흑백 효과 없음.
+- 그리기·카메라는 전투 상태를 바꾸지 않고 시뮬 난수를 쓰지 않음.
+
+## 설정 (`js/settings.js`)
+- 메인 화면 ⚙ 설정 버튼. 항목: 자이로 켜기(모바일), 자이로 감도, 마우스 감도. localStorage `psweb.settings`.
+- 항목 추가: `Settings.define({ key, type: 'toggle'|'range', label, desc, def, min, max, step, request })` (toggle 의 `request()` = 켤 때 권한 요청 Promise). 값: `Settings.get(key)`, 변경 알림: `Settings.on(key, fn)`.
+
+## 뒷모습 스프라이트 (`js/sprites_back.js`)
+- `BACK_SPRITES[id] = { pal?, rows: [16줄 x 16칸] }` → sprites.js 가 `s.back` 을 만들어 PNG 뒷모습과 같은 경로로 사용(직접 플레이 내 캐릭터·야구 포수). 캐릭터 정의의 `backRows`/`backPal` 로도 지정 가능.
+- 있음: swordsman, archer, mage, tank, assassin, lancer, priest, berserker, okuyasu, josuke, jonathan, dio, trunks. 없는 캐릭터는 기존 방식(앞모습 그림) 그대로.
 
 ## 신규 스테이지 (STAGE_HOOKS)
 스테이지 특수 규칙은 `js/stages2.js`의 `STAGE_HOOKS`(init/step/clamp/noClamp/floor/drawUnder/drawOver)로 구현. 결과 문구는 `battle.resultText`, 종료 유형은 `battle.endType`(ko/lap/train/trainDraw/timeout).
