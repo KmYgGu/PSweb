@@ -9,7 +9,7 @@
  * - 농구장·야구장·탈출맵은 일반 시점 (EXCLUDE · supported)
  * 그리기·카메라는 전투 상태를 바꾸지 않고 Math.random 도 부르지 않음 (그리는 동안 잠깐 바꾸는 u.lookUp·u.facing 은 바로 되돌림) */
 const DirectPlay = (() => {
-  const EXCLUDE = new Set([]); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u 부터 직접 플레이)
+  const EXCLUDE = new Set(['dodge']); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u 부터 직접 플레이. 피구대전은 아직 일반 시점만)
   const FRONT = { a0: 1.6, dist: 1.1, h: 30, zoom: 0.15 }; // 정면 시점 뒤로 빼기: 시작 각(rad), 거리 +110%, 높이 +30, 화면 ×0.85
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
   const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
