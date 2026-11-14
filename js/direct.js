@@ -217,7 +217,7 @@ const DirectPlay = (() => {
     if (!lift) { lift = document.createElement('canvas'); lift.width = tex.width; lift.height = tex.height; lctx = lift.getContext('2d'); }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, tex.width, tex.height); c.setTransform(TR, 0, 0, TR, -TX.x * TR, -TX.y * TR); c.imageSmoothingEnabled = false; }
     // 바닥(tex) = 바닥 그림·바닥 이펙트, 세울 그림(lift) = 물체·특수 건물·기믹·위층 이펙트·입자. 투사체는 따로 (공중)
-    S.stand = []; S.bigs = []; S.bigN = 0; S.flats = []; S.beams = []; S.walls = []; S.boxes = []; b._v3d = V3D;
+    S.stand = []; S.bigs = []; S.bigN = 0; S.flats = []; S.beams = []; S.walls = []; S.boxes = []; S.huds = []; b._v3d = V3D;
     try { Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route }); } finally { b._v3d = null; }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; }
   }
@@ -271,7 +271,8 @@ const DirectPlay = (() => {
     flat(it) { if (!(it.z > 0.5)) V3D.floor(c => flatXf(c, it)); else S.flats.push(it); },
     beam(it) { S.beams.push(it); },
     wall(it) { S.walls.push(it); },
-    box(it) { S.boxes.push(it); }, // {x0,y0,z0,x1,y1,z1,col,a?}: 축 정렬 3D 상자 (떨어지는 상자 등) // {x1,y1,x2,y2,h,draw(c,L)}: 두 바닥 점 사이에 선 세로 판 (벽처럼 고정, draw 는 (0,0)=왼쪽 위, 바닥 = y h)
+    box(it) { S.boxes.push(it); },
+    hud(fn) { S.huds.push(fn); }, // 화면 고정 HUD (3D 그림 위, 2D 화면 좌표) // {x0,y0,z0,x1,y1,z1,col,a?}: 축 정렬 3D 상자 (떨어지는 상자 등) // {x1,y1,x2,y2,h,draw(c,L)}: 두 바닥 점 사이에 선 세로 판 (벽처럼 고정, draw 는 (0,0)=왼쪽 위, 바닥 = y h)
     shadow(x, y, r, a = 0.3) { tctx.save(); tctx.globalAlpha = a; tctx.fillStyle = '#000'; tctx.beginPath(); tctx.ellipse(x, y, r, r * 0.6, 0, 0, TAU); tctx.fill(); tctx.restore(); },
   };
   function flatXf(c, it) { if (it.sy) { c.translate(it.x, it.y); c.scale(1, 1 / it.sy); c.translate(-it.x, -it.y); } it.draw(c); } // sy: 2D 에서 세로로 눌러 그린 원 → 바닥에선 펴서
@@ -410,6 +411,8 @@ const DirectPlay = (() => {
       const xa = i * cw, xb = xa + cw, xc = xa + cw / 2;
       const c4 = [ground(xa, l0), ground(xb, l0), ground(xa, l1), ground(xb, l1)], T = ground(xc, l0), Bt = ground(xc, l1), O = ground(xc, ym);
       if (c4.some(p => !p) || !T || !Bt || !O) continue;
+      if (S.wrap) { const sx = -Math.floor((O[0] - AR.x) / AR.w) * AR.w, sy = -Math.floor((O[1] - AR.y) / AR.h) * AR.h; // 뱀꼬리 맵: 바닥을 경기장 크기로 반복 (끝없는 맵처럼)
+        if (sx || sy) { for (const p of c4) { p[0] += sx; p[1] += sy; } O[0] += sx; O[1] += sy; } }
       let u0 = 1e9, v0 = 1e9, u1 = -1e9, v1 = -1e9;
       for (const p of c4) { const u = (p[0] - TX.x) * TR, v = (p[1] - TX.y) * TR; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
       u0 = Math.max(0, Math.floor(u0) - 1); v0 = Math.max(0, Math.floor(v0) - 1); u1 = Math.min(tex.width, Math.ceil(u1) + 1); v1 = Math.min(tex.height, Math.ceil(v1) + 1);
@@ -649,10 +652,10 @@ const DirectPlay = (() => {
     const hz = C.cy - C.f * Math.tan(C.pitch);
     const g = ctx.createLinearGradient(0, 0, 0, Math.max(1, hz)); g.addColorStop(0, '#0b0c14'); g.addColorStop(1, '#2a2e42');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, Math.max(0, hz)); ctx.fillStyle = '#14121c'; ctx.fillRect(0, Math.max(0, hz), W, H);
-    drawFloorTex(b); const cells = unitCells(b); drawFloor(ctx);
-    const fog = ctx.createLinearGradient(0, hz, 0, hz + 70); fog.addColorStop(0, 'rgba(20,22,34,0.75)'); fog.addColorStop(1, 'rgba(20,22,34,0)');
-    ctx.fillStyle = fog; ctx.fillRect(0, hz, W, 70);
-    drawWalls(ctx, b);
+    S.wrap = b.stageId === 'snake'; drawFloorTex(b); const cells = unitCells(b); drawFloor(ctx);
+    const fh = S.wrap ? 150 : 70, fog = ctx.createLinearGradient(0, hz, 0, hz + fh); fog.addColorStop(0, S.wrap ? 'rgba(20,18,28,1)' : 'rgba(20,22,34,0.75)'); fog.addColorStop(1, 'rgba(20,22,34,0)'); // 뱀꼬리: 먼 바닥은 안개로
+    ctx.fillStyle = fog; ctx.fillRect(0, hz, W, fh);
+    if (!S.wrap) drawWalls(ctx, b); // 뱀꼬리 맵은 외곽 벽 없음
     if (b.claw && b.claw.crane) drawCraneTop(ctx, b.claw.crane, false); // 크레인 위쪽 구조 (모두보다 높음 → 먼저)
     // 깊이 정렬 (먼 것부터)
     const P = player(b), E = focus(b, P), items = [];
@@ -686,7 +689,7 @@ const DirectPlay = (() => {
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
       if (it.claw) { drawClaw(ctx, it.claw); continue; }
       if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
-      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
+      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, p = proj(u.x, u.y, 0); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
@@ -698,6 +701,7 @@ const DirectPlay = (() => {
       if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u)); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
     drawTexts(ctx, b);
+    for (const fn of S.huds) { ctx.save(); try { fn(ctx); } catch (e) { console.warn('[direct] hud', e); } ctx.restore(); }
     // 상대가 화면 밖이면 가장자리 화살표
     if (E && !E.dead && !E.hidden) {
       const c = cam(E.x, E.y, 30), p = c[2] > CAM.near ? scr(c) : null;

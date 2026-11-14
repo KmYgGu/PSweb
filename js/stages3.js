@@ -221,6 +221,7 @@
     },
     drawUnder(ctx, b, thumb) {
       const sb = b.st2; if (!sb) return;
+      if (b._v3d && !thumb) return STREET_3D(ctx, b, sb, b._v3d);
       ctx.save();
       for (const s of sb.segs) { // 철망
         const crack = 1 - s.hp / s.max;
@@ -253,6 +254,29 @@
       ctx.restore();
     },
   };
+
+  function STREET_3D(ctx, b, sb, V) { // 직접 플레이: 철망 = 바닥에 선 3D 세로 판 + 기둥 상자, 관중 = 제자리에 세움 + 그림자 (뚫린 칸 잔해는 바닥)
+    const H = 26;
+    for (const s of sb.segs) {
+      if (s.broken) { ctx.save(); ctx.strokeStyle = '#4a4e56'; ctx.lineWidth = 2; const mx = (s.x0 + s.x1) / 2, my = (s.y0 + s.y1) / 2; ctx.beginPath(); ctx.moveTo(s.x0, s.y0); ctx.lineTo(s.x0 + (mx - s.x0) * 0.25, s.y0 + (my - s.y0) * 0.25 + 4); ctx.moveTo(s.x1, s.y1); ctx.lineTo(s.x1 + (mx - s.x1) * 0.25, s.y1 + (my - s.y1) * 0.25 + 4); ctx.stroke(); ctx.restore(); continue; }
+      const crack = 1 - s.hp / s.max;
+      V.wall({ x1: s.x0, y1: s.y0, x2: s.x1, y2: s.y1, h: H, draw: (c, L) => {
+        c.fillStyle = 'rgba(160,168,180,0.22)'; c.fillRect(0, 0, L, H);
+        c.strokeStyle = 'rgba(200,205,215,0.5)'; c.lineWidth = 0.8; c.beginPath();
+        for (let x = -H; x < L; x += 6) { c.moveTo(x, H); c.lineTo(x + H, 0); c.moveTo(x + H, H); c.lineTo(x, 0); } c.stroke();
+        c.strokeStyle = s.flash > 0 ? '#ffffff' : crack > 0.66 ? '#b08060' : crack > 0.33 ? '#a0a4ac' : '#c4c8d0'; c.lineWidth = 2; c.beginPath(); c.moveTo(0, 1); c.lineTo(L, 1); c.moveTo(0, H - 1); c.lineTo(L, H - 1); c.stroke();
+        c.strokeStyle = '#2a2a30'; c.lineWidth = 1.5; for (let k = 0; k < Math.floor(crack * 3); k++) { const x = L * (0.25 + 0.25 * k); c.beginPath(); c.moveTo(x - 3, 6); c.lineTo(x + 2, 11); c.lineTo(x - 1, 17); c.stroke(); }
+      } });
+    }
+    for (const s of sb.segs) V.box({ x0: s.x0 - 1.5, y0: s.y0 - 1.5, z0: 0, x1: s.x0 + 1.5, y1: s.y0 + 1.5, z1: H + 2, col: '#8a8e96' }); // 기둥
+    for (const c of sb.crowd) { if (c.gone) continue;
+      const sp = Sprites.get(c.def), fl = c.fly, bob = Math.sin(b.time * 3 + c.ph) * 1.2;
+      let a = 1, lift = 0, rot = 0, sc = 1;
+      if (fl) { const p = fl.t / 0.9; lift = Math.sin(Math.min(1, p) * Math.PI) * 30 + p * 10; rot = fl.t * fl.spin; a = Math.max(0, 1 - p); sc = 1 - p * 0.3; }
+      V.shadow(c.x, c.y + 1, 13 * (c.def.size || 1), 0.35 * a);
+      V.stand({ x: c.x, y: c.y, z: Math.max(0, lift - bob), w: sp.dw + 30, h: sp.dh + 30, draw: x => { x.save(); x.globalAlpha = 0.9 * a; x.translate(Math.round(c.x), Math.round(c.y)); if (fl) { x.translate(0, -16); x.rotate(rot); x.translate(0, 16); } x.scale(spriteSX(c.def, false, c.face) * sc, sc); Sprites.draw(x, sp, 0, false); x.restore(); } });
+    }
+  }
 
   STAGE_HOOKS.push(TOWER, STREET);
   window.StageExt2 = { TOWER, STREET };

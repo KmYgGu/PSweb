@@ -285,6 +285,7 @@
       for (const u of b.u) {
         const C = u.galClone; if (!C || u.dead) continue;
         let s = Sprites.get(u.fdef); const back = C.back && s.back; if (back) s = s.back;
+        if (b._v3d) { const V = b._v3d, sp = s; V.shadow(C.x, C.y, 12, 0.35); V.stand({ x: C.x, y: C.y, w: (sp.dw || 60) + 20, h: (sp.dh || 60) + 20, draw: c => { c.save(); c.translate(Math.round(C.x), Math.round(C.y)); c.scale(spriteSX(u.fdef, !!back, u.facing), 1); Sprites.draw(c, sp, 0, false); c.restore(); } }); continue; } // 직접 플레이: 분신 = 제자리에 세움 + 그림자
         ctx.save(); ctx.translate(Math.round(C.x), Math.round(C.y));
         ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(0, 0, 12, 4, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
         ctx.scale(spriteSX(u.fdef, !!back, u.facing), 1); Sprites.draw(ctx, s, 0, false); ctx.restore();

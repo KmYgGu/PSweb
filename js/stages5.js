@@ -269,6 +269,7 @@
     },
     drawTop(ctx, b) {
       const D = b.soc; if (!D) return;
+      if (b._v3d) { const self = this; b._v3d.hud(c => self.drawTop(c, b)); return; } // 직접 플레이: 점수판·골 안내 = 카메라 화면 위 고정 HUD (그릴 때는 b._v3d 가 없어 아래 2D 경로)
       ctx.save(); ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
       // 점수판 (왼쪽 위)
       const x0 = AR.x + 6, y0 = AR.y + 3;
@@ -445,9 +446,9 @@
       x.fillStyle = '#ffd23a'; for (let i = 0; i < n; i++) x.fillRect(AR.x + sw * i + sw / 2 - 6, wy - 6, 12, 2);
       x.fillStyle = 'rgba(0,0,0,0.22)'; x.fillRect(AR.x, wy, AR.w, 4);
     },
-    drawCust(ctx, b, c, F, thumb) {
+    drawCust(ctx, b, c, F, thumb, noShadow) {
       const s = Sprites.get(c.def), k = F.custScale, bob = thumb ? 0 : (c.state === 'happy' ? -Math.abs(Math.sin(c.t * 10)) * 3 : -Math.abs(Math.sin(c.walk)) * 1.5);
-      ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(c.x, c.y + 1, 9 * k * (c.def.size || 1), 3.2, 0, 0, TAU); ctx.fill();
+      if (!noShadow) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(c.x, c.y + 1, 9 * k * (c.def.size || 1), 3.2, 0, 0, TAU); ctx.fill(); }
       ctx.globalAlpha = 1; ctx.save(); ctx.translate(Math.round(c.x), Math.round(c.y + bob)); ctx.scale(spriteSX(c.def, false, c.face) * k, k);
       Sprites.draw(ctx, s, 0, false); ctx.restore();
     },
@@ -461,6 +462,8 @@
         const ex = CHARACTERS.slice(2, 5);
         ex.forEach((def, i) => D.cust.push({ def, x: [80, 250, 170][i], y: [300, 360, 470][i], state: 'wait', want: i * 2 % F.foods.length, t: 0, walk: 0, face: i % 2 ? -1 : 1 }));
       }
+      const V = !thumb && b._v3d;
+      if (V) { FF_3D(ctx, b, D, F, V); ctx.restore(); return; }
       for (const c of D.cust) FF.drawCust(ctx, b, c, F, thumb);
       if (thumb) FF.drawOver(ctx, b, true);
       ctx.restore();
@@ -469,10 +472,22 @@
       const D = b.ff; if (!D) return;
       const F = D.F;
       ctx.save(); ctx.imageSmoothingEnabled = false; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      for (const c of D.cust) { // 주문 말풍선 / 받은 음식 / 반응
+      if (!b._v3d || thumb) for (const c of D.cust) FF.custOver(ctx, b, c, F, thumb); // 직접 플레이: 손님 세운 판 안에서 그림
+      if (!thumb) for (const u of b.u) { // 들고 있는 음식 (머리 위)
+        if (!u.ffFood || u.dead) continue;
+        const s = Sprites.get(u.fdef), pop = clamp((b.time - (u.ffPop || 0)) / 0.18, 0, 1), sc = 0.6 + 0.4 * easeOut(pop);
+        const hx = u.x + u.kx, hy = u.y + u.ky - b.airZ(u) - Math.min(s.dh - s.foot, 70) - 12 + Math.sin(b.time * 5) * 1.2;
+        ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(hx, hy + 9, 6, 1.6, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+        const z = 14 * sc * 1.15; ctx.drawImage(icon(u.ffFood), Math.round(hx - z / 2), Math.round(hy - z / 2), Math.round(z), Math.round(z));
+      }
+      ctx.restore();
+    },
+    custOver(ctx, b, c, F, thumb) { // 손님 주문 말풍선 / 받은 음식 / 반응
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      {
         const s = Sprites.get(c.def), hy = c.y - s.dh * F.custScale + s.foot * F.custScale;
         if (c.state === 'wait' || c.state === 'in') {
-          if (c.state === 'in' && (c.x < AR.x || c.x > AR.x + AR.w)) continue;
+          if (c.state === 'in' && (c.x < AR.x || c.x > AR.x + AR.w)) { ctx.restore(); return; }
           const bob = thumb ? 0 : Math.sin(b.time * 3 + c.ph) * 1.2, late = !thumb && c.state === 'wait' && c.t > F.patience - 4;
           ctx.globalAlpha = late ? 0.55 + 0.45 * Math.abs(Math.sin(b.time * 8)) : 1;
           ctx.drawImage(bubble(F.foods[c.want]), Math.round(c.x - 10), Math.round(hy - 24 + bob), 20, 22);
@@ -485,16 +500,27 @@
           ctx.fillStyle = c.msg.col; ctx.fillText(c.msg.txt, mx, my + 0.5); ctx.globalAlpha = 1;
         }
       }
-      if (!thumb) for (const u of b.u) { // 들고 있는 음식 (머리 위)
-        if (!u.ffFood || u.dead) continue;
-        const s = Sprites.get(u.fdef), pop = clamp((b.time - (u.ffPop || 0)) / 0.18, 0, 1), sc = 0.6 + 0.4 * easeOut(pop);
-        const hx = u.x + u.kx, hy = u.y + u.ky - b.airZ(u) - Math.min(s.dh - s.foot, 70) - 12 + Math.sin(b.time * 5) * 1.2;
-        ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(hx, hy + 9, 6, 1.6, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
-        const z = 14 * sc * 1.15; ctx.drawImage(icon(u.ffFood), Math.round(hx - z / 2), Math.round(hy - z / 2), Math.round(z), Math.round(z));
-      }
       ctx.restore();
     },
   };
+
+  function FF_3D(ctx, b, D, F, V) { // 직접 플레이: 메뉴판 = 카운터 뒤에 선 세로 벽, 카운터 = 3D 상자, 손님 = 세운 판 + 그림자(말풍선 포함)
+    const top = AR.y, wy = F.wallY, n = F.foods.length, sw = AR.w / n, cy = wy - 14, H = wy - top;
+    ctx.save(); ctx.fillStyle = '#2a2026'; ctx.fillRect(AR.x, top, AR.w, wy - top); ctx.restore(); // 바닥에 눕혀 그려진 메뉴판·카운터를 덮음
+    V.wall({ x1: AR.x, y1: cy, x2: AR.x + AR.w, y2: cy, h: H, draw: x => { x.translate(-AR.x, -top);
+      x.fillStyle = '#2a2026'; x.fillRect(AR.x, top, AR.w, H);
+      for (let i = 0; i < n; i++) { const fd = FOOD[F.foods[i]], sx = AR.x + sw * i;
+        x.fillStyle = '#1a1418'; x.fillRect(sx, top + 2, sw, H - 16); x.fillStyle = fd.bg; x.fillRect(sx + 2, top + 4, sw - 4, H - 20);
+        x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(sx + 2, top + 4, sw - 4, 2);
+        x.imageSmoothingEnabled = false; x.drawImage(icon(F.foods[i]), Math.round(sx + sw / 2 - 12), top + 5, 24, 24);
+        x.fillStyle = '#fff4dc'; x.font = `bold 8px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(fd.name, sx + sw / 2, top + 34.5);
+        if (D.flash[i] > 0) { x.globalAlpha = D.flash[i] / 0.3 * 0.45; x.fillStyle = '#ffffff'; x.fillRect(sx + 2, top + 4, sw - 4, H - 20); x.globalAlpha = 1; } } } });
+    V.box({ x0: AR.x, y0: cy, z0: 0, x1: AR.x + AR.w, y1: wy, z1: 14, col: '#a83a30' }); // 카운터
+    const k = F.custScale;
+    for (const c of D.cust) { const s = Sprites.get(c.def);
+      V.shadow(c.x, c.y + 1, 9 * k * (c.def.size || 1), 0.3);
+      V.stand({ x: c.x, y: c.y, w: Math.max(80, s.dw * k + 30), h: s.dh * k + 60, draw: x => { FF.drawCust(x, b, c, F, false, true); FF.custOver(x, b, c, F, false); } }); }
+  }
 
   STAGE_HOOKS.push(SOCCER, FF);
   FX_HOOKS.push(SOCCER, FF);

@@ -158,6 +158,19 @@
     },
     drawTop(ctx, b) { // 거대한 손 (예고 하강 → 뒤집기 / 집어 올리기)
       const D = b.bbq; if (!D) return; const C = D.C;
+      if (b._v3d) { // 직접 플레이: 손마다 고기 위 제자리에 위에서 내려오는 세운 판 (손끝 높이 = 2D 의 내려온 거리) + 불판 위 그림자
+        const V = b._v3d, put = (x, y, z, grab, meat) => {
+          const a = clamp(0.45 - z / 400, 0.12, 0.45); V.shadow(x, y, 22 + Math.min(z, 200) * 0.08, a);
+          V.stand({ x, y, z, w: 70, h: 300, draw: c => { if (meat) drawMeat(c, b, { x, y: y + 2, cook: meat.cook, down: 0, rot: meat.rot, state: 'held', t: 0, pop: 0 }, C, b.time); drawHand(c, x, y - 12 * 0.85, 0.85, grab, 300); } });
+        };
+        for (const m of D.meats) {
+          if (m.state === 'flipWarn') put(m.x, m.y, 120 * (1 - m.t / C.warn.flip) ** 2, false);
+          else if (m.state === 'flipped') put(m.x, m.y, 90 * (m.t / 0.4), true);
+          else if (m.state === 'pickWarn') put(m.x, m.y, 120 * (1 - m.t / C.warn.pick) ** 2, false);
+        }
+        for (const h of D.hand) put(h.x, h.y, 260 * (h.t / h.dur) ** 1.5, true, h.meat);
+        return;
+      }
       for (const m of D.meats) {
         if (m.state === 'flipWarn') drawHand(ctx, m.x, m.y - 10 - 120 * (1 - m.t / C.warn.flip) ** 2, 0.85, false);
         else if (m.state === 'flipped') drawHand(ctx, m.x, m.y - 10 - 90 * (m.t / 0.4), 0.85, true);
@@ -190,9 +203,9 @@
     }
     if (T > 0 && bot > 0.05 && m.state !== 'held') { const k = Math.floor(T * 3 + m.seed) % 3; ctx.save(); ctx.globalAlpha = 0.25; ctx.fillStyle = '#e8e0d8'; ctx.beginPath(); ctx.arc(m.x - 12 + k * 12, m.y - C.ry - 4 - (T * 20 + m.seed * 3) % 16, 3 + k, 0, TAU); ctx.fill(); ctx.restore(); } // 연기
   }
-  function drawHand(ctx, x, y, s, grab) {
+  function drawHand(ctx, x, y, s, grab, arm = 400) {
     ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-    ctx.fillStyle = '#3d5a8a'; ctx.fillRect(-20, -400, 40, 362); ctx.fillStyle = '#e9edf3'; ctx.fillRect(-22, -46, 44, 10); // 소매
+    ctx.fillStyle = '#3d5a8a'; ctx.fillRect(-20, -arm, 40, arm - 38); ctx.fillStyle = '#e9edf3'; ctx.fillRect(-22, -46, 44, 10); // 소매
     ctx.fillStyle = '#f2c7a0'; ctx.strokeStyle = '#a8785a'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-22, -38, 44, 34, 9) : ctx.rect(-22, -38, 44, 34); ctx.fill(); ctx.stroke();
     for (let i = 0; i < 4; i++) { const fx = -18 + i * 12, fl = grab ? 12 : 20 - Math.abs(i - 1.5) * 3; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(fx - 4, -8, 9, fl, 4) : ctx.rect(fx - 4, -8, 9, fl); ctx.fill(); ctx.stroke(); }
@@ -311,6 +324,7 @@
     drawUnder(ctx, b, thumb) {
       const D = b.cls; if (!D) return; const T = thumb ? 0 : b.time;
       const facing = D.phase === 'look' || (D.phase === 'warn' && D.t > D.C.warn * 0.6);
+      if (!thumb && b._v3d) return CL_3D(b, D, T, facing, b._v3d);
       // 선생님 (교탁 뒤)
       const ts = Sprites.get(D.teacher), tx = 180, ty = 168;
       ctx.save(); ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(tx, ty + 1, 13, 4, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
@@ -333,6 +347,7 @@
     },
     drawTop(ctx, b) {
       const D = b.cls; if (!D || b.over) return;
+      if (b._v3d && !b._clsHud) { const self = this; b._v3d.hud(c => { b._clsHud = true; try { self.drawTop(c, b); } finally { b._clsHud = false; } }); return; } // 직접 플레이: 카메라 화면 위 안내
       if (D.phase === 'warn' || D.phase === 'look') {
         ctx.save(); const msg = D.phase === 'warn' ? '헉, 선생님이 돌아본다!' : '얼음! (움직이면 들킴)';
         ctx.font = `bold 11px ${FONT}`; ctx.textAlign = 'center'; const w = ctx.measureText(msg).width + 14;
@@ -341,6 +356,23 @@
       }
     }
   };
+
+  function CL_3D(b, D, T, facing, V) { // 직접 플레이: 선생님·학생 = 세운 판 + 그림자, 교탁·책상 = 3D 상자
+    const ts = Sprites.get(D.teacher), tx = 180, ty = 168, sh = D.phase === 'warn' ? Math.sin(D.t * 40) * 1.2 : 0;
+    V.shadow(tx, ty + 1, 13, 0.3);
+    V.stand({ x: tx, y: ty, w: ts.dw + 40, h: ts.dh + 80, draw: c => { c.save(); c.translate(tx + sh, ty); if (facing) Sprites.draw(c, ts, 0, false); else drawBack(c, D.teacher, ts); c.restore();
+      if (D.phase === 'warn') { c.save(); c.fillStyle = '#fff'; c.strokeStyle = '#333'; c.lineWidth = 1.5; c.beginPath(); c.arc(tx + 22, ty - 62, 9, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#d33'; c.font = `bold 12px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('!', tx + 22, ty - 61); c.restore(); } } });
+    V.box({ x0: tx - 22, y0: ty + 3, z0: 0, x1: tx + 22, y1: ty + 13, z1: 20, col: '#7a5530' }); // 교탁 (선생님 앞)
+    for (const s of D.studs) {
+      const sp = Sprites.get(s.def), sx = s.x, sy = s.y, bob = T && !facing ? Math.max(0, Math.sin(T * 3 + s.ph)) * -1 : 0;
+      const face = s.row === 'L' ? 1 : s.row === 'R' ? -1 : (sx < 180 ? 1 : -1), back = facing || s.row === 'B';
+      V.shadow(sx, sy, 11, 0.25);
+      V.stand({ x: sx, y: sy, w: sp.dw * 0.62 + 30, h: sp.dh * 0.62 + 40, draw: c => { c.save(); c.translate(sx, sy + bob); c.scale(0.62, 0.62); c.scale(spriteSX(s.def, back && !!sp.back, face), 1);
+        if (back) drawBack(c, s.def, sp); else Sprites.draw(c, sp, 0, false); c.restore(); } });
+      if (s.row === 'B') V.box({ x0: sx - 14, y0: sy - 26, z0: 0, x1: sx + 14, y1: sy - 16, z1: 12, col: '#c9a06a' }); // 뒷줄 책상 (학생 앞)
+      else { const dx = sx + face * 12; V.box({ x0: dx - 4, y0: sy - 18, z0: 0, x1: dx + 4, y1: sy + 2, z1: 12, col: '#c9a06a' }); } // 좌우 열 세로 책상
+    }
+  }
 
   STAGE_HOOKS.push(BQ, CL);
   window.StageExt8 = { BQ, CL };
