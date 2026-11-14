@@ -499,7 +499,7 @@
     if (RP.on) RP.frame(dt);
     else if (battle) {
       if (!(dpOn && DP.blocking())) { // 자이로 묻는 창이 떠 있는 동안 전투 정지
-        const tk = window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1; // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
+        const tk = (window.BASEBALL && BASEBALL.timeK ? BASEBALL.timeK(battle) : 1) * (dpOn && DP.timeK ? DP.timeK(battle, dt) : 1); // 직접 플레이: 송구 조준 슬로모션 (진행 속도만) // 야구장 접전 슬로모션: 화면 진행만 느리게 (시뮬레이션 스텝은 그대로)
         battle.updateVisual(dt * tk);
         if (dpOn) { const A = DP.takeAct(battle); if (A) { const ok = A.kind ? battle.playerAct(A.u, A.kind, A.val) : battle.playerFlip(A.u); DP.acted(battle, A, ok); if (ok) REC.input(battle.u.indexOf(A.u), A.kind, A.val); } } // 반전·스테이지 입력(야구 스윙 등)은 스텝 사이에만 (리플레이 재현)
         acc += dt * speed * tk;

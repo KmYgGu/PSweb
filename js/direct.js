@@ -195,6 +195,14 @@ const DirectPlay = (() => {
     if (D.phase === 'live' && D.ball && D.ball.st === 'held' && D.ball.holder === P) return 'th';
     return null;
   }
+  // 야구: 내가 공을 쥐고 송구할 수 있을 때 잠깐 슬로모션 (화면·시뮬 진행 속도만 줄임 → 고정 스텝이라 결과·리플레이 그대로). 실제 시간 기준 SLOW.t 초 0.3배 → SLOW.e 초 동안 원래대로, 던지면 바로 복귀
+  const SLOW = { k: 0.3, t: 1.6, e: 0.5 };
+  function timeK(b, dt) {
+    const th = S.active && bsbCtx(b, player(b)) === 'th';
+    if (th) { S.slT = S.slT == null ? 0 : S.slT + dt; S.slK = S.slT < SLOW.t ? SLOW.k : SLOW.k + (1 - SLOW.k) * Math.min(1, (S.slT - SLOW.t) / SLOW.e); }
+    else { S.slT = null; S.slK = S.slK == null ? 1 : Math.min(1, S.slK + (1 - S.slK) * (1 - Math.exp(-14 * dt)) + 0.002); }
+    return S.slK;
+  }
   function timing(b) { const c = bsbCtx(b, player(b)); return c === 'sw' || c === 'pa'; }
   function aimVal() { // 화면 가운데(카메라 정면) 광선이 홈 플레이트 면(y = 홈 − 2)과 만나는 점 → 존 반폭·반높이 단위 [ax, az]
     const BS = window.BASEBALL, Hm = BS.S.home, t = Math.abs(C.F[1]) > 1e-4 ? (Hm.y - 2 - C.y) / C.F[1] : 0; if (!(t > 0)) return [0, 0];
@@ -253,7 +261,7 @@ const DirectPlay = (() => {
       if (S.oX != null) { C.x += (S.oX - C.x) * S.posK; C.y += (S.oY2 - C.y) * S.posK; } }
     const cp = Math.cos(C.pitch), sp = Math.sin(C.pitch);
     C.F = [cp * fx, cp * fy, -sp]; C.R = [rx, ry, 0]; C.U = [sp * fx, sp * fy, cp];
-    let f = CAM.f; if (b.zoom) { const z = b.zoom; f *= 1 + z.k * 1.5 * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); }
+    S.zm = (S.zm || 1) + (((md && md.zm) || 1) - (S.zm || 1)) * (1 - Math.exp(-6 * dt)); let f = CAM.f * S.zm; if (b.zoom) { const z = b.zoom; f *= 1 + z.k * 1.5 * Math.sin(Math.PI * Math.min(1, z.t / z.dur)); }
     C.f = f; C.cx = W / 2; C.cy = view.y + view.h * 0.66;
     if (b.shakeT > 0) { const k = b.shakeT / 0.18 * b.shakeA, q = t * 60; C.cx += Math.round(Math.sin(q * 1.7) * k); C.cy += Math.round(Math.cos(q * 2.3) * k); }
   }
@@ -262,19 +270,22 @@ const DirectPlay = (() => {
     const cx = S.px - Math.cos(S.lastYaw || 0) * CAM.dist, cy = S.py - Math.sin(S.lastYaw || 0) * CAM.dist, d = Math.max(30, Math.hypot(tx - cx, ty - cy));
     return Math.atan2(h - tz, d) + 0.08;
   }
+  const PCH = 42, PCZ = 1.1; // 내 투구 시점 높이·확대
   function camMode(b, P, E) {
     if (!P) return null;
     const D = b.bsb, BS = window.BASEBALL;
     if (D && D.on && BS && b.bsbMan && !b.over && BS_FIX.has(D.phase) && (D.batU === P || D.pitU === P)) { // 야구 플레이 볼: 회전 없는 고정 시점
       const Hm = BS.S.home, M = BS.S.mound;
-      if (D.batU === P) { const cx = Hm.x + 4 * (D.side || 1), cy = Hm.y + 46; S.lastYaw = Math.atan2(M.y - cy, M.x - cx); return { yaw: S.lastYaw, pitch: 0.16, h: 40, cx, cy }; } // 포수 자리 (포수는 그리지 않음) // 타석: 홈 뒤에서 투수 쪽
-      const cx = M.x + 24, cy = M.y - 100, p = D.pitch, g = p && D.phase === 'pitch' && p.gauge; // 투구: 마운드 뒤에서 포수 쪽
+      if (D.batU === P) { const cx = Hm.x + 4 * (D.side || 1), cy = Hm.y + 46; S.lastYaw = Math.atan2(M.y - cy, M.x - cx); return { yaw: S.lastYaw, pitch: 0.16, h: 40, cx, cy, zm: 1.15 }; } // 포수 자리 (포수는 그리지 않음) // 타석: 홈 뒤에서 투수 쪽
+      const p = D.pitch, g = p && D.phase === 'pitch' && p.gauge, near = !!(g && (g.q == null || !p.done)); // 내 투구 중(조준·게이지·공 날아가는 동안): 마운드 앞 가까운 시점 + 확대로 존이 잘 보이게
+      const cx = near ? M.x + 6 : M.x + 24, cy = near ? M.y + 8 : M.y - 100; // 투구: 마운드 뒤에서 포수 쪽
       if (g && g.q == null) { // 내 조준: 존 가운데를 정면으로, 회전 입력은 조준점이 존 둘레(반폭 ×2.4, 반높이 ×2.2)를 넘지 않게. 누른 뒤(게이지)는 고정
         if (S.aimFor !== p) { S.aimFor = p; S.aimY = S.aimP = 0; }
         const dx = Hm.x - cx, dy = Hm.y - 2 - cy, L = Math.hypot(dx, dy), ly = Math.atan2(2.4 * 6, L), lp = Math.atan2(2.2 * 8, L);
         if (g.st === 'aim' && S.dIn) { S.aimY = clamp(S.aimY + S.dIn[0] * 0.3, -ly, ly); S.aimP = clamp(S.aimP + S.dIn[1] * 0.5, -lp, lp); }
-        S.lastYaw = Math.atan2(dy, dx) + S.aimY; return { yaw: S.lastYaw, pitch: Math.atan2(66 - 18, L) + S.aimP, h: 66, cx, cy, aim: true };
+        S.lastYaw = Math.atan2(dy, dx) + S.aimY; return { yaw: S.lastYaw, pitch: Math.atan2(PCH - 18, L) + S.aimP, h: PCH, cx, cy, aim: true, zm: PCZ };
       }
+      if (near) { const dx = Hm.x - cx, dy = Hm.y - 2 - cy; S.lastYaw = Math.atan2(dy, dx) + (S.aimY || 0); return { yaw: S.lastYaw, pitch: Math.atan2(PCH - 18, Math.hypot(dx, dy)) + (S.aimP || 0), h: PCH, cx, cy, zm: PCZ }; }
       S.lastYaw = Math.atan2(Hm.y - cy, Hm.x - cx); return { yaw: S.lastYaw, pitch: 0.3, h: 66, cx, cy };
     }
     if (launched(P)) { const h = 44, z = b.airZ(P) + 20; S.lastYaw = S.autoYaw + S.userYaw; return { yaw: S.lastYaw, pitch: Math.atan2(h - z, CAM.dist * 1.1) + 0.12, h }; } // 낮은 카메라에서 공중의 내 캐릭터를 올려다봄
@@ -1074,6 +1085,6 @@ const DirectPlay = (() => {
     ctx.fillStyle = 'rgba(14,15,24,0.82)'; ctx.fillRect(W / 2 - w / 2, ay + 22, w, 16); ctx.fillStyle = col; ctx.fillText(msg, W / 2, ay + 30);
     ctx.restore();
   }
-  return { supported, begin, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, EXCLUDE, FLIP_CD, get active() { return S.active; },
+  return { supported, begin, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();

@@ -1189,8 +1189,11 @@
     if (n.stun > 0) ctx.rotate(Math.sin(n.stun * 30) * 0.12);
     const jst = jz > 0 ? 1 + 0.06 * Math.min(1, jz / JUMP_H) : 1; // 점프: 살짝 늘어남
     ctx.scale(spriteSX(n.def, back, face) * K / jst, K * jst);
-    const fr = n.moving ? Math.floor(n.walk * s.fps / 6) : 0; Sprites.draw(ctx, s, fr, false);
-    const C = capInfo(n.def, back), cw = clamp(C.w * 0.95, 10, 18); // 모자 (팀 색)
+    const fr = n.moving ? Math.floor(n.walk * s.fps / 6) : 0, C = capInfo(n.def, back), cw = clamp(C.w * 0.95, 10, 18); // 모자 (팀 색)
+    const B0 = D.ball; if (v3 && b.bsbMan && !gone && B0 && B0.st === 'held' && B0.holder === n && b.u[0] && n.team === b.u[0].team) { // 직접 플레이: 공을 쥔 우리 편 수비수 흰 테두리 (미리 칠해 둔 흰 실루엣을 사방으로 비켜 그림)
+      for (const [ox, oy] of [[-1.6, 0], [1.6, 0], [0, -1.6], [0, 1.6]]) { ctx.save(); ctx.translate(ox, oy); Sprites.drawTint(ctx, s, fr, '#ffffff'); ctx.restore(); }
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(C.x - cw / 2) - 3, Math.round(C.y - 9), Math.round(cw) + 6, 11); }
+    Sprites.draw(ctx, s, fr, false);
     ctx.fillStyle = '#16141e'; ctx.fillRect(Math.round(C.x - cw / 2) - 1, Math.round(C.y - 5), Math.round(cw) + 2, 7);
     ctx.fillStyle = col; ctx.fillRect(Math.round(C.x - cw / 2), Math.round(C.y - 4), Math.round(cw), 5);
     ctx.fillRect(Math.round(C.x - cw / 2 + 2), Math.round(C.y - 6), Math.round(cw - 4), 2);
