@@ -153,7 +153,7 @@
     },
     sortItems(b) {
       const K = b.claw; if (!K) return [];
-      return K.dolls.map(d => ({ y: d.y, draw: ctx => CLAW.drawDoll(ctx, b, d) }));
+      return K.dolls.map(d => ({ y: d.y, x: d.x, draw: ctx => CLAW.drawDoll(ctx, b, d) }));
     },
     drawDoll(ctx, b, d, thumb) {
       const C = (b.claw && b.claw.C) || { scale: 0.62 };

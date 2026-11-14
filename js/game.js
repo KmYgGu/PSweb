@@ -1778,7 +1778,7 @@ const Render = (() => {
     ctx.restore();
     ctx.globalAlpha = 1;
     if (!u.dead && u.buff('hexCurse')) drawHexagram(ctx, x, y - z, b.time);
-    if (u.wSwing && !u.dead && !stone) drawWeaponSwing(ctx, u, x + jx + LG.x, y + bob - z - 20 * zk + LG.y);
+    if (u.wSwing && !u.dead && !stone && !(b._flatSwing && swingPose(u))) drawWeaponSwing(ctx, u, x + jx + LG.x, y + bob - z - 20 * zk + LG.y); // _flatSwing: 직접 플레이는 바닥 쪽으로 눕혀 따로 그림 (js/direct.js)
     if (u.dead) return;
     if (u.buff('shield')) {
       const sh = u.buff('shield'), a = Math.min(1, sh.t * 2);
@@ -2122,6 +2122,16 @@ const Render = (() => {
     }
     ctx.restore(); ctx.globalAlpha = 1;
   }
+  // 직접 플레이 모드용: 휘두르기 자세 값만 계산 (drawWeaponSwing 과 같은 식, 그리기·상태 변경 없음). 박치기(lunge)는 null
+  function swingPose(u) {
+    const S = u && u.wSwing, W = S && WEAPONS[S.k]; if (!W || W.style === 'lunge') return null;
+    const p = clamp(S.t / S.dur, 0, 1), reach = Math.max(20, u.reach || 40), len = W.sc ? W.w * W.sc : clamp(reach * 0.8, 16, 70), sc = len / W.w;
+    const side = Math.cos(S.ang) >= 0 ? 1 : -1, fade = p < 0.75 ? 1 : 1 - (p - 0.75) / 0.25;
+    let th = S.ang, off = 6, aS = null;
+    if (W.style === 'thrust') off = 4 + Math.sin(Math.PI * Math.min(1, p * 1.4)) * reach * 0.35;
+    else { const a0 = W.arc ? W.arc[0] : -1.35, a1 = W.arc ? W.arc[1] : 1.1, e = easeOut(Math.min(1, p * (W.fast ? 2.2 : W.heavy ? 1.3 : 1.7))); th = S.ang + side * (a0 + (a1 - a0) * e); aS = S.ang + side * a0; }
+    return { img: weaponCanvas(S.k), p, len, sc, off, th, aS, ang: S.ang, side, fade, thrust: W.style === 'thrust', flip: side < 0 && (W.style === 'swing' || !!W.flip), trail: W.trail || '#ffffff', heavy: !!W.heavy, fist: W.fist || null };
+  }
   function drawWeaponSwing(ctx, u, x, y) {
     const S = u.wSwing, W = WEAPONS[S.k]; if (!W) return;
     if (W.style === 'lunge') return drawLunge(ctx, u, x, y, S, W, clamp(S.t / S.dur, 0, 1));
@@ -2451,7 +2461,7 @@ const Render = (() => {
   }
   // o.v3d: 직접 플레이 모드의 바닥 그림 (js/direct.js 가 원근으로 눕혀 그림). 캐릭터·기본 건물·글자·K.O.·줌/흔들림은 빼고 그림 (3D 쪽에서 따로)
   function draw(ctx, b, o) {
-    const V = !!(o && o.v3d);
+    const V = !!(o && o.v3d), LC = V && o.lift ? o.lift : ctx; // LC: 직접 플레이에서 세워 그릴 것(물체·기믹·위층 이펙트·입자)을 따로 받는 그림 (js/direct.js 가 덩어리별로 세움)
     if (b && window.BattleVFX) BattleVFX.begin(b);
     const sid = b ? b.stageId : 'arena';
     if (!floors[sid]) floors[sid] = makeFloor(sid);
@@ -2506,14 +2516,18 @@ const Render = (() => {
     const list = [...(V ? [] : b.u.map(u => ({ y: u.y, u }))), ...b.buildings.filter(x => !x.dead && !(V && !x.draw)).map(bl => ({ y: bl.y + bl.h, bl })), ...STAGE_HOOKS.flatMap(h => h.sortItems ? h.sortItems(b) : [])].sort((a, c) => a.y - c.y); // sortItems: 스테이지 물체(인형 등) y 정렬
     for (const it of list) {
       if (it.u) { drawUnit(ctx, it.u, b); if (!it.u.aoHid) drawO2(ctx, it.u, it.u.x + it.u.kx, it.u.y + it.u.ky); } // aoHid: 아오오니 옷장·문 숨김 중엔 산소 게이지도 숨김
-      else if (it.draw) it.draw(ctx);
-      else drawBuilding(ctx, it.bl);
+      else if (V && o.stand && (it.bl || it.x != null)) o.stand.push(it.bl ? { x: it.bl.x + it.bl.w / 2, y: it.bl.y + it.bl.h, w: it.bl.w, draw: c => it.bl.draw ? drawBuilding(c, it.bl) : 0 } : { x: it.x, y: it.y, draw: it.draw }); // 직접 플레이: 물체마다 세워 그림 (x 가 있는 sortItems · 특수 건물)
+      else if (it.draw) it.draw(LC);
+      else drawBuilding(LC, it.bl);
     }
-    for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(ctx, b);
+    LC.globalAlpha = 1;
+    for (const h of STAGE_HOOKS) h.drawOver && h.drawOver(LC, b);
+    LC.globalAlpha = 1;
     if (!V) for (const u of b.u) drawBarrier(ctx, u, b);
     for (const f of b.fx) { if (f.type === 'wire') drawWireFx(ctx, f, b); else if (f.type === 'garrote') drawGarrote(ctx, f, b); }
     if (!V) for (const u of b.u) { if (u.counter) drawCounter(ctx, u, b); drawPips(ctx, u, b); }
-    for (const p of b.proj) drawProj(ctx, p);
+    for (const p of b.proj) if (!(V && o.noProj && p.kind !== 'wire')) drawProj(ctx, p); // noProj: 투사체는 direct.js 가 공중에 세워 그림
+    { const ctx = LC; // 위층 이펙트·입자 (직접 플레이에선 세워 그릴 그림으로)
     for (const f of b.fx) drawFx(ctx, f, 1);
     for (const f of b.visualFx) drawFx(ctx, f, 1);
     if (window.BattleVFX) BattleVFX.drawExtras(ctx, b, 1);
@@ -2530,7 +2544,7 @@ const Render = (() => {
     }
     ctx.globalAlpha = 1;
     for (const h of STAGE_HOOKS) h.drawTop && h.drawTop(ctx, b); // 최상단 레이어 (아이돌 무대 관객/중계 화면 등; 글자 HUD 아래)
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1; }
     if (V) { ctx.restore(); return; } // 글자·말풍선·K.O. 는 3D 화면에서 세워서 그림
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const t of b.texts) if (t.bubble) { // 말풍선 (캐릭터를 따라감, 화면 안으로 보정)
@@ -2588,5 +2602,5 @@ const Render = (() => {
     try { for (const u of L.sort((a, c) => a.y - c.y)) { c2.filter = TS && u !== TS.owner ? 'grayscale(1)' : 'none'; drawUnit(c2, u, b); c2.globalAlpha = 1; } c2.filter = TS ? 'grayscale(1)' : 'none'; for (const h of HK) { h.drawAboveUI(c2, b); c2.globalAlpha = 1; } } finally { b._topPass = false; c2.restore(); }
   }
   const BLD_COL = b => { const s = b.style % 3; return { wall: WALL[s], roof: ROOF[s] }; }; // 직접 플레이 3D 건물 상자 색
-  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon, drawBarrier, drawCounter, drawPips, drawO2, drawKO, BLD_COL };
+  return { draw, thumb, glowAt, drawTopUnits, drawUnit, heldWeapon, drawHeldWeapon, drawBarrier, drawCounter, drawPips, drawO2, drawKO, BLD_COL, drawProj, swingPose };
 })();

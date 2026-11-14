@@ -302,7 +302,7 @@
       const D = b.sn; if (!D) return [];
       const out = [];
       for (const u of mains(b)) { const T = u.snT; if (!T || u.dead) continue;
-        T.tail.forEach((c, i) => out.push({ y: c.y, draw: ctx => { const s = Sprites.get(u.fdef), warm = c.age < D.S.tail.grace;
+        T.tail.forEach((c, i) => out.push({ y: c.y, x: c.x, draw: ctx => { const s = Sprites.get(u.fdef), warm = c.age < D.S.tail.grace;
           ctx.save(); ctx.globalAlpha = warm ? 0.45 + 0.2 * Math.sin(b.time * 20) : 0.78;
           ctx.fillStyle = TEAM_COL[u.team]; ctx.beginPath(); ctx.ellipse(c.x, c.y + 1, 10, 3.5, 0, 0, TAU); ctx.fill();
           ctx.translate(Math.round(c.x), Math.round(c.y)); ctx.scale(spriteSX(u.fdef, false, c.face), 1); Sprites.draw(ctx, s, 0); ctx.restore(); } })); }

@@ -196,13 +196,101 @@ const DirectPlay = (() => {
   }
 
   // ---------- 바닥 ----------
-  let tex = null, tctx = null;
+  let tex = null, tctx = null, lift = null, lctx = null;
   function drawFloorTex(b) {
     if (!tex) { tex = document.createElement('canvas'); tex.width = TX.w * TR; tex.height = TX.h * TR; tctx = tex.getContext('2d'); }
-    tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tex.width, tex.height);
-    tctx.setTransform(TR, 0, 0, TR, -TX.x * TR, -TX.y * TR); tctx.imageSmoothingEnabled = false;
-    Render.draw(tctx, b, { v3d: true });
-    tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'source-over'; tctx.filter = 'none';
+    if (!lift) { lift = document.createElement('canvas'); lift.width = tex.width; lift.height = tex.height; lctx = lift.getContext('2d'); }
+    for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, tex.width, tex.height); c.setTransform(TR, 0, 0, TR, -TX.x * TR, -TX.y * TR); c.imageSmoothingEnabled = false; }
+    // 바닥(tex) = 바닥 그림·바닥 이펙트, 세울 그림(lift) = 물체·특수 건물·기믹·위층 이펙트·입자. 투사체는 따로 (공중)
+    S.stand = []; Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand });
+    for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; }
+  }
+  // ---------- 세울 그림 나누기 (픽셀을 읽지 않음: file:// 에서 PNG 를 그린 캔버스는 읽을 수 없음) ----------
+  // 위층 그림(lift: 이펙트·입자·기믹 위층)은 캐릭터마다 몸 둘레 칸(가까운 캐릭터 기준으로 나눔)을 잘라 그 캐릭터 발 위치에 세우고, 칸 밖은 바닥에 눕힘
+  const CELL = { l: 56, r: 56, t: 124, b: 14 }, YW = 0.5; // 칸 크기 · 나눌 때 세로 거리 가중
+  function clipPoly(pts, a, c, d) { // a·x + c·y <= d 쪽만 남김
+    const out = [];
+    for (let i = 0; i < pts.length; i++) { const P = pts[i], Q = pts[(i + 1) % pts.length], fp = a * P[0] + c * P[1] - d, fq = a * Q[0] + c * Q[1] - d;
+      if (fp <= 0) out.push(P); if ((fp <= 0) !== (fq <= 0)) { const k = fp / (fp - fq); out.push([P[0] + (Q[0] - P[0]) * k, P[1] + (Q[1] - P[1]) * k]); } }
+    return out;
+  }
+  let rest = null, rctx = null;
+  function unitCells(b) {
+    const us = b.u.filter(u => !u.hidden && !u.def.noDraw), cells = [];
+    for (const u of us) {
+      const x = u.x + (u.kx || 0), y = u.y + (u.ky || 0);
+      let poly = [[x - CELL.l, y - CELL.t], [x + CELL.r, y - CELL.t], [x + CELL.r, y + CELL.b], [x - CELL.l, y + CELL.b]];
+      const si = [x, (y - 50) * YW];
+      for (const o of us) { if (o === u) continue; const ox = o.x + (o.kx || 0), oy = o.y + (o.ky || 0);
+        if (Math.abs(ox - x) > CELL.l + CELL.r || Math.abs(oy - y) > CELL.t + CELL.b) continue;
+        const sj = [ox, (oy - 50) * YW]; // 축척 공간의 수직이등분선 → 월드의 직선
+        poly = clipPoly(poly, 2 * (sj[0] - si[0]), 2 * YW * (sj[1] - si[1]), sj[0] * sj[0] + sj[1] * sj[1] - si[0] * si[0] - si[1] * si[1]); if (poly.length < 3) break; }
+      if (poly.length >= 3) cells.push({ u, x, y, poly });
+    }
+    // 칸 밖 위층 그림 → 바닥
+    if (!rest) { rest = document.createElement('canvas'); rest.width = lift.width; rest.height = lift.height; rctx = rest.getContext('2d'); }
+    rctx.globalCompositeOperation = 'copy'; rctx.drawImage(lift, 0, 0); rctx.globalCompositeOperation = 'destination-out'; rctx.fillStyle = '#000';
+    for (const c of cells) { rctx.beginPath(); c.poly.forEach((q, i) => { const X = (q[0] - TX.x) * TR, Y = (q[1] - TX.y) * TR; i ? rctx.lineTo(X, Y) : rctx.moveTo(X, Y); }); rctx.closePath(); rctx.fill(); }
+    rctx.globalCompositeOperation = 'source-over'; tctx.drawImage(rest, 0, 0);
+    return cells;
+  }
+  function drawCell(ctx, c) { // 캐릭터 그림과 같은 배율·발 위치로 세움 → 캐릭터 몸에 붙은 이펙트가 제자리에
+    const p = proj(c.x, c.y, 0); if (!p || p.s > 9) return;
+    const X = x => p.x + (x - c.x) * p.s, Y = y => p.y + (y - c.y) * p.s;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const q of c.poly) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+    x0 = Math.max(x0, TX.x); y0 = Math.max(y0, TX.y); x1 = Math.min(x1, TX.x + TX.w); y1 = Math.min(y1, TX.y + TX.h); if (x1 <= x0 || y1 <= y0) return;
+    if (X(x1) < 0 || X(x0) > W) return;
+    ctx.save(); ctx.beginPath(); c.poly.forEach((q, i) => i ? ctx.lineTo(X(q[0]), Y(q[1])) : ctx.moveTo(X(q[0]), Y(q[1]))); ctx.closePath(); ctx.clip();
+    ctx.drawImage(lift, (x0 - TX.x) * TR, (y0 - TX.y) * TR, (x1 - x0) * TR, (y1 - y0) * TR, X(x0), Y(y0), (x1 - x0) * p.s, (y1 - y0) * p.s);
+    ctx.restore();
+  }
+  // 물체 (특수 건물·x 가 있는 스테이지 물체): 각자 작은 캔버스에 그려 발(바닥 y) 위치에 세움
+  const opool = [];
+  function renderObj(i, it) {
+    const w = Math.ceil(Math.max(90, (it.w || 0) + 50) / 10) * 10, h = 200, fy = 170;
+    let B = opool[i]; if (!B || B.w !== w) { const c = document.createElement('canvas'); c.width = w * TR; c.height = h * TR; B = opool[i] = { c, x: c.getContext('2d'), w, h, fy }; }
+    const x = B.x; x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, B.c.width, B.c.height);
+    x.setTransform(TR, 0, 0, TR, (w / 2 - it.x) * TR, (fy - it.y) * TR); x.imageSmoothingEnabled = false;
+    try { it.draw(x); } catch (e) { console.warn('[direct] obj draw', e); } finally { x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.filter = 'none'; }
+    return B;
+  }
+  // ---------- 투사체: 그 캐릭터의 투사체 그림을 공중(높이 PH)에 세움. 진행 방향은 화면에 비친 방향으로 ----------
+  const PH = 16, PB = 128, ppool = [];
+  function renderProj(i, p) {
+    if (!ppool[i]) { const c = document.createElement('canvas'); c.width = PB * TR; c.height = PB * TR; ppool[i] = { c, x: c.getContext('2d') }; }
+    const B = ppool[i], x = B.x;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; x.clearRect(0, 0, B.c.width, B.c.height);
+    x.setTransform(TR, 0, 0, TR, (PB / 2 - p.x) * TR, (PB / 2 - p.y) * TR); x.imageSmoothingEnabled = false;
+    const sv = [p.vx, p.vy], sp = Math.hypot(p.vx || 0, p.vy || 0);
+    if (sp > 1e-6) { const a = proj(p.x, p.y, PH), c = proj(p.x + p.vx / sp * 10, p.y + p.vy / sp * 10, PH);
+      if (a && c) { const dx = c.x - a.x, dy = c.y - a.y, L = Math.hypot(dx, dy); if (L > 1e-3) { p.vx = dx / L * sp; p.vy = dy / L * sp; } } }
+    try { Render.drawProj(x, p); } catch (e) { console.warn('[direct] proj draw', e); }
+    finally { p.vx = sv[0]; p.vy = sv[1]; x.globalAlpha = 1; x.globalCompositeOperation = 'source-over'; }
+    return B.c;
+  }
+  // ---------- 근접 휘두르기: 손 높이의 수평면에 눕혀 그림 (실험) ----------
+  function drawSwing(ctx, u, b) {
+    const P = Render.swingPose && Render.swingPose(u); if (!P) return;
+    const k = u.def.size || 1, hz = 20 * k + b.airZ(u) + (u.jkLiftZ || 0), cx = u.x + (u.kx || 0), cy = u.y + (u.ky || 0);
+    const at = (a, lx, ly) => proj(cx + Math.cos(a) * lx - Math.sin(a) * ly, cy + Math.sin(a) * lx + Math.cos(a) * ly, hz);
+    const o = proj(cx, cy, hz); if (!o) return;
+    ctx.save(); ctx.lineCap = 'round';
+    const r = P.off + P.len;
+    if (!P.thrust && P.aS != null) { // 호 궤적
+      const N = 14, pts = []; for (let i = 0; i <= N; i++) { const q = at(P.aS + (P.th - P.aS) * i / N, r, 0); if (q) pts.push(q); }
+      if (pts.length > 1) for (const [col, lw, al] of [[P.trail, P.heavy ? 6 : 4, 0.55], ['#ffffff', 1.5, 0.9]]) {
+        ctx.globalAlpha = al * P.fade; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, lw * o.s * 0.6);
+        ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke(); }
+    } else if (P.p < 0.8) { const q0 = at(P.th, 4, 0), q1 = at(P.th, P.off + P.len * 0.9, 0);
+      if (q0 && q1) { ctx.globalAlpha = 0.5 * P.fade; ctx.strokeStyle = P.trail; ctx.lineWidth = Math.max(1, 3 * o.s * 0.6); ctx.beginPath(); ctx.moveTo(q0.x, q0.y); ctx.lineTo(q1.x, q1.y); ctx.stroke(); } }
+    const m = P.off + P.len / 2, A = at(P.th, m + P.len / 2, 0), Bq = at(P.th, m - P.len / 2, 0), Cq = at(P.th, m, 4), D = at(P.th, m, -4), M = at(P.th, m, 0);
+    if (A && Bq && Cq && D && M) { // 무기 그림: 무기 가운데 기준 아핀 근사 (작아서 원근 오차 작음)
+      const ex = [(A.x - Bq.x) / P.len, (A.y - Bq.y) / P.len], ey = [(Cq.x - D.x) / 8, (Cq.y - D.y) / 8];
+      ctx.globalAlpha = P.fade; ctx.transform(ex[0], ex[1], ey[0], ey[1], M.x - ex[0] * m, M.y - ex[1] * m);
+      if (P.flip) ctx.scale(1, -1);
+      ctx.imageSmoothingEnabled = false; ctx.drawImage(P.img, P.off, -P.img.height * P.sc / 2, P.img.width * P.sc, P.img.height * P.sc);
+    }
+    ctx.restore(); ctx.globalAlpha = 1;
   }
   // 바닥: 가로 띠마다 (띠 안을 다시 몇 칸으로 나눠) 아핀 변환으로 그림. 칸 크기는 원근 오차가 0.6px 이하가 되게 (지평선 가까울수록 잘게)
   function drawFloor(ctx) {
@@ -300,12 +388,12 @@ const DirectPlay = (() => {
     const B = billCanvas(i), x = B.x;
     x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1; x.filter = 'none'; x.clearRect(0, 0, B.c.width, B.c.height);
     x.setTransform(TR, 0, 0, TR, (BB.fx - u.x) * TR, (BB.fy - u.y) * TR); x.imageSmoothingEnabled = false;
-    const sv = [u.lookUp, u.facing]; u.lookUp = v.back; u.facing = v.facing; b._topPass = true; // _topPass: 바닥 그림자·분노 빛은 빼고 그림 (그림자는 바닥에 이미)
+    const sv = [u.lookUp, u.facing]; u.lookUp = v.back; u.facing = v.facing; b._topPass = true; b._flatSwing = true; // _topPass: 바닥 그림자·분노 빛은 빼고 그림 (그림자는 바닥에 이미)
     try {
       Render.drawUnit(x, u, b); x.globalAlpha = 1;
       if (!u.dead) { Render.drawBarrier(x, u, b); x.globalAlpha = 1; if (u.counter) Render.drawCounter(x, u, b); Render.drawPips(x, u, b); if (!u.aoHid) Render.drawO2(x, u, u.x + u.kx, u.y + u.ky); }
     } catch (e) { console.warn('[direct] unit draw', e); }
-    finally { u.lookUp = sv[0]; u.facing = sv[1]; b._topPass = false; x.globalAlpha = 1; x.filter = 'none'; }
+    finally { u.lookUp = sv[0]; u.facing = sv[1]; b._topPass = false; b._flatSwing = false; x.globalAlpha = 1; x.filter = 'none'; }
     return B.c;
   }
   function hpBar(ctx, x, y, w, r, col) {
@@ -347,7 +435,7 @@ const DirectPlay = (() => {
     const hz = C.cy - C.f * Math.tan(C.pitch);
     const g = ctx.createLinearGradient(0, 0, 0, Math.max(1, hz)); g.addColorStop(0, '#0b0c14'); g.addColorStop(1, '#2a2e42');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, Math.max(0, hz)); ctx.fillStyle = '#14121c'; ctx.fillRect(0, Math.max(0, hz), W, H);
-    drawFloorTex(b); drawFloor(ctx);
+    drawFloorTex(b); const cells = unitCells(b); drawFloor(ctx);
     const fog = ctx.createLinearGradient(0, hz, 0, hz + 70); fog.addColorStop(0, 'rgba(20,22,34,0.75)'); fog.addColorStop(1, 'rgba(20,22,34,0)');
     ctx.fillStyle = fog; ctx.fillRect(0, hz, W, 70);
     drawWalls(ctx, b);
@@ -355,19 +443,25 @@ const DirectPlay = (() => {
     const P = player(b), E = focus(b, P), items = [];
     for (const u of b.u) { if (u.hidden || u.def.noDraw) continue; const c = cam(u.x, u.y, 0); if (c[2] > CAM.near + 2) items.push({ z: c[2], u }); }
     for (const bl of b.buildings) if (!bl.dead && !bl.draw) { const c = cam(bl.x + bl.w / 2, bl.y + bl.h / 2, 0); items.push({ z: c[2] + Math.min(bl.w, bl.h) * 0.3, bl }); }
-    for (const p of b.proj) { if (p.kind === 'wire') continue; const c = cam(p.x, p.y, 16); if (c[2] > CAM.near) items.push({ z: c[2], p }); }
+    for (const p of b.proj) { if (p.kind === 'wire') continue; const c = cam(p.x, p.y, PH); if (c[2] > CAM.near) items.push({ z: c[2], p });
+      const g = proj(p.x, p.y, 0); if (g && g.s < 9) { ctx.globalAlpha = 0.3; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(g.x, g.y, 6 * g.s, 2.2 * g.s, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; } } // 투사체 그림자
+    for (const c of cells) { const q = cam(c.x, c.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2] - 0.5, c }); } // 캐릭터 둘레 위층 그림: 그 캐릭터 바로 앞
+    for (const o of S.stand) { const q = cam(o.x, o.y, 0); if (q[2] > CAM.near + 2) items.push({ z: q[2], o }); }
     items.sort((a, c) => c.z - a.z);
     const eRect = (() => { if (!E || E.hidden) return null; const p = proj(E.x, E.y, 0); return p ? { x: p.x, y: p.y, w: 30 * p.s, h: 60 * p.s } : null; })();
-    let bi = 0;
+    let bi = 0, pi = 0, oi = 0;
     for (const it of items) {
       if (it.bl) { drawBox(ctx, it.bl); continue; }
-      if (it.p) { const p = proj(it.p.x, it.p.y, 16); if (!p) continue; const r = clamp(7 * p.s, 3, 26), col = hex6(it.p.color) || hex6(projectileColor(it.p)) || '#ffe08a'; Render.glowAt(ctx, p.x, p.y, r * 2.2, col, 0.75); ctx.fillStyle = '#fff8e0'; ctx.globalAlpha = 0.9; ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.35, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; continue; }
+      if (it.c) { drawCell(ctx, it.c); continue; }
+      if (it.o) { const p = proj(it.o.x, it.o.y, 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o); ctx.drawImage(B.c, p.x - B.w / 2 * p.s, p.y - B.fy * p.s, B.w * p.s, B.h * p.s); continue; }
+      if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, p = proj(u.x, u.y, 0); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
       const w = BB.w * p.s * v.sq, h = BB.h * p.s;
       let a = 1;
       if (isP && eRect && Math.abs(eRect.x - p.x) < 34 * p.s * 0.5 + eRect.w && eRect.y < p.y && eRect.y > p.y - 58 * p.s) a = 0.55; // 내 캐릭터가 상대를 가리면 반투명
       ctx.globalAlpha = a; ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1;
+      if (u.wSwing && !u.dead) drawSwing(ctx, u, b);
       if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u)); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
     drawTexts(ctx, b);
