@@ -61,14 +61,15 @@ const DirectPlay = (() => {
   const canLock = () => !!(stageEl() && stageEl().requestPointerLock);
   function lock() {
     const el = stageEl(); if (!el || !canLock() || S.locked || !S.active) return;
-    try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => { /* 제스처 밖·Esc 직후: 다음 클릭에 다시 */ }); } catch (e) { /* 미지원 */ }
+    try { const p = el.requestPointerLock(); if (p && p.catch) p.catch(() => { S.lockFail = true; }); } catch (e) { S.lockFail = true; } // 실패(헤드리스·Esc 직후 등) → 잠금 없이 클릭 = 반전
   }
   function unlock() { if (document.pointerLockElement && document.exitPointerLock) try { document.exitPointerLock(); } catch (e) { /* 무시 */ } }
-  document.addEventListener('pointerlockchange', () => { S.locked = !!stageEl() && document.pointerLockElement === stageEl(); });
+  document.addEventListener('pointerlockchange', () => { S.locked = !!stageEl() && document.pointerLockElement === stageEl(); if (S.locked) S.lockFail = false; });
+  document.addEventListener('pointerlockerror', () => { S.lockFail = true; });
   document.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') S.mouseUser = true; else if (e.pointerType === 'touch') S.mouseUser = false; }, true);
   function onDown(e) {
     if (!S.active || S.popup) return;
-    if (e.pointerType === 'mouse' && canLock()) {
+    if (e.pointerType === 'mouse' && canLock() && !S.lockFail) {
       if (e.button !== 0) return;
       if (S.locked) { S.flipReq = true; e.preventDefault(); return; } // 잠금 중: 커서가 없으므로 어디를 눌러도 반전
       if (S.space || e.target.closest(UI_SEL)) return; // 스페이스로 푼 상태의 UI 클릭: 반전 아님
@@ -76,6 +77,7 @@ const DirectPlay = (() => {
     }
     if (e.target.closest(UI_SEL)) return; // 로그·버튼 영역 제외
     S.flipReq = true;
+    if (e.pointerType === 'mouse' && S.lockFail) { S.lockFail = false; lock(); } // 잠금 다시 시도
   }
   document.addEventListener('pointerdown', onDown);
   document.addEventListener('mousemove', e => {

@@ -202,7 +202,7 @@
     `<div class="tiprow${!focusMode ? ' cur' : ''}"><span class="k">끄면:</span> ${FOCUS_TIP.off}</div>`);
   refreshFocus();
   // ---------- 직접 플레이 모드 (스테이지 선택 화면, js/direct.js). 내 캐릭터 = P1(블루). 농구장·야구장·탈출맵은 일반 시점. 기본 끄기, 기억 ----------
-  const DP = window.DirectPlay || null;
+  const DP = typeof DirectPlay !== 'undefined' ? DirectPlay : null;
   let directMode = false; try { if (DP && localStorage.getItem('psDirectMode') === '1') directMode = true; } catch (e) {}
   const DIRECT_TIP = {
     on: '내 캐릭터(P1 · 블루)를 뒤에서 따라가는 3D 시점. 화면을 누르면(로그 제외) 진행 방향이 반대로 바뀌고, 스킬은 자동입니다. PC: 마우스로 시점 회전 (스페이스를 누르는 동안 마우스 잠금 해제). 모바일: 자이로로 시점 회전 (⚙ 설정).',
@@ -225,7 +225,7 @@
       `<div class="tiprow"><span class="k">참고:</span> ${DIRECT_TIP.note}</div>`);
     refreshDirect();
   } else if ($('#directSel')) $('#directSel').classList.add('hidden');
-  if (window.Settings && $('#setOpen')) $('#setOpen').onclick = () => Settings.open();
+  if (typeof Settings !== 'undefined' && $('#setOpen')) $('#setOpen').onclick = () => Settings.open();
   // ---------- 스테이지 선택 ----------
   let stageId = 'arena';
   function openStages() {
