@@ -46,6 +46,16 @@ const DirectPlay = (() => {
     flipReq: false, lastFlipT: -9, flash: 0, locked: false, space: false, mouseUser: false, popup: null, gyroSeen: 0, motionT: 0, ori: null, prevAlpha: null, gyroT0: 0, gcal: { n: 0, y: 0, p: 0 }, lockT: 0,
     looks: new WeakMap(), pf: { back: true, facing: 1 },
   };
+  // 3D 그리기 품질 (화면 전용): 0 = 원래대로, 1 = 모바일 기본, 2 = 느린 기기. 바닥 띠·벽 조각을 굵게 잡아 그리기 호출 수를 줄임
+  // 전투 중에는 낮추기만 함 (오르내리면 바닥이 눈에 띄게 바뀜), 다음 전투에서 기본값으로 돌아감
+  const Q = { lv: 0, base: 0, ms: 0, slow: 0 };
+  const QBAND = [1, 1.6, 2.4]; // 바닥 띠 높이·칸 폭 배율
+  function qTick(ms, dt) { // 그리기 시간(지수 평균)이나 프레임 간격이 1초쯤 계속 길면 한 단계 낮춤
+    Q.ms = Q.ms ? Q.ms + (ms - Q.ms) * 0.1 : ms;
+    if (Q.lv >= 2) return;
+    Q.slow = Q.ms > 9 || dt > 0.03 ? Q.slow + dt : Math.max(0, Q.slow - dt * 2);
+    if (Q.slow > 1) { Q.lv++; Q.slow = 0; }
+  }
   const $ = s => document.querySelector(s);
   const stageEl = () => $('#stage');
   const UI_SEL = '#bottom, button, a, input, label, #result, #fullLog, #settings, .dpPop, #rpCtl, #rpBar, #rpSave, #vidDlg, #vidRec';
@@ -178,12 +188,14 @@ const DirectPlay = (() => {
     else if (Settings.get('gyro') === true && typeof window.DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && now() - S.gyroSeen > 2) { // iOS: 권한을 이번 실행에서 다시 받아야 할 때
       setTimeout(() => { if (S.battle === b && now() - S.gyroSeen > 2 && !S.popup) popup('자이로 허용', '자이로 시점을 쓰려면 한 번 허용해 주세요.', '허용', '이번엔 끄기', () => { requestGyro().then(() => closePopup(), () => closePopup()); }, () => closePopup()); }, 600);
     }
-    S.active = true; anchors = new WeakMap();
+    S.active = true; touchLock(true); anchors = new WeakMap(); // begin 이 active 를 직접 켜므로 터치 잠금도 여기서 (setActive 는 값이 같으면 바로 돌아감)
+    Q.lv = Q.base = phoneLike() ? 1 : 0; Q.ms = 0; Q.slow = 0; // 3D 품질: 모바일은 한 단계 낮게 시작, 느리면 전투 중 더 낮춤
     if (S.mouseUser) lock(); // 스테이지 카드·다시 싸우기 클릭 안 → 바로 마우스 잠금
   }
+  function touchLock(on) { const el = stageEl(); if (el && el.style) el.style.touchAction = on ? 'none' : ''; } // 직접 플레이: 두 손가락(길게 누름 + 탭)이 확대·스크롤로 취소되지 않게
   function setActive(on) {
-    if (on === S.active) return;
-    S.active = on; { const el = stageEl(); if (el && el.style) el.style.touchAction = on ? 'none' : ''; } // 직접 플레이: 두 손가락(길게 누름 + 탭)이 확대·스크롤로 취소되지 않게
+    if (on === S.active) { if (on) touchLock(true); return; }
+    S.active = on; touchLock(on);
     if (!on) { unlock(); S.space = false; S.flipReq = false; closePopupIfGyro(); }
   }
   function closePopupIfGyro() { if (S.popup) closePopup(); }
@@ -213,7 +225,6 @@ const DirectPlay = (() => {
   const bkBall = b => b.bb && window.StageExt7 ? StageExt7.BB.ball3(b) : null;
   const DGX = b => b && b.dg && b.dg.on && window.DODGE && DODGE.DG ? DODGE.DG : null; // 피구대전 직접 플레이 (js/dodge.js)
   const dgCtx = b => { const G = DGX(b); return G ? G.ctx(b) : null; };
-  const OUTL = 'drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff)'; // 공 가진 사람 흰 테두리
   function aimVal() { // 화면 가운데(카메라 정면) 광선이 홈 플레이트 면(y = 홈 − 2)과 만나는 점 → 존 반폭·반높이 단위 [ax, az]
     const BS = window.BASEBALL, Hm = BS.S.home, t = Math.abs(C.F[1]) > 1e-4 ? (Hm.y - 2 - C.y) / C.F[1] : 0; if (!(t > 0)) return [0, 0];
     const x = C.x + C.F[0] * t, z = C.z + C.F[2] * t, r = v => Math.round(v * 100) / 100;
@@ -554,10 +565,10 @@ const DirectPlay = (() => {
   }
   // 바닥: 가로 띠마다 (띠 안을 다시 몇 칸으로 나눠) 아핀 변환으로 그림. 칸 크기는 원근 오차가 0.6px 이하가 되게 (지평선 가까울수록 잘게)
   function drawFloor(ctx) {
-    const hz = C.cy - C.f * Math.tan(C.pitch), hzD = hz * RES, top = Math.max(0, Math.ceil(hzD + 1));
+    const hz = C.cy - C.f * Math.tan(C.pitch), hzD = hz * RES, top = Math.max(0, Math.ceil(hzD + 1)), qk = QBAND[Q.lv];
     let y1 = H * RES;
     while (y1 > top) {
-      const h = clamp(Math.round((y1 - hzD) * 0.03), 1, 12), y0 = Math.max(top, y1 - h);
+      const h = clamp(Math.round((y1 - hzD) * 0.03 * qk), 1, Math.round(12 * qk)), y0 = Math.max(top, y1 - h);
       band(ctx, y0, y1, hz); y1 = y0;
     }
   }
@@ -565,7 +576,7 @@ const DirectPlay = (() => {
     const l0 = y0 / RES, l1 = y1 / RES, ym = (l0 + l1) / 2;
     const L = ground(0, ym), Rr = ground(W, ym); if (!L || !Rr || ground(C.cx, l0) === null || ground(C.cx, l0)[2] > 1400) return;
     const hx = [(Rr[0] - L[0]) / W, (Rr[1] - L[1]) / W], k = RES / FR;
-    const n = clamp(Math.ceil(W * (l1 - l0) / (1.2 * Math.max(0.5, ym - hz))), 1, 16), cw = W / n;
+    const n = clamp(Math.ceil(W * (l1 - l0) / (1.2 * QBAND[Q.lv] * QBAND[Q.lv] * Math.max(0.5, ym - hz))), 1, 16), cw = W / n; // 띠가 굵어진 만큼 칸 수가 늘지 않게 (품질 단계)
     let clipped = false;
     for (let i = 0; i < n; i++) {
       const xa = i * cw, xb = xa + cw, xc = xa + cw / 2;
@@ -718,6 +729,7 @@ const DirectPlay = (() => {
   // 고정 세로 벽: 두 바닥 끝점 + 높이. 길이 방향 조각마다 아래 두 점·위 한 점으로 아핀, 카메라 바로 앞(near 근처) 조각은 건너뜀 (번져 보이는 것 방지)
   function texWall(ctx, ax0, ay0, bx0, by0, h, tex, seg, alpha = 1, ex = 0.45) { // seg 단위 조각 (무늬 폭 TW 의 약수 → 조각이 무늬 경계를 넘지 않음)
     const L = Math.hypot(bx0 - ax0, by0 - ay0); if (L < 1) return;
+    if (Q.lv >= 2 && seg < 32) seg = 32; // 느린 기기: 벽 조각을 절반으로 (32 도 TW 의 약수)
     const N = Math.ceil(L / seg), sh = h * TR, P = d => [ax0 + (bx0 - ax0) * d / L, ay0 + (by0 - ay0) * d / L];
     if (alpha < 1) ctx.globalAlpha = alpha;
     let pb = null, pt = null;
@@ -1014,7 +1026,7 @@ const DirectPlay = (() => {
     const cw = Math.ceil(L * TR) + 2, ch = Math.ceil(h * TR) + 2, B = poolC(mpool, i, cw, ch);
     B.x.setTransform(TR, 0, 0, TR, 0, 0);
     B.x.save(); try { m.draw(B.x, L); } catch (e) { console.warn('[direct] wall draw', e); } finally { B.x.restore(); }
-    const N = clamp(Math.ceil(L / 16), 1, 48), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t];
+    const N = clamp(Math.ceil(L / (Q.lv >= 2 ? 28 : 16)), 1, 48), P = t => [m.x1 + (m.x2 - m.x1) * t, m.y1 + (m.y2 - m.y1) * t];
     // 카메라와 내 캐릭터 사이를 가로막는 벽은 반투명 (벽 양쪽에 카메라·캐릭터가 나뉘고, 캐릭터가 벽 길이 안쪽)
     const U = S.P, dx = m.x2 - m.x1, dy = m.y2 - m.y1, sd = (px, py) => dx * (py - m.y1) - dy * (px - m.x1);
     let al = 1; if (U) { const tU = ((U.x - m.x1) * dx + (U.y - m.y1) * dy) / (L * L); if (sd(C.x, C.y) * sd(U.x, U.y) < 0 && tU > -0.1 && tU < 1.1) al = 0.3; }
@@ -1036,7 +1048,20 @@ const DirectPlay = (() => {
   // ---------- 그리기 ----------
   function draw(ctx, b, dt, view) { // 피구: 외곽 벽·경기장 = 코트 전체 (그리는 동안만 AR 바꿈)
     const wr = DGX(b) ? DODGE.wallRect : null, ar0 = wr ? { x: AR.x, y: AR.y, w: AR.w, h: AR.h } : null; if (wr) Object.assign(AR, wr);
+    const t0 = performance.now();
     try { draw0(ctx, b, dt, view); } finally { if (ar0) Object.assign(AR, ar0); }
+    if (S.active) qTick(performance.now() - t0, dt); // 실전만 (리플레이 시점·녹화는 처음 품질 그대로)
+  }
+  // 흰 테두리 (공 가진 사람·강조 물체): 그림의 흰 실루엣을 상하좌우 1기기픽셀씩 밀어 찍고 그 위에 원본. ctx.filter(drop-shadow) 는 느리고 iOS Safari 에 없음
+  let silC = null, silX = null; const SIL4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  function drawOutlined(ctx, cv, x, y, w, h) {
+    const sw = cv.width, sh = cv.height;
+    if (!silC || silC.width < sw || silC.height < sh) { const c = document.createElement('canvas'); c.width = Math.max(sw, silC ? silC.width : 0); c.height = Math.max(sh, silC ? silC.height : 0); silC = c; silX = c.getContext('2d'); }
+    silX.setTransform(1, 0, 0, 1, 0, 0); silX.globalAlpha = 1; silX.globalCompositeOperation = 'copy'; silX.drawImage(cv, 0, 0); // copy: 캔버스 전체를 이 그림으로 바꿈 (픽셀은 읽지 않음 → file:// 도 됨)
+    silX.globalCompositeOperation = 'source-in'; silX.fillStyle = '#fff'; silX.fillRect(0, 0, sw, sh); silX.globalCompositeOperation = 'source-over';
+    const o = 1 / RES;
+    for (const [ox, oy] of SIL4) ctx.drawImage(silC, 0, 0, sw, sh, x + ox * o, y + oy * o, w, h);
+    ctx.drawImage(cv, x, y, w, h);
   }
   function draw0(ctx, b, dt, view) {
     S.battle = b; S.cv = ctx.canvas; b._dp = true; b.bsbView = view; // _dp·bsbView: 그리기 전용 표시 (야구장 HUD·방망이)
@@ -1085,14 +1110,14 @@ const DirectPlay = (() => {
       if (it.goal) { drawGoal(ctx, it.goal); continue; }
       if (it.claw) { drawClaw(ctx, it.claw); continue; }
       if (it.post) { const [x, y, Cr] = it.post; ctx.save(); ctx.globalAlpha = 1 - (Cr.fade || 0); box3(ctx, x - 2.5, y - 2.5, 0, x + 2.5, y + 2.5, CR_TOP + 1, '#8a8ea0'); ctx.restore(); continue; }
-      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; if (it.o.hl) ctx.filter = OUTL; ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; ctx.filter = 'none'; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
+      if (it.o) { const p = proj(it.o.x, it.o.y, it.o.z || 0); if (!p || p.s > 9) continue; const B = renderObj(oi++, it.o), s = it.o.maxS ? Math.min(p.s, it.o.maxS) : p.s, na = clamp((it.z - 15) / 55, 0.3, 1); if (na < 1) ctx.globalAlpha = na; if (it.o.hl) drawOutlined(ctx, B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); else ctx.drawImage(B.c, p.x - B.w / 2 * s, p.y - B.fy * s, B.w * s, B.h * s); ctx.globalAlpha = 1; /* 카메라 바로 앞 세운 판은 흐리게 (시야 가림 방지) */ continue; } // maxS: 가까워도 너무 커지지 않게 (카드 UI)
       if (it.p) { const p = proj(it.p.x, it.p.y, PH); if (!p || p.s > 9) continue; const cv = renderProj(pi++, it.p), s = Math.min(p.s, 6); ctx.drawImage(cv, p.x - PB / 2 * s, p.y - PB / 2 * s, PB * s, PB * s); continue; }
       const u = it.u, isP = u === P, gz = groundZ(b, u), p = proj(u.x, u.y, gz); if (!p || p.s > 9) continue;
       const v = look(u, b, isP, dt), cv = renderBill(bi++, u, b, v);
       const w = BB.w * p.s * v.sq, h = BB.h * p.s;
       let a = 1;
       if (isP && eRect && Math.abs(eRect.x - p.x) < 34 * p.s * 0.5 + eRect.w && eRect.y < p.y && eRect.y > p.y - 58 * p.s) a = 0.55; // 내 캐릭터가 상대를 가리면 반투명
-      const hl = Gd && Gd.holder(b, u); if (hl) ctx.filter = OUTL; ctx.globalAlpha = a; ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1; if (hl) ctx.filter = 'none';
+      const hl = Gd && Gd.holder(b, u); ctx.globalAlpha = a; if (hl) drawOutlined(ctx, cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); else ctx.drawImage(cv, p.x - BB.fx * p.s * v.sq, p.y - BB.fy * p.s, w, h); ctx.globalAlpha = 1;
       if (u.wSwing && !u.dead) drawSwing(ctx, u, b);
       if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u) + gz); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
@@ -1161,5 +1186,6 @@ const DirectPlay = (() => {
   return { supported, begin, fresh, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
     get aimPt() { if (!S.view) return null; const G = DGX(S.battle), q = G && S.dgBall != null ? G.ball3(S.battle)[S.dgBall] : null, p = q ? proj(q.x, q.y, (q.z || 0) + q.r) : null; return { x: W / 2, y: S.view.y + S.view.h * 0.45, lk: S.dgLk || null, ball: S.dgBall, bs: p ? { x: p.x, y: p.y } : null }; }, // 확인용 (읽기 전용)
     get dproj() { return S.dproj ? S.dproj.map(f => ({ ...f })) : null; }, // 피구 조준 후보 화면 좌표 (확인용, 읽기 전용)
+    get quality() { return { lv: Q.lv, base: Q.base, ms: +Q.ms.toFixed(2) }; }, // 확인용 (읽기 전용)
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();
