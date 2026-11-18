@@ -16,7 +16,7 @@
   function voice(b, u, txt, color, size) { b.hooks.onVoice && b.hooks.onVoice(u, txt, null); if (color) b.text(u.x, u.y - 74 - u.pad * 2, txt.length > 14 ? txt.slice(0, 13) + '…' : txt, color, size || 9); }
   const D = {
     pad: { max: 3, life: 15, r: 15, fly: 0.9, h: 42, dist: 150, conf: 2.5, minD: 70 },
-    ball: { spd: 230, period: 0.5, H: 26, low: 10, bounces: 7, mult: 1.0, hitCd: 0.5, r: 9 },
+    ball: { spd: 230, period: 0.5, H: 42, low: 15, bounces: 7, mult: 1.0, hitCd: 0.5, r: 9 },
     roller: { spd: 270, life: 2.6, mult: 2.0, flat: 2.0, gap: 34, zig: 70, zigF: 3.2, r: 16 },
   };
 
@@ -42,7 +42,7 @@
       b.ring(q.x, q.y, 3, 20, 0.35, '#ffe06a'); b.text(q.x, q.y - 30, 'X!', '#ffe06a', 10); voice(b, u, '발판 깔아 둔다~', '#c8f0a0', 9); b.stats.lzPad = (b.stats.lzPad || 0) + 1; } };
 
   // ---------- 2. 화염볼 ----------
-  SKILLS.lzFireball = { desc: '위아래로 통통 튀는 화염 구체(ATK×1.0, 화염)를 상대 쪽으로 쏩니다. 낮을 때는 땅에 있는 상대만, 높을 때는 공중(점프)의 상대만 맞습니다. 벽·장애물에 튕겨 다른 쪽으로 가고 7번 튀면 소멸. 맞혀도 사라지지 않고 같은 상대는 0.5초에 한 번.',
+  SKILLS.lzFireball = { desc: '위아래로 통통 튀는 화염 구체(ATK×1.0, 화염)를 상대 쪽으로 쏩니다. 낮을 때(붉고 작게, 바닥에 붉은 고리)는 땅에 있는 상대만, 높을 때(크고 밝게, 그림자 작게)는 공중(점프)의 상대만 맞습니다. 벽·장애물에 튕겨 다른 쪽으로 가고 7번 튀면 소멸. 맞혀도 사라지지 않고 같은 상대는 0.5초에 한 번.',
     canUse: (u, e, d) => e && !e.dead && d > 60 && d < 320,
     use(u, e0, b, s) { const B = { ...D.ball, ...s }, e = foeOf(b, u), a = angTo(u, e);
       (b.lzBalls || (b.lzBalls = [])).push({ x: u.x + Math.cos(a) * 14, y: u.y + Math.sin(a) * 6, vx: Math.cos(a) * B.spd, vy: Math.sin(a) * B.spd, ph: 0.5, n: 0, src: u, opt: B, hit: new Map(), gone: false });
@@ -112,10 +112,17 @@
         ctx.strokeStyle = '#c83a2a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, -5); ctx.lineTo(8, 3); ctx.moveTo(8, -5); ctx.lineTo(-8, 3); ctx.stroke(); ctx.restore(); }
     },
     drawOver(ctx, b) {
-      if (b.lzBalls) for (const B of b.lzBalls) { const z = B.z || 0, low = z < B.opt.low;
-        ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(Math.round(B.x), Math.round(B.y), 6, 2.5, 0, 0, TAU); ctx.fill(); ctx.restore();
-        const y = B.y - 8 - z, k = 1 + 0.12 * Math.sin(b.time * 30); ctx.save(); ctx.globalAlpha = 0.4; ctx.fillStyle = low ? '#ff6a2a' : '#ffb04a'; ctx.beginPath(); ctx.arc(B.x, y, 9 * k, 0, TAU); ctx.fill();
-        ctx.globalAlpha = 1; ctx.fillStyle = '#ffd86a'; ctx.beginPath(); ctx.arc(B.x, y, 5, 0, TAU); ctx.fill(); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(B.x) - 1, Math.round(y) - 2, 2, 2); ctx.restore(); }
+      if (b.lzBalls) for (const B of b.lzBalls) { // 원근: 높을수록 크고 밝게(가까이 떠오름), 그림자는 작고 옅게 / 낮을 땐 붉고 작게 + 바닥 표시
+        const O = B.opt, z = B.z || 0, h = clamp(z / O.H, 0, 1), low = z < O.low, sp = Math.hypot(B.vx, B.vy) || 1;
+        ctx.save(); ctx.globalAlpha = 0.5 - 0.32 * h; ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(Math.round(B.x), Math.round(B.y), 7 - 3 * h, (7 - 3 * h) * 0.42, 0, 0, TAU); ctx.fill(); ctx.restore(); // 그림자
+        if (low) { ctx.save(); ctx.globalAlpha = 0.55 + 0.25 * Math.sin(b.time * 20); ctx.strokeStyle = '#ff4a2a'; ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(Math.round(B.x), Math.round(B.y), 10, 4.2, 0, 0, TAU); ctx.stroke(); ctx.restore(); } // 땅을 쓸고 지나감
+        ctx.save(); ctx.globalAlpha = 0.25 * h; ctx.strokeStyle = '#ffd86a'; ctx.setLineDash([2, 2]); ctx.beginPath(); ctx.moveTo(Math.round(B.x), Math.round(B.y) - 1); ctx.lineTo(Math.round(B.x), Math.round(B.y - 6 - z)); ctx.stroke(); ctx.restore(); // 높이 기준선
+        for (let k = 3; k >= 1; k--) { const dtk = k * 0.04, ph = B.ph - dtk / O.period, zz = Math.sin(Math.PI * ((ph % 1) + 1) % Math.PI) * O.H, tx = B.x - B.vx / sp * 230 * dtk, ty = B.y - B.vy / sp * 230 * dtk;
+          ctx.save(); ctx.globalAlpha = 0.18 * (4 - k) / 3; ctx.fillStyle = '#ff9a3a'; ctx.beginPath(); ctx.arc(tx, ty - 6 - Math.abs(zz), 3 + 3 * h, 0, TAU); ctx.fill(); ctx.restore(); } // 꼬리 궤적
+        const y = B.y - 6 - z, R0 = 4 + 5 * h, k2 = 1 + 0.1 * Math.sin(b.time * 30);
+        ctx.save(); ctx.globalAlpha = 0.45; ctx.fillStyle = low ? '#e83a1a' : h > 0.7 ? '#ffe070' : '#ff9a3a'; ctx.beginPath(); ctx.arc(B.x, y, (R0 + 4) * k2, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1; ctx.fillStyle = low ? '#ff7a3a' : h > 0.7 ? '#fff2a0' : '#ffc86a'; ctx.beginPath(); ctx.arc(B.x, y, R0, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(B.x - R0 * 0.35), Math.round(y - R0 * 0.45), Math.max(1, Math.round(R0 * 0.4)), Math.max(1, Math.round(R0 * 0.4))); ctx.restore(); }
       if (b.lzRollers) for (const R of b.lzRollers) { const x = Math.round(R.x), y = Math.round(R.y), f = Math.cos(R.a) >= 0 ? 1 : -1, sp = Math.floor(b.time * 14) % 2;
         ctx.save(); ctx.translate(x, y); ctx.scale(f, 1);
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-12, -1, 24, 3);
@@ -138,11 +145,8 @@
       { id: 'lzFireball', name: '화염볼', cd: 5.5 },
       { id: 'lzPad', name: 'X발판 소환', cd: 6 },
     ],
-    sprite: { // 16x16 절차적 도트 (직접 그림): 초록 도마뱀 얼굴(큰 눈), 주황 조끼·노란 배, 오른쪽으로 뻗은 꼬리
-      pal: { G: GRN, g: '#3a7a2e', W: '#ffffff', E: '#1a1a1a', m: '#c84a3a', O: '#f08a3a', Y: '#f0e070' },
-      rows: { 0: '................', 1: '....GGGGGGG.....', 2: '...GGGGGGGGG....', 3: '...GWEGGGWEG....', 4: '...GGGGGGGGG....', 5: '...GGmmmmmGG....', 6: '....GGGGGGG.....', 7: '...OOOYYYOOO....',
-        8: '..GOOYYYYYOOG...', 9: '..GOOYYYYYOOGg..', 10: '...OOYYYYYOO.gg.', 11: '....YYYYYYY...g.', 12: '....gg...gg.....', 13: '....gg...gg.....', 14: '...ggg..ggg.....', 15: '................' },
-    },
+    sprite: { src: 'assets/lizard/front.png', back: 'assets/lizard/back.png', scale: 2, foot: 1 }, // 24x30 도트 (tools/gen_lizard_sprites.py): 뒤의 불꽃, 이마의 '3', 콧수염, 큰 입, 담배, 물방울 넥타이
+    portrait: 'assets/lizard/portrait.png',
     lines: {
       skill: {}, // 스킬 대사는 스킬 코드에서 직접
       event: {
