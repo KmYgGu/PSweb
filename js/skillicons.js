@@ -157,6 +157,10 @@
     trFridge: '..dddddddd../..dwwwwwwd../..dwgwwwwd../..dwgwwwwd../..dddddddd../..dwwwwwwd../..dwgwwwwd../..dwgwwbbd../..dwgwwwwd../..dwwwwwwd../..dddddddd../...d....d...',
     trSword: '..........w./.........wl./........wl../.......wl.../......wl..../.....wl...../....wl....../..YYY......./...n......../..n........./.n........../............',
     trMasenko: '............/.....yy...../...yyyyyy.../..yyywwyyy../..yywwwwyy../..yywwwwyy../..yyywwyyy../...yyyyyy.../.....yy...../y.y........./.y........../y.y.........',
+    // 도마뱀 삼촌 (js/lizard.js)
+    lzRoller: '......GG..../.....GwkG.../...gGGGG..../..gGYYG...../....nn....../....n......./dddddddddd../dlllllllld../dlglglglgd../dddddddddd../............/g.g.g.g.g...',
+    lzFireball: '....oo....../...oyyo...../...oyyo...../....oo....../..........oo/.........oyy/.........oyy/..........oo/.o.....o..../o.o...o.o.../...o.o...o../....o.....o.',
+    lzPad: '............/..nnnnnnnn../.nYYYYYYYYn./nYrYYYYYYrYn/nYYrYYYYrYYn/nYYYrYYrYYYn/nYYYYrrYYYYn/nYYYrYYrYYYn/.nYrYYYYrYn./..nnnnnnnn../............/............',
     // 듀얼리스트 (유희·카이바·구울즈): 드로우 / 몬스터 / 마법 / 함정
     dlDraw: '..y........./.yyy......../yyyyy......./..y.wwwwwww./..y.wnnnnnw./....wnNNNnw./....wnNYNnw./....wnNNNnw./....wnnnnnw./....wnnnnnw./....wwwwwww./............',
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
