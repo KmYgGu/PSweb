@@ -81,6 +81,35 @@
       if (!o.dead) { b.applyStatus(o, 'lzFlat', O.flat, R.src); b.text(o.x, o.y - 70, '납작!', '#e8f0c8', 11); } b.shake(1.5); b.stats.lzRollerHit = (b.stats.lzRollerHit || 0) + 1; }
   }
 
+  // 미니 도마뱀 (롤러 위, 원점 = 롤러 위쪽 가운데, 오른쪽을 봄): 도마뱀 삼촌을 줄인 모습
+  function drawMini(ctx, t) {
+    const fl = Math.floor(t * 12) % 2; // 불꽃 깜빡임
+    const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+    R(-6, -33 - fl, 2, 3, '#e8401a'); R(5, -33 + fl, 2, 3, '#e8401a'); R(-1, -36 + fl, 2, 3, '#e8401a'); R(-7, -27, 2, 2, '#e8401a'); R(6, -27, 2, 2, '#e8401a'); // 뾰족 불꽃
+    R(-5, -34, 10, 9, '#ff9a1a'); R(-4, -33, 8, 7, '#ffe060');
+    R(-3, -32, 7, 10, '#46200e'); R(-2, -31, 5, 9, '#e8862a'); R(-2, -31, 1, 1, '#f6aa50'); // 긴 머리 (테두리 + 주황)
+    R(0, -30, 2, 1, '#fafaf6'); R(1, -29, 1, 1, '#fafaf6'); R(0, -28, 2, 1, '#fafaf6'); // 이마의 '3' (작게)
+    R(-1, -26, 1, 1, '#1a1412'); R(2, -26, 1, 1, '#1a1412'); R(-2, -25, 5, 1, '#281a10'); // 눈·콧수염
+    R(-2, -24, 5, 2, '#c82a1a'); R(-1, -23, 3, 1, '#821810'); R(3, -24, 3, 1, '#f4f4ee'); R(6, -24, 1, 1, '#e83a1a'); // 큰 입 + 담배
+    R(-2, -22, 5, 4, '#e8862a'); R(0, -22, 1, 4, '#2a5ad8'); R(0, -21, 1, 1, '#fafaf6'); // 몸통 + 파란 넥타이
+    R(-3, -18, 1, 2, '#e8862a'); R(3, -18, 1, 2, '#e8862a'); R(-4, -16, 1, 1, '#e8862a'); R(4, -16, 1, 1, '#e8862a'); // 벌린 다리 → 손잡이 위
+  }
+
+  // ---------- 지나가는 길의 부서지는 오브젝트: 즉시 파괴, 튕기지 않고 그대로 직진 ----------
+  // 대상: 건물·군장 등 내구도 있는 장애물(b.buildings, 부서지지 않는 지형·냉장고·빈 공간·암반 등 solid/수명 지형 제외), 스트리트 철망 칸.
+  //  얼음 동굴 외벽(깨지면 크레바스)·해치·전광판·열차 같은 고정 구조물은 대상 아님
+  const breakable = bl => bl && !bl.dead && (bl.stageSolid ? bl.stageSolid === 'fence' : (!bl.solid && bl.life == null && bl.hp > 0 && bl.hp < 1e6));
+  const oRB = Battle.prototype.resolveBuildings;
+  Battle.prototype.resolveBuildings = function (u, spawn) {
+    if (isL(u) && !spawn && !u.dead && !u.airborne && !u.hidden) {
+      const c = u.v ? Math.atan2(u.v[1], u.v[0]) : u.dir, ca = Math.cos(c), sa = Math.sin(c), R = 11 + u.pad;
+      for (let k = 0; k <= R + 6; k += 3) { const x = u.x + ca * k, y = u.y - 4 + sa * k, bl = this.blockAt(x, y, R - k * 0.5 > 4 ? R - k * 0.5 : 4); if (!breakable(bl)) continue;
+        if (bl.stageSolid) bl.hit(9999, true, x, y); else { this.hitBuilding(bl, (bl.hp || 0) + 9999, true, x, y - 10, u, 'dash'); if (!bl.dead && bl.hp > 0) continue; }
+        this.text(x, y - 30, '와장창!', '#ffd86a', 10); this.shake(1.5); this.stats.lzSmash = (this.stats.lzSmash || 0) + 1; }
+    }
+    return oRB.call(this, u, spawn);
+  };
+
   // ---------- 스테이지 훅 ----------
   STAGE_HOOKS.push({
     match: () => false,
@@ -128,9 +157,7 @@
         ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-12, -1, 24, 3);
         ctx.fillStyle = '#5a5a62'; ctx.fillRect(-11, -9, 22, 9); ctx.fillStyle = '#9a9aa4'; ctx.fillRect(-11, -9, 22, 2); ctx.fillStyle = sp ? '#7a7a84' : '#6a6a74'; for (let i = -9; i < 11; i += 4) ctx.fillRect(i + (sp ? 2 : 0), -6, 1, 5); // 롤러
         ctx.fillStyle = '#4a3a2a'; ctx.fillRect(-1, -16, 2, 7); ctx.fillRect(-8, -17, 9, 2); // 손잡이
-        ctx.fillStyle = '#3a7a2e'; ctx.fillRect(-2, -26, 8, 8); ctx.fillStyle = GRN; ctx.fillRect(-1, -25, 6, 6); ctx.fillStyle = '#f0e070'; ctx.fillRect(0, -21, 4, 2); // 미니 도마뱀 몸
-        ctx.fillStyle = GRN; ctx.fillRect(4, -31, 6, 5); ctx.fillStyle = '#ffffff'; ctx.fillRect(7, -31, 2, 2); ctx.fillStyle = '#1a1a1a'; ctx.fillRect(8, -31, 1, 1); // 머리·눈
-        ctx.fillStyle = '#3a7a2e'; ctx.fillRect(-6, -20, 4, 2); ctx.fillRect(-9, -19, 3, 2); // 꼬리
+        drawMini(ctx, b.time + R.cx * 0.01);
         ctx.restore(); }
     },
   });
