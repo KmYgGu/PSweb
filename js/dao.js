@@ -23,8 +23,8 @@
     drift: { dur: 1.2, k: 0.16, rMin: 60, rMax: 150, endMul: 0.6 },
     missile: { sure: 0.35, ok: 1.0, spd: 520, mult: 1.4, life: 2.5 },
     mine: { n: 4, every: 0.4, arm: 0.6, ownArm: 2.5, selfK: 0.5, life: 12, r: 11, mult: 1.0, fly: 0.7, h: 46 }, // ownArm: 다오 자신은 이 시간 뒤부터 밟힘, selfK: 자기 지뢰 피해 배율
-    ufo: { dur: 3.2, follow: 140, every: 0.5, r: 20, mult: 0.3, slow: 1.2, cdAdd: 0.6 },
-    bubble: { spd: 320, life: 1.2, mult: 0.5, o2: 1.0, base: 0.8, extra: 1.8 },
+    ufo: { dur: 3.2, follow: 140, every: 0.8, r: 20, mult: 0.25, slow: 0.8, cdAdd: 0.35 },
+    bubble: { spd: 320, life: 1.2, mult: 0.5, o2: 1.0, base: 0.5, extra: 1.3 },
   };
   const owBoost = u => !!(u && u.daoBoost);
 
@@ -52,7 +52,7 @@
   const oWI = Battle.prototype.wallImpact; Battle.prototype.wallImpact = function (u, nx, ny) { if (isD(u) && !u.dead) wallHit(this, u); return oWI.call(this, u, nx, ny); };
 
   // ---------- 1. 드리프트 ----------
-  SKILLS.daoDrift = { desc: '상대를 중심으로 원을 그리며 미끄러지듯 1.2초 동안 감속(속도 ×1 → ×0.6)합니다. 드리프트한 거리 1px마다 부스터 게이지 +0.16. 도중 벽·장애물에 부딪히면 이번 드리프트로 얻은 게이지의 절반을 잃고 끝납니다. 부스터 중에도 부스터는 유지됩니다.',
+  SKILLS.daoDrift = { desc: '상대를 중심으로 원을 그리며 미끄러지듯 1.2초 동안 감속(속도 ×1 → ×0.6)합니다. 지나간 자리에 타이어 스키드 마크(3초)가 남고 뒷바퀴에서 불꽃이 튑니다. 드리프트한 거리 1px마다 부스터 게이지 +0.16. 도중 벽·장애물에 부딪히면 이번 드리프트로 얻은 게이지의 절반을 잃고 끝납니다. 부스터 중에도 부스터는 유지됩니다.',
     canUse: (u, e, d) => e && !e.dead && d > 50 && d < 200 && !u.airborne,
     use(u, e0, b, s) { const C = { ...D.drift, ...s }, e = foeOf(b, u); if (!e) return; let t = 0, gained = 0;
       const r0 = clamp(dist(u, e), C.rMin, C.rMax), v0 = u.speed;
@@ -69,7 +69,9 @@
           u.action = null; u.dir = fixAngle(Math.atan2(u.y - cy, u.x - cx) + rand(-0.4, 0.4)); b.stats.daoDriftWall = (b.stats.daoDriftWall || 0) + 1; return; }
         u.x = nx; u.y = ny; u.facing = dx >= 0 ? 1 : -1; u.walk += dt * 20;
         if (!u.daoBoost) { const g = st * C.k; gained += g; b.gainRes(u, 'boost', g); }
-        if (Math.random() < dt * 30) b.parts.push({ x: u.x + rand(-6, 6), y: u.y + 1, vx: 0, vy: 0, life: 0.6, max: 0.6, color: '#3a3a40', size: 2 }); // 타이어 자국
+        { const mv = Math.atan2(dy, dx), px = -Math.sin(mv), py = Math.cos(mv), bx = u.x - Math.cos(mv) * 8, by = u.y - Math.sin(mv) * 8; // 뒷바퀴 두 개
+          const L = b.daoSkids || (b.daoSkids = []); L.push({ x: bx + px * 7, y: by + py * 3, t0: b.time }, { x: bx - px * 7, y: by - py * 3, t0: b.time }); if (L.length > 360) L.splice(0, L.length - 360); // 스키드 마크
+          if (Math.random() < dt * 40) b.parts.push({ x: bx + px * 7 * (Math.random() < 0.5 ? 1 : -1), y: by, vx: -Math.cos(mv) * rand(40, 110) + rand(-30, 30), vy: -Math.sin(mv) * rand(40, 110) - rand(20, 60), g: 260, life: rand(0.2, 0.4), max: 0.4, color: Math.random() < 0.5 ? '#ffe070' : FIRE, size: 2, glow: true }); } // 미끄러지며 튀는 불꽃
         if (t >= C.dur) { u.action = null; u.dir = Math.atan2(u.y - cy, u.x - cx) + sgn * Math.PI / 2; b.stats.daoDrift = (b.stats.daoDrift || 0) + 1; }
       } };
     } };
@@ -101,16 +103,16 @@
   }
 
   // ---------- 4. 우주선 ----------
-  SKILLS.daoUfo = { desc: '상대 머리 위에 우주선을 소환합니다(3.2초, 초당 140px로 천천히 따라감). 0.5초마다 광선 — 바로 아래(반경 20)의 상대는 ATK×0.3 피해 + 감속 1.2초(이동 ×0.6) + 모든 스킬 쿨타임 0.6초 증가.',
+  SKILLS.daoUfo = { desc: '상대 머리 위에 우주선을 소환합니다(3.2초, 항상 상대 바로 위). 0.8초마다 광선(필중) — 상대는 ATK×0.25 피해 + 감속 0.8초(이동 ×0.6) + 모든 스킬 쿨타임 0.35초 증가.',
     canUse: (u, e, d, b) => e && !e.dead && !(b.daoUfos || []).some(F => F.owner === u),
     use(u, e0, b, s) { const e = foeOf(b, u); if (!e) return; (b.daoUfos || (b.daoUfos = [])).push({ owner: u, tgt: e, x: e.x, y: e.y, t: 0, tick: 0.4, beam: 0, gone: false });
       voice(b, u, '우주선 소환!', '#c8a0ff', 9); b.text(e.x, e.y - 90, '우주선!', '#c8a0ff', 10); b.stats.daoUfo = (b.stats.daoUfo || 0) + 1; } };
   function ufoStep(b, F, dt) {
     const T = F.tgt, O = D.ufo; F.t += dt; F.beam = Math.max(0, F.beam - dt);
     if (F.t >= O.dur || !T || T.dead || F.owner.dead) { F.gone = true; return; }
-    const dx = T.x - F.x, dy = T.y - F.y, d = Math.hypot(dx, dy), st = O.follow * dt; if (d > st) { F.x += dx / d * st; F.y += dy / d * st; } else { F.x = T.x; F.y = T.y; }
+    F.x = T.x; F.y = T.y; // 필중: 항상 상대 바로 위
     F.tick -= dt; if (F.tick > 0) return; F.tick = O.every; F.beam = 0.25;
-    if (T.hidden || Math.hypot(T.x - F.x, T.y - F.y) > O.r + T.pad) return;
+    if (T.hidden) return;
     b.damage(F.owner, T, F.owner.st.atk * O.mult, { element: 'light', delivery: 'ranged', noCrit: true, color: '#e8d8ff' });
     if (T.dead) return; b.applyStatus(T, 'daoSlow', O.slow, F.owner);
     T.skills.forEach((sk, i) => { if (!sk.hidden && T.skillT[i] < 1e8) T.skillT[i] += O.cdAdd; });
@@ -118,20 +120,22 @@
   }
 
   // ---------- 5. 물파리 ----------
-  function drawBubbleShot(ctx, p) { ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.globalAlpha = 0.5; ctx.fillStyle = '#8ad8ff'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill();
+  function drawBubbleShot_unused(ctx, p) { ctx.translate(Math.round(p.x), Math.round(p.y)); ctx.globalAlpha = 0.5; ctx.fillStyle = '#8ad8ff'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill();
     ctx.globalAlpha = 1; ctx.strokeStyle = '#e0f6ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.stroke(); ctx.fillStyle = '#ffffff'; ctx.fillRect(-3, -4, 2, 2); }
-  SKILLS.daoBubble = { desc: '물방울 탄(ATK×0.5)을 직선으로 쏩니다. 맞은 상대는 산소 게이지가 1 줄고(오리 방수 패시브는 면역) 물방울에 갇힙니다(이동·행동 불가). 갇히는 시간 = 0.8초 + 1.8초×(줄어든 산소 비율) — 남은 산소가 적을수록 오래 갇힘.',
+  SKILLS.daoBubble = { desc: '상대를 끝까지 따라가는 물방울(필중, 장애물·반사 무시, ATK×0.5)을 날립니다. 맞은 상대는 산소 게이지가 1 줄고(오리 방수 패시브는 면역) 물방울에 갇힙니다(이동·행동 불가). 갇히는 시간 = 0.5초 + 1.3초×(줄어든 산소 비율) — 남은 산소가 적을수록 오래 갇힘.',
     canUse: (u, e, d) => e && !e.dead && d > 60 && d < 300,
-    use(u, e0, b, s) { const B = { ...D.bubble, ...s }, e = foeOf(b, u), a = angTo(u, e);
+    use(u, e0, b, s) { const B = { ...D.bubble, ...s }, e = foeOf(b, u); if (!e) return;
       voice(b, u, '물파리!', '#8ad8ff', 10);
-      b.proj.push({ x: u.x + Math.cos(a) * 12, y: u.y - 18, vx: Math.cos(a) * B.spd, vy: Math.sin(a) * B.spd, spd: B.spd, src: u, dmg: u.st.atk * B.mult, kind: 'daoBubble', homing: false, life: B.life, trail: 0, r: 10, draw: drawBubbleShot,
-        onHitUnit(o) { b.damage(u, o, u.st.atk * B.mult, { element: 'ice', delivery: 'ranged', viaProj: true, color: '#c8f0ff' }); if (o.dead) return;
-          const wp = o.def.traits && o.def.traits.includes('waterproof'), max = o.o2Max || 3, cur = o.o2 ?? max, nv = wp ? cur : Math.max(0, cur - B.o2);
-          if (!wp) { o.o2 = nv; o.o2T = Math.min(o.o2T || 0, 0.2); }
-          const dur = B.base + B.extra * (1 - nv / max); b.applyStatus(o, 'daoBubble', dur, u);
-          b.splash ? b.splash(o.x, o.y, '#cfeeff') : b.burst(o.x, o.y - 16, '#cfeeff', 8); b.text(o.x, o.y - 76, `갇힘! ${dur.toFixed(1)}초`, '#8ad8ff', 9); b.stats.daoBubbleHit = (b.stats.daoBubbleHit || 0) + 1; } });
+      (b.daoShots || (b.daoShots = [])).push({ x: u.x + u.facing * 12, y: u.y - 18, tgt: e, src: u, opt: B, t: 0, gone: false });
       playSfx('shot'); } };
 
+  function bubbleHit(b, u, o, B) {
+    b.damage(u, o, u.st.atk * B.mult, { element: 'ice', delivery: 'ranged', color: '#c8f0ff' }); if (o.dead) return;
+    const wp = o.def.traits && o.def.traits.includes('waterproof'), max = o.o2Max || 3, cur = o.o2 ?? max, nv = wp ? cur : Math.max(0, cur - B.o2);
+    if (!wp) { o.o2 = nv; o.o2T = Math.min(o.o2T || 0, 0.2); }
+    const dur = B.base + B.extra * (1 - nv / max); b.applyStatus(o, 'daoBubble', dur, u, { noResistScale: true });
+    b.splash ? b.splash(o.x, o.y, '#cfeeff') : b.burst(o.x, o.y - 16, '#cfeeff', 8); b.text(o.x, o.y - 76, `갇힘! ${dur.toFixed(1)}초`, '#8ad8ff', 9); b.stats.daoBubbleHit = (b.stats.daoBubbleHit || 0) + 1;
+  }
   // ---------- 스테이지 훅: 게이지·부스터, 지뢰, 우주선 ----------
   STAGE_HOOKS.push({
     match: () => false,
@@ -151,15 +155,30 @@
       if (b.daoMines && b.daoMines.length && !held(b)) { for (const M of b.daoMines) { const age = b.time - M.t0; if (age > D.mine.life || !b.u.includes(M.owner)) { M.gone = true; continue; } if (age < D.mine.arm) continue;
           for (const o of b.u) { if (o.dead || o.hidden || o.airborne || (o.summon && o.team === M.owner.team && o !== M.owner) || (o === M.owner && age < D.mine.ownArm) || Math.hypot(o.x - M.x, o.y - M.y) > D.mine.r + 8 + o.pad) continue; mineBoom(b, M, o); break; } }
         b.daoMines = b.daoMines.filter(M => !M.gone); }
+      if (b.daoShots && b.daoShots.length) { if (!held(b)) for (const S of b.daoShots) { const T = S.tgt; S.t += dt;
+          if (!T || T.dead || !b.u.includes(T) || S.src.dead) { S.gone = true; continue; } if (T.hidden) continue; // 숨은 상대는 나올 때까지 그 자리에서 기다림
+          const tx = T.x, ty = T.y - 18 - b.airZ(T), dx = tx - S.x, dy = ty - S.y, d = Math.hypot(dx, dy), st = S.opt.spd * dt;
+          if (d <= st + 10) { S.gone = true; bubbleHit(b, S.src, T, S.opt); } else { S.x += dx / d * st; S.y += dy / d * st; } }
+        b.daoShots = b.daoShots.filter(S => !S.gone); }
+      if (b.daoSkids && b.daoSkids.length && b.time - b.daoSkids[0].t0 > 3) b.daoSkids = b.daoSkids.filter(k => b.time - k.t0 <= 3);
       if (b.daoUfos && b.daoUfos.length) { if (!held(b)) for (const F of b.daoUfos) ufoStep(b, F, dt); b.daoUfos = b.daoUfos.filter(F => !F.gone); }
     },
-    drawUnder(ctx, b) { // 지뢰
+    drawUnder(ctx, b) { // 스키드 마크 · 부스터 오라(뒤쪽 빛) · 지뢰
+      if (b.daoSkids) for (const k of b.daoSkids) { const a = 1 - (b.time - k.t0) / 3; if (a <= 0) continue; ctx.globalAlpha = 0.55 * a; ctx.fillStyle = '#26262c'; ctx.fillRect(Math.round(k.x) - 1, Math.round(k.y) - 1, 3, 2); }
+      ctx.globalAlpha = 1;
+      for (const u of b.u) { if (!isD(u) || u.dead || u.hidden || !u.daoBoost) continue; const z = b.airZ(u), p = 0.5 + 0.5 * Math.sin(b.time * 16);
+        ctx.save(); ctx.globalAlpha = 0.28 + 0.12 * p; ctx.fillStyle = CYAN; ctx.beginPath(); ctx.ellipse(u.x, u.y - 16 - z, 26 + 3 * p, 30 + 3 * p, 0, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.35; ctx.fillStyle = '#e0f8ff'; ctx.beginPath(); ctx.ellipse(u.x, u.y - 14 - z, 17, 21, 0, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 0.6; ctx.strokeStyle = CYAN; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(u.x, u.y + 1, 18 + 4 * p, 6 + 1.5 * p, 0, 0, TAU); ctx.stroke(); ctx.restore(); }
       if (!b.daoMines) return;
       for (const M of b.daoMines) { const armed = b.time - M.t0 >= D.mine.arm, blink = armed && Math.floor(b.time * 6) % 2;
         ctx.fillStyle = '#2a2a30'; ctx.beginPath(); ctx.ellipse(Math.round(M.x), Math.round(M.y), 6, 3.2, 0, 0, TAU); ctx.fill();
         ctx.fillStyle = '#5a5a66'; ctx.fillRect(Math.round(M.x) - 3, Math.round(M.y) - 3, 6, 2); ctx.fillStyle = blink ? '#ff3a2a' : armed ? '#a02020' : '#606060'; ctx.fillRect(Math.round(M.x) - 1, Math.round(M.y) - 4, 2, 2); }
     },
     drawOver(ctx, b) {
+      if (b.daoShots) for (const S of b.daoShots) { ctx.save(); ctx.translate(Math.round(S.x), Math.round(S.y)); const r = 7 + Math.sin(b.time * 18) * 0.8;
+        ctx.globalAlpha = 0.5; ctx.fillStyle = '#8ad8ff'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = '#e0f6ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(-3, -4, 2, 2); ctx.fillStyle = '#2a2a30'; ctx.fillRect(-1, -1, 3, 2); ctx.restore(); } // 물방울 속 물파리
       if (b.daoUfos) for (const F of b.daoUfos) { const x = Math.round(F.x), y = Math.round(F.y - 74 + Math.sin(b.time * 4) * 2);
         if (F.beam > 0) { ctx.save(); ctx.globalAlpha = 0.35 * F.beam / 0.25 + 0.1; ctx.fillStyle = '#e8d8ff'; ctx.beginPath(); ctx.moveTo(x - 4, y + 4); ctx.lineTo(x + 4, y + 4); ctx.lineTo(x + 16, Math.round(F.y)); ctx.lineTo(x - 16, Math.round(F.y)); ctx.closePath(); ctx.fill(); ctx.restore(); }
         ctx.fillStyle = '#9aa2b2'; ctx.beginPath(); ctx.ellipse(x, y, 13, 4, 0, 0, TAU); ctx.fill(); ctx.fillStyle = '#c8d0dc'; ctx.beginPath(); ctx.ellipse(x, y - 1, 11, 2.5, 0, 0, TAU); ctx.fill();
@@ -167,6 +186,10 @@
         for (let i = -2; i <= 2; i++) { ctx.fillStyle = Math.floor(b.time * 6 + i) % 2 ? '#ffe070' : '#ff6a8a'; ctx.fillRect(x + i * 5 - 1, y, 2, 1); } }
       for (const u of b.u) { if (u.dead || u.hidden) continue; const z = b.airZ(u);
         if (u.status('daoBubble')) { ctx.save(); ctx.globalAlpha = 0.35; ctx.fillStyle = '#8ad8ff'; ctx.beginPath(); ctx.arc(u.x, u.y - 18 - z, 22 + u.pad, 0, TAU); ctx.fill(); ctx.globalAlpha = 0.8; ctx.strokeStyle = '#e0f6ff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(u.x, u.y - 18 - z, 22 + u.pad, 0, TAU); ctx.stroke(); ctx.fillStyle = '#ffffff'; ctx.fillRect(Math.round(u.x - 10), Math.round(u.y - 32 - z), 3, 3); ctx.restore(); }
+        if (isD(u) && u.daoBoost) for (let i = 0; i < 8; i++) { // 부스터 오라: 위로 솟는 푸른 불꽃 혀
+          const ph = (b.time * 2.4 + i / 8) % 1, ax = Math.sin(i * 2.4 + b.time * 3) * (14 + u.pad), h = 10 + 26 * ph;
+          ctx.globalAlpha = 0.75 * (1 - ph); ctx.fillStyle = i % 2 ? CYAN : '#e0f8ff'; ctx.fillRect(Math.round(u.x + ax) - 1, Math.round(u.y - 8 - z - h), 2, Math.round(6 - 4 * ph) + 2); }
+        ctx.globalAlpha = 1;
         if (isD(u) && u.daoBoost) { const f = u.facing, k = Math.floor(b.time * 20) % 2; // 배기구 불꽃
           ctx.fillStyle = k ? '#ffe070' : CYAN; ctx.fillRect(Math.round(u.x - f * 18) - 3, Math.round(u.y - 6 - z), 6, 3); ctx.fillStyle = k ? CYAN : '#ffffff'; ctx.fillRect(Math.round(u.x - f * 22) - 2, Math.round(u.y - 5 - z), 4, 2); }
       }
@@ -175,14 +198,14 @@
 
   CHARACTERS.push({
     id: ID, name: '다오', fullName: '다오', gender: 'male', color: '#2a64d2',
-    stats: { hp: 850, atk: 32, spd: 300, range: 50, atkRate: 1.0, def: 14, crit: 0.06, critMult: 1.8 },
+    stats: { hp: 820, atk: 31, spd: 300, range: 50, atkRate: 1.0, def: 14, crit: 0.06, critMult: 1.8 },
     attack: { element: 'blunt', delivery: 'melee' },
     resist: { blunt: 0.9, elec: 1.15 },
     resources: { boost: { name: '부스터', max: 100, display: 'bar', color: CYAN } },
     skills: [
-      { id: 'daoBubble', name: '물파리', cd: 11 },
+      { id: 'daoBubble', name: '물파리', cd: 15 },
       { id: 'daoMissile', name: '미사일', cd: 6 },
-      { id: 'daoUfo', name: '우주선', cd: 14 },
+      { id: 'daoUfo', name: '우주선', cd: 17 },
       { id: 'daoMine', name: '지뢰', cd: 9 },
       { id: 'daoDrift', name: '드리프트', cd: 5 },
     ],
