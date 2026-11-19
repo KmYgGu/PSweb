@@ -161,6 +161,12 @@
     lzRoller: '......GG..../.....GwkG.../...gGGGG..../..gGYYG...../....nn....../....n......./dddddddddd../dlllllllld../dlglglglgd../dddddddddd../............/g.g.g.g.g...',
     lzFireball: '....oo....../...oyyo...../...oyyo...../....oo....../..........oo/.........oyy/.........oyy/..........oo/.o.....o..../o.o...o.o.../...o.o...o../....o.....o.',
     lzPad: '............/..nnnnnnnn../.nYYYYYYYYn./nYrYYYYYYrYn/nYYrYYYYrYYn/nYYYrYYrYYYn/nYYYYrrYYYYn/nYYYrYYrYYYn/.nYrYYYYrYn./..nnnnnnnn../............/............',
+    // 다오 (js/dao.js)
+    daoBubble: '....cccc..../..cc....cc../.c..C.....c./.c.CC.....c./c..........c/c...kk.kk..c/c....kk....c/c...k..k...c/.c........c./.c........c./..cc....cc../....cccc....',
+    daoMissile: '............/............/..........R./.........RR./o.lllllllRRR/yolwwwwwwlRR/yolwwwwwwlRR/o.lllllllRRR/.........RR./..........R./............/............',
+    daoUfo: '............/....cccc..../...cCCCCc.../.llllllllll./lggggggggggl/.lyllrllyll./...pppppp.../..pppppppp../.pppppppppp./pppppppppppp/............/............',
+    daoMine: '............/.....rr...../.....rr...../...dddddd.../..dggggggd../.dgkkkkkkgd./.dkkkkkkkkd./.dkkkkkkkkd./..dkkkkkkd../...dddddd.../............/............',
+    daoDrift: '............/...xxxxx..../..x.....x.../.x.......x../x.....RRR.x./x....RRRRR../x....kRRRk../.x........../..x.k.k.k.../...k.k.k..../............/............',
     // 듀얼리스트 (유희·카이바·구울즈): 드로우 / 몬스터 / 마법 / 함정
     dlDraw: '..y........./.yyy......../yyyyy......./..y.wwwwwww./..y.wnnnnnw./....wnNNNnw./....wnNYNnw./....wnNNNnw./....wnnnnnw./....wnnnnnw./....wwwwwww./............',
     dlMon: '............/..YYYYYYYY../..YoooooxY../..YolllloY../..YolxxloY../..YolxxloY../..YolllloY../..YoooooxY../..YooooooY../..YokokooY../..YYYYYYYY../............',
