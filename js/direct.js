@@ -12,7 +12,8 @@ const DirectPlay = (() => {
   const EXCLUDE = new Set([]); // 특수 규칙 스테이지 → 일반 시점 (야구장 t254u, 농구장 t259u, 피구대전 t272u 부터 직접 플레이)
   const FRONT = { a0: 1.6, dist: 1.1, h: 30, zoom: 0.15 }; // 정면 시점 뒤로 빼기: 시작 각(rad), 거리 +110%, 높이 +30, 화면 ×0.85
   const CAM = { dist: 100, h: 80, side: 22, pitch: 0.60, f: 300, near: 6, wallH: 50, bldH: 34 };
-  const LONG_T = 0.45; // 모바일 길게 누르기 (상대 추적) 기준 초
+  const LONG_T = 0.45; // 모바일 탭 인정 최대 시간 (이보다 오래 누르고 떼면 반전 안 함)
+  const DRAG_PX = 10; // 모바일: 이만큼(CSS px) 움직이면 탭이 아니라 화면 끌기
   const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
   const FLIP_CD = 0.45; // 반전 쿨타임 (전투 시간 초)
   const RES = 2, TR = 2; // 화면 내부 배율 (main.js RES) · 바닥 그림 배율
@@ -37,6 +38,7 @@ const DirectPlay = (() => {
     { key: 'gyro', label: '자이로 시점 (모바일 직접 플레이)', type: 'toggle', def: false, request: requestGyro,
       desc: (v, set) => set ? (v ? '휴대폰을 좌우로 돌리면 시점이 돌아가요.' : '시점은 자동으로 상대를 따라가요.') : '아직 고르지 않았어요. 처음 직접 플레이할 때 물어봐요.' },
     { key: 'gyroSens', label: '자이로 감도', type: 'range', def: 1, min: 0.4, max: 2.5, step: 0.1, fmt: v => v.toFixed(1) + '×' },
+    { key: 'dragSens', label: '화면 끌기 감도 (모바일 직접 플레이)', type: 'range', def: 1, min: 0.4, max: 3, step: 0.1, fmt: v => v.toFixed(1) + '×' },
     { key: 'mouseSens', label: '마우스 감도 (PC 직접 플레이)', type: 'range', def: 1, min: 0.3, max: 3, step: 0.1, fmt: v => v.toFixed(1) + '×' },
   ]);
 
@@ -44,7 +46,7 @@ const DirectPlay = (() => {
   const S = {
     active: false, battle: null, init: false, px: 0, py: 0, autoYaw: 0, userYaw: 0, userPitch: 0, inYaw: 0, inPitch: 0, lastInp: -9,
     flipReq: false, lastFlipT: -9, flash: 0, locked: false, space: false, mouseUser: false, popup: null, gyroSeen: 0, motionT: 0, ori: null, prevAlpha: null, gyroT0: 0, gcal: { n: 0, y: 0, p: 0 }, lockT: 0,
-    looks: new WeakMap(), pf: { back: true, facing: 1 },
+    looks: new WeakMap(), pf: { back: true, facing: 1 }, touches: new Map(), dragId: null, dragT: -9, goal: false, rpView: false,
   };
   // 3D 그리기 품질 (화면 전용): 0 = 원래대로, 1 = 모바일 기본, 2 = 느린 기기. 바닥 띠·벽 조각을 굵게 잡아 그리기 호출 수를 줄임
   // 전투 중에는 낮추기만 함 (오르내리면 바닥이 눈에 띄게 바뀜), 다음 전투에서 기본값으로 돌아감
@@ -85,11 +87,10 @@ const DirectPlay = (() => {
     if (!S.active || S.popup) return;
     if (e.pointerType === 'mouse' && e.button === 2) { if (!e.target.closest(UI_SEL)) { S.lockOn = 'mouse'; e.preventDefault(); } return; } // 오른쪽 버튼 누르는 동안 상대 추적
     if (e.pointerType === 'mouse' && e.button === 0 && S.lockOn === 'mouse' && !e.target.closest(UI_SEL)) { S.flipReq = true; S.pressPt = null; S.mDown = true; e.preventDefault(); return; } // 추적 중 왼쪽 클릭 = 반전 (야구: 조준점이 동료면 송구, 잠금 여부와 무관)
-    if (e.pointerType === 'touch' || e.pointerType === 'pen') { // 모바일: 짧게 탭 = 반전(손 뗄 때), 길게 누름(0.45초) = 누르는 동안 상대 추적
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') { // 모바일: 손가락마다 따로 — 짧게 탭 = 반전/클릭(손 뗄 때), 끌기 = 시점 회전 (한 손가락으로 끄는 중 다른 손가락 탭도 탭)
       if (e.target.closest(UI_SEL)) return;
-      if (S.touch && e.pointerId !== S.touch.id) { if (S.lockOn === 'touch') { S.flipReq = true; S.pressPt = DGX(S.battle) ? null : toCanvas(e); } return; } /* 피구: 다른 손가락 탭 = 조준점 기준 클릭 */ // 길게 눌러 추적하는 동안 다른 손가락 탭 = 반전 (그 밖의 두 번째 손가락은 무시)
-      S.touch = { id: e.pointerId, t: now(), x: e.clientX, y: e.clientY };
-      if (S.battle && timing(S.battle)) { S.touch.used = true; S.flipReq = true; S.pressPt = toCanvas(e); } // 야구 스윙·게이지: 누르는 순간 (손 뗄 때가 아니라)
+      const T = { id: e.pointerId, t: now(), x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false, used: false }; S.touches.set(e.pointerId, T);
+      if (S.battle && timing(S.battle)) { T.used = true; S.flipReq = true; S.pressPt = toCanvas(e); } // 야구 스윙·게이지: 누르는 순간 (손 뗄 때가 아니라)
       return;
     }
     if (e.pointerType === 'mouse' && canLock() && !S.lockFail) {
@@ -106,14 +107,26 @@ const DirectPlay = (() => {
   function onUp(e) {
     if (e.pointerType === 'mouse' && e.button === 2 && S.lockOn === 'mouse') S.lockOn = null;
     if (e.pointerType === 'mouse' && e.button === 0 && S.mDown) { S.mDown = false; S.relReq = true; } // 왼쪽 버튼 놓음 (야구 투구: 놓으면 던짐)
-    if (S.touch && e.pointerId === S.touch.id) { const t0 = S.touch; const long = S.lockOn === 'touch' || now() - S.touch.t >= LONG_T; S.touch = null; if (S.lockOn === 'touch') S.lockOn = null; const used = t0.used; if (used) S.relReq = true; if (!long && !used && e.type === 'pointerup' && S.active && !S.popup) { S.flipReq = true; S.pressPt = toCanvas(e); } }
+    const T = S.touches.get(e.pointerId);
+    if (T) { S.touches.delete(e.pointerId); if (S.dragId === e.pointerId) { S.dragId = null; S.dragT = now(); }
+      if (T.used) S.relReq = true;
+      if (!T.moved && !T.used && now() - T.t < LONG_T && e.type === 'pointerup' && S.active && !S.popup) { S.flipReq = true; S.pressPt = DGX(S.battle) && lockKind(S.battle) ? null : toCanvas(e); } } /* 피구 목표 집중(자동 조준) 중 탭 = 조준점 기준 클릭 */
   }
   function toCanvas(e) { const cv = S.cv; if (!cv || !cv.getBoundingClientRect) return null; const r = cv.getBoundingClientRect(); if (!r.width) return null; return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; } // 화면 점 → 논리 좌표 (송구 대상 고르기)
   document.addEventListener('pointerup', onUp); document.addEventListener('pointercancel', onUp);
   document.addEventListener('pointermove', e => { // 다른 버튼을 누른 채 누른/뗀 마우스 버튼 (포인터 이벤트는 pointerdown 대신 pointermove 로 알림) → 우클릭 유지 중 좌클릭
-    if (e.pointerType === 'mouse' && e.button >= 0) { const bit = e.button === 0 ? 1 : e.button === 2 ? 2 : e.button === 1 ? 4 : 0; if (bit) { if (e.buttons & bit) onDown(e); else onUp(e); } } if (S.touch && e.pointerId === S.touch.id && S.lockOn !== 'touch' && Math.hypot(e.clientX - S.touch.x, e.clientY - S.touch.y) > 14) S.touch.moved = true; });
+    if (e.pointerType === 'mouse' && e.button >= 0) { const bit = e.button === 0 ? 1 : e.button === 2 ? 2 : e.button === 1 ? 4 : 0; if (bit) { if (e.buttons & bit) onDown(e); else onUp(e); } } onDrag(e); });
+  function onDrag(e) { // 모바일 화면 끌기: 지도 끌기처럼 화면 내용이 손가락을 따라감 (오른쪽으로 끌면 시점이 왼쪽으로) — 카메라 전용, 시뮬·리플레이 무관
+    const T = S.touches.get(e.pointerId); if (!T) return;
+    if (!T.moved) { if (Math.hypot(e.clientX - T.x, e.clientY - T.y) <= DRAG_PX) return; T.moved = true; T.lx = e.clientX; T.ly = e.clientY; if (S.dragId == null) S.dragId = e.pointerId; return; }
+    if (S.dragId !== e.pointerId || !S.active || S.popup) return;
+    const cv = S.cv, r = cv && cv.getBoundingClientRect ? cv.getBoundingClientRect() : null, sc = r && r.width ? W / r.width : 1; // 화면 px → 논리 px
+    const dx = (e.clientX - T.lx) * sc, dy = (e.clientY - T.ly) * sc; T.lx = e.clientX; T.ly = e.clientY;
+    const k = (Settings.get('dragSens') || 1) / (CAM.f * (S.zm || 1));
+    S.inYaw -= dx * k * 1.5; S.inPitch -= dy * k; S.lastInp = now(); S.dragT = now(); // 위아래는 기존 올려다보기 한계(PITCH_UP)·내려다보기 한계 안에서
+  }
   document.addEventListener('contextmenu', e => { if (S.active && !e.target.closest(UI_SEL)) e.preventDefault(); }); // 오른쪽 버튼·길게 누르기 메뉴 막기 (전장만)
-  addEventListener('blur', () => { S.lockOn = null; S.touch = null; });
+  addEventListener('blur', () => { S.lockOn = null; S.touches.clear(); S.dragId = null; });
   document.addEventListener('mousemove', e => {
     if (!S.active || !S.locked) return;
     if (now() - S.lockT < 0.15) return; // 잠금 직후 첫 이동값은 튐 (Chrome)
@@ -182,7 +195,7 @@ const DirectPlay = (() => {
   Settings.on((k, v) => { if (k === 'gyro' && v) gyroReset(); });
   function begin(b, view) { // main.js startBattle (실전, 직접 플레이 켜짐, 지원 스테이지). view: 리플레이 시점 전용 (카메라만, 자이로·입력 없음)
     if (!view) gyroReset();
-    S.battle = b; S.init = false; S.userYaw = S.userPitch = S.inYaw = S.inPitch = 0; S.lastFlipT = -9; S.flipReq = false; S.flash = 0; S.looks = new WeakMap(); S.lockOn = null; S.ov = 0; S.ovT = null; S.oY = S.oP = S.oH = S.oX = S.oY2 = null; S.zm = 1; S.slK = 1; S.slT = null;
+    S.battle = b; S.init = false; S.userYaw = S.userPitch = S.inYaw = S.inPitch = 0; S.lastFlipT = -9; S.flipReq = false; S.flash = 0; S.looks = new WeakMap(); S.lockOn = null; S.rpView = !!view; S.touches.clear(); S.dragId = null; S.ov = 0; S.ovT = null; S.oY = S.oP = S.oH = S.oX = S.oY2 = null; S.zm = 1; S.slK = 1; S.slT = null;
     if (view) return;
     if (touchDevice() && hasGyroApi() && !Settings.has('gyro')) askGyro();
     else if (Settings.get('gyro') === true && typeof window.DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && now() - S.gyroSeen > 2) { // iOS: 권한을 이번 실행에서 다시 받아야 할 때
@@ -192,11 +205,30 @@ const DirectPlay = (() => {
     Q.lv = Q.base = phoneLike() ? 1 : 0; Q.ms = 0; Q.slow = 0; // 3D 품질: 모바일은 한 단계 낮게 시작, 느리면 전투 중 더 낮춤
     if (S.mouseUser) lock(); // 스테이지 카드·다시 싸우기 클릭 안 → 바로 마우스 잠금
   }
-  function touchLock(on) { const el = stageEl(); if (el && el.style) el.style.touchAction = on ? 'none' : ''; } // 직접 플레이: 두 손가락(길게 누름 + 탭)이 확대·스크롤로 취소되지 않게
+  function touchLock(on) { const el = stageEl(); if (el && el.style) el.style.touchAction = on ? 'none' : ''; } // 직접 플레이: 끌기·두 손가락 탭이 확대·스크롤로 취소되지 않게
+  // ---------- 상대 집중 / 목표 집중 전환 버튼 (전장 왼쪽 아래) ----------
+  // 목표 = 지금 코드에서 '추적'이 상대가 아닌 경기 목표를 보는 맵: 야구장·농구장(공), 피구대전(공 / 공을 쥐면 자동 조준). 그 밖의 맵은 버튼 숨김
+  const hasGoal = b => !!(b && ((b.bsb && b.bsb.on) || b.bb || DGX(b)));
+  function lockKind(b) { // 시점 덮어쓰기용 추적 종류: PC 우클릭 유지('mouse') 또는 목표 집중 버튼('btn'). 끄는 중·끈 직후 0.6초는 잠시 풀림 (피구 자동 조준 중엔 끌기 = 다른 상대로 재조준)
+    const L = S.lockOn || (S.goal && S.active && !S.rpView && hasGoal(b) ? 'btn' : null); if (!L) return null;
+    if ((S.dragId != null || now() - S.dragT < 0.6) && !(DGX(b) && dgCtx(b) === 'hold')) return null;
+    return L;
+  }
+  function goalBtn() {
+    let el = document.getElementById('dpGoal'); const st = stageEl(); if (el || !st) return el;
+    el = document.createElement('button'); el.id = 'dpGoal'; el.type = 'button'; el.className = 'dpGoal hidden'; el.title = '시점: 상대 집중 ↔ 목표 집중 (경기 목표·공)';
+    el.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); S.goal = !S.goal; S.dgLk = null; S.dgBall = null; el._k = null; syncBtn(); if (el.blur) el.blur(); });
+    st.appendChild(el); return el;
+  }
+  function syncBtn() { const el = goalBtn(); if (!el) return; const b = S.battle, show = !!(S.active && !S.rpView && b && !b.over && hasGoal(b)), k = show ? (S.goal ? 'g' : 'o') : '';
+    if (el._k === k) return; el._k = k; el.classList.toggle('hidden', !show);
+    el.innerHTML = `<span class="${S.goal ? '' : 'on'}">👤 상대 집중</span><span class="${S.goal ? 'on' : ''}">🎯 목표 집중</span>`; }
   function setActive(on) {
+    syncBtn();
     if (on === S.active) { if (on) touchLock(true); return; }
     S.active = on; touchLock(on);
-    if (!on) { unlock(); S.space = false; S.flipReq = false; closePopupIfGyro(); }
+    if (!on) { unlock(); S.space = false; S.flipReq = false; S.touches.clear(); S.dragId = null; closePopupIfGyro(); }
+    syncBtn();
   }
   function closePopupIfGyro() { if (S.popup) closePopup(); }
   function blocking() { return !!S.popup; } // 팝업이 떠 있는 동안 전투 정지
@@ -268,7 +300,6 @@ const DirectPlay = (() => {
     S.userYaw = wrap(S.userYaw + S.inYaw); S.userPitch = clamp(S.userPitch + S.inPitch, PITCH_UP, 0.32); S.inYaw = S.inPitch = 0; // 쌓인 입력은 매 프레임 비움. 올려다보기는 내 캐릭터 상반신이 화면에 남는 만큼만
     if (t - S.lastInp > 0.7) { const k = 1 - Math.exp(-1.6 * dt); S.userYaw -= S.userYaw * k; } // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
     if (t - S.lastInp > 1.2) { const k = 1 - Math.exp(-1.8 * dt); S.userPitch -= S.userPitch * k; if (Math.abs(S.userPitch) < 0.002) S.userPitch = 0; } // 위아래는 조금 더 기다렸다가 기본 각도로 // 회전 입력이 없으면 상대 쪽으로 천천히 복귀
-    if (S.touch && !S.touch.moved && S.lockOn !== 'touch' && t - S.touch.t >= LONG_T) S.lockOn = 'touch'; // 길게 누름 → 추적 (손 뗄 때 반전 안 함)
     let yaw = S.autoYaw + S.userYaw, pitch = CAM.pitch + S.userPitch, camH = CAM.h;
     // 시점 덮어쓰기 (우선순위: 공중에 뜬 내 캐릭터 > 교실 선생님이 돌아봄 > 상대 추적). 켜질 때·꺼질 때 부드럽게 섞음, 덮어쓰는 동안 시점 입력은 무시
     const md = camMode(b, P, E);
@@ -328,9 +359,10 @@ const DirectPlay = (() => {
     if (Dc && (Dc.phase === 'look' || (Dc.phase === 'warn' && Dc.t > Dc.C.warn * 0.6))) { const tx = 180, ty = 168, yw = Math.atan2(ty - P.y, tx - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, tx, ty, 34, CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h }; }
     const KD = b.bb, ksh = KD && b.bbMan && KD.sh && KD.sh.u === P ? KD.sh : null; // 농구 슛 자세: 골대 쪽 고정
     if (ksh) { const H = KD.S.hoop, yw = Math.atan2(H.y - P.y, H.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, H.x, H.y, 56, CAM.h), CAM.pitch - 0.2, CAM.pitch + 0.3), h: CAM.h, zeroUser: true }; }
-    if (!S.lockOn) { S.dgLk = null; S.dgBall = null; }
-    const G = S.lockOn ? DGX(b) : null, dc = G ? dgCtx(b) : null;
-    if (G && dc === 'hold') { // 피구: 공을 쥐고 우클릭(길게 누름) = 조준점에 가장 가까운 상대 자동 조준, 시점을 크게 움직이면 그 방향의 상대로 다시
+    const lk = lockKind(b);
+    if (!lk) { S.dgLk = null; S.dgBall = null; }
+    const G = lk ? DGX(b) : null, dc = G ? dgCtx(b) : null;
+    if (G && dc === 'hold') { // 피구: 공을 쥐고 우클릭 유지 / 목표 집중 = 조준점에 가장 가까운 상대 자동 조준, 시점을 크게 움직이면 그 방향의 상대로 다시
       S.dgBall = null; const F = G.cands(b).filter(q => q.foe), yawTo = e => Math.atan2(e.y - S.py, e.x - S.px);
       let T = S.dgLk && F.find(q => q.key === S.dgLk); const base = C.yaw;
       if (S.dIn) S.dgAcc = (S.dgAcc || 0) + S.dIn[0];
@@ -341,9 +373,9 @@ const DirectPlay = (() => {
       if (S.dgBall == null || !L[S.dgBall]) { let bd = 1e9; S.dgBall = null; L.forEach((q, i) => { const d = Math.hypot(q.x - P.x, q.y - P.y); if (d < bd) { bd = d; S.dgBall = i; } }); }
       const q = S.dgBall != null ? L[S.dgBall] : null; if (q) { const a = aimAt(q.x, q.y, (q.z || 0) + q.r); if (a) return a; }
     }
-    const bl = S.lockOn && ((BS && BS.ball3(b)) || bkBall(b)); // 야구장·농구장: 상대 대신 공을 추적
+    const bl = lk && ((BS && BS.ball3(b)) || bkBall(b)); // 야구장·농구장: 상대 대신 공을 추적
     if (bl) { const yw = Math.hypot(bl.x - P.x, bl.y - P.y) > 8 ? Math.atan2(bl.y - P.y, bl.x - P.x) : (S.lastYaw || 0); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, bl.x, bl.y, bl.z, CAM.h), CAM.pitch - 0.3, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; }
-    if (S.lockOn && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
+    if (lk && E && !E.dead) { const yw = Math.atan2(E.y - P.y, E.x - P.x); S.lastYaw = yw; return { yaw: yw, pitch: clamp(aimPitch(P, E.x, E.y, 24 + b.airZ(E), CAM.h), CAM.pitch - 0.12, CAM.pitch + 0.32), h: CAM.h, zeroUser: true }; } // 상대 추적 (누르는 동안)
     return null;
   }
   const dgBodyZ = e => (e.maxHp != null ? 24 * (e.size || 1) : 24 * (window.DODGE ? DODGE.S.npcK : 0.8)) + (e.maxHp != null && S.battle ? S.battle.airZ(e) : 0); // 피구 조준 높이: 몸 가운데

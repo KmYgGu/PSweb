@@ -527,7 +527,7 @@
       if (I) { const t = I.B.sp ? '필살 슛! 잡을 수 없음' : I.pass ? (I.ok ? '지금 클릭! 캐치' : '패스!') : (I.ok ? '지금 클릭! 캐치' : '공이 온다!');
         ctx.font = `bold ${I.ok ? 16 : 13}px ${FONT}`; ctx.strokeText(t, cx, y); ctx.fillStyle = I.ok ? '#ff6a5a' : I.pass ? '#9ff0ff' : '#ffe27a'; ctx.fillText(t, cx, y); return; }
       const B = DG.held(D, e);
-      if (B) { const left = Math.max(0, K.auto - B.wait); ctx.font = `bold 9px ${FONT}`; const t = `조준: 상대 = 슛 게이지 · 팀원 = 패스 · 우클릭/길게 누름 = 자동 조준 (${left.toFixed(1)}초 뒤 자동)`;
+      if (B) { const left = Math.max(0, K.auto - B.wait); ctx.font = `bold 9px ${FONT}`; const t = `조준: 상대 = 슛 게이지 · 팀원 = 패스 · 우클릭 유지/🎯 목표 집중 = 자동 조준 (${left.toFixed(1)}초 뒤 자동)`;
         const w = Math.min(V.w - 8, ctx.measureText(t).width + 12); ctx.globalAlpha = 0.8; ctx.fillStyle = '#0e1018'; ctx.fillRect(cx - w / 2, V.y + V.h - 30, w, 15); ctx.globalAlpha = 1; ctx.fillStyle = '#ffe27a'; ctx.fillText(t, cx, V.y + V.h - 22.5, V.w - 12); }
     },
     hudTop(ctx, b, D, V, C) {
