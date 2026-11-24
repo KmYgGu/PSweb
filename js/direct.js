@@ -17,6 +17,7 @@ const DirectPlay = (() => {
   const PITCH_UP = -0.53; // 올려다보기 한계 (기본 0.60 → 0.07rad ≈ 4° 아래: 내 캐릭터 상반신이 화면 아래쪽에 남음)
   const FLIP_CD = 0.45; // 반전 쿨타임 (전투 시간 초)
   const RES = 2, TR = 2; // 화면 내부 배율 (main.js RES) · 바닥 그림 배율
+  let DR = RES; // 3D 장면을 그리는 캔버스의 배율 (품질 2단계: 1 = 절반 해상도로 그려 확대)
   const TX0 = { x: AR.x - 30, y: AR.y - 30, w: AR.w + 60, h: AR.h + 60 }, TX = { ...TX0 }; let FR = TR; // 바닥 그림 영역 (경기장 + 바깥 테두리) · 바닥 그림 배율. 야구장: 구장 전체(880x1040)를 배율 1로
   const BB = { w: 240, h: 300, fx: 120, fy: 260 }; // 세운 그림 캔버스 (논리 px) · 발 위치
   const TAU = Math.PI * 2, wrap = a => { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; };
@@ -389,10 +390,11 @@ const DirectPlay = (() => {
   function cam(x, y, z) { const dx = x - C.x, dy = y - C.y, dz = z - C.z; return [dx * C.R[0] + dy * C.R[1], dx * C.U[0] + dy * C.U[1] + dz * C.U[2], dx * C.F[0] + dy * C.F[1] + dz * C.F[2]]; }
   function scr(c) { return { x: C.cx + C.f * c[0] / c[2], y: C.cy - C.f * c[1] / c[2], s: C.f / c[2], z: c[2] }; }
   function proj(x, y, z) { const c = cam(x, y, z); return c[2] > CAM.near ? scr(c) : null; }
-  function ground(sx, sy) { // 화면 점 → 바닥(z=0) 점
+  function ground(sx, sy) { const o = [0, 0, 0]; return groundTo(o, sx, sy) ? o : null; } // 화면 점 → 바닥(z=0) 점
+  function groundTo(o, sx, sy) { // ground 와 같은 계산, 결과를 o 에 씀 (새 배열 없음). 바닥과 안 만나면 false
     const a = (sx - C.cx) / C.f, q = -(sy - C.cy) / C.f;
     const dx = C.F[0] + a * C.R[0] + q * C.U[0], dy = C.F[1] + a * C.R[1] + q * C.U[1], dz = C.F[2] + q * C.U[2];
-    if (dz > -1e-4) return null; const t = -C.z / dz; return [C.x + t * dx, C.y + t * dy, t];
+    if (dz > -1e-4) return false; const t = -C.z / dz; o[0] = C.x + t * dx; o[1] = C.y + t * dy; o[2] = t; return true;
   }
   function poly(ctx, pts) { // 3D 다각형 (가까운 면 자르기) → 경로. 보이면 true
     let cs = pts.map(p => cam(p[0], p[1], p[2])); const out = [], N = CAM.near;
@@ -414,20 +416,48 @@ const DirectPlay = (() => {
     floorArea(b);
     if (!tex) { tex = document.createElement('canvas'); tex.width = TX.w * FR; tex.height = TX.h * FR; tctx = tex.getContext('2d'); }
     if (!lift) { lift = document.createElement('canvas'); lift.width = tex.width; lift.height = tex.height; lctx = lift.getContext('2d'); }
-    for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, tex.width, tex.height); c.setTransform(FR, 0, 0, FR, -TX.x * FR, -TX.y * FR); c.imageSmoothingEnabled = false; }
+    const nb = !!b.cam; // 바닥 바탕 캐시를 못 쓰는 경우(카메라 변환)만 바닥 그림도 지움. 보통은 floorBase 가 바탕을 통째로 덮어씀
+    for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); if (c === lctx || nb) c.clearRect(0, 0, tex.width, tex.height); c.setTransform(FR, 0, 0, FR, -TX.x * FR, -TX.y * FR); c.imageSmoothingEnabled = false; }
     // 바닥(tex) = 바닥 그림·바닥 이펙트, 세울 그림(lift) = 물체·특수 건물·기믹·위층 이펙트·입자. 투사체는 따로 (공중)
     S.stand = []; S.bigs = []; S.bigN = 0; S.flats = []; S.beams = []; S.walls = []; S.boxes = []; S.huds = []; b._v3d = V3D;
-    try { Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route }); } finally { b._v3d = null; }
+    try { Render.draw(tctx, b, { v3d: true, lift: lctx, noProj: true, stand: S.stand, route, floorBase: nb ? null : floorBase, capsule: nb ? null : capsule }); } finally { b._v3d = null; }
     for (const c of [tctx, lctx]) { c.setTransform(1, 0, 0, 1, 0, 0); c.globalAlpha = 1; c.globalCompositeOperation = 'source-over'; c.filter = 'none'; }
+  }
+  // 바닥 바탕 (채우기 + 스테이지 2D 바닥 그림 = 고정): 바닥 배율로 한 번 그려 두고 매 프레임 복사 1번 (지우기·채우기·확대 그리기 3번 대신, 같은 픽셀)
+  // 변하는 바닥(건물 잔해·몬스터볼 벽·불판·얼음 등)은 원래대로 이 위에 매 프레임 그림. 바닥 그림·범위·배율이 바뀌면 다시 만듦
+  let base = null, bx = null, baseF = null, baseK = '';
+  function floorBase(fl) {
+    if (!base || base.width !== tex.width || base.height !== tex.height) { base = document.createElement('canvas'); base.width = tex.width; base.height = tex.height; bx = base.getContext('2d'); baseF = null; }
+    const key = TX.x + ',' + TX.y + ',' + FR;
+    if (baseF !== fl || baseK !== key) { bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, base.width, base.height); bx.setTransform(FR, 0, 0, FR, -TX.x * FR, -TX.y * FR); bx.imageSmoothingEnabled = false;
+      bx.globalAlpha = 1; bx.globalCompositeOperation = 'source-over'; bx.fillStyle = '#14121c'; bx.fillRect(0, 0, W, H); if (fl) bx.drawImage(fl, 0, 0); baseF = fl; baseK = key; }
+    tctx.save(); tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.globalAlpha = 1; tctx.globalCompositeOperation = 'copy'; tctx.drawImage(base, 0, 0); tctx.restore();
+    return true;
+  }
+  // 몬스터볼 바닥·벽(capsuleBody, 바닥 그림에서 가장 무거움): 반지름이 지난 프레임과 같으면(안 줄어드는 중) 한 번 그린 캔버스를 복사. 줄어드는 중엔 원래대로
+  let capC = null, capX = null, capK = '', capR = null;
+  function capsule(ctx, Cc, R, R0, body) {
+    const still = R === capR; capR = R; if (!still || ctx !== tctx) return false;
+    if (ctx.globalAlpha !== 1 || ctx.globalCompositeOperation !== 'source-over' || ctx.filter !== 'none') return false;
+    const m0 = ctx.getTransform(); if (m0.a !== FR || m0.d !== FR || m0.b || m0.c || m0.e !== -TX.x * FR || m0.f !== -TX.y * FR) return false; // 바닥 그림 기본 변환일 때만
+    const m = R0 + 12, x0 = Math.floor((Cc.cx - m - TX.x) * FR / 16) * 16, y0 = Math.floor((Cc.cy - m - TX.y) * FR / 16) * 16, w = Math.ceil(2 * m * FR) + 34, key = [R, R0, Cc.cx, Cc.cy, TX.x, TX.y, FR].join(); // 16 배수 위치: 그라디언트 디더 무늬가 바닥 그림과 같은 자리에 오게
+    if (capK !== key) {
+      if (!capC || capC.width !== w || capC.height !== w) { capC = document.createElement('canvas'); capC.width = capC.height = w; capX = capC.getContext('2d'); }
+      capX.setTransform(1, 0, 0, 1, 0, 0); capX.clearRect(0, 0, w, w); capX.setTransform(FR, 0, 0, FR, -x0 - TX.x * FR, -y0 - TX.y * FR);
+      capX.imageSmoothingEnabled = false; capX.globalAlpha = 1; capX.globalCompositeOperation = 'source-over'; body(capX, Cc, R, R0); capK = key;
+    }
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(capC, x0, y0); ctx.restore();
+    return true;
   }
   // ---------- 큰 이펙트 → 바닥에 눕힘 ----------
   // 이펙트·훅마다 그리는 범위를 기록(픽셀은 읽지 않고 그리기 명령 좌표로), 지난 프레임 범위가 크면(BIGW×BIGH 넘음) 바닥 그림(tctx)으로 보냄. 한 번 크면 계속 바닥
   const BIGW = 92, BIGH = 112, bigObj = new WeakMap(), bigKey = {};
-  const TK = { ctx: null, key: null, box: [1e9, 1e9, -1e9, -1e9] }, tcache = {};
+  const TK = { ctx: null, key: null, box: [1e9, 1e9, -1e9, -1e9], m: null, md: true }, tcache = {}; // m: 지금 변환 (변환을 바꾸는 명령 뒤에만 다시 읽음, md = 다시 읽어야 함)
+  const XFOPS = { translate: 1, scale: 1, rotate: 1, transform: 1, setTransform: 1, resetTransform: 1, restore: 1 };
   const OPS = { fillRect: 4, strokeRect: 4, rect: 4, roundRect: 4, clearRect: 0, drawImage: 1, arc: 2, ellipse: 3, moveTo: 5, lineTo: 5, quadraticCurveTo: 6, bezierCurveTo: 6, fillText: 7, strokeText: 7 };
   function tpt(m, x, y) { const X = m.a * x + m.c * y + m.e, Y = m.b * x + m.d * y + m.f, B = TK.box; if (X < B[0]) B[0] = X; if (X > B[2]) B[2] = X; if (Y < B[1]) B[1] = Y; if (Y > B[3]) B[3] = Y; }
   function tmeas(op, a) {
-    const k = OPS[op]; if (!k) return; const m = TK.ctx.getTransform();
+    const k = OPS[op]; if (!k) return; if (TK.md) { TK.m = TK.ctx.getTransform(); TK.md = false; } const m = TK.m;
     if (k === 4) { tpt(m, a[0], a[1]); tpt(m, a[0] + a[2], a[1]); tpt(m, a[0], a[1] + a[3]); tpt(m, a[0] + a[2], a[1] + a[3]); }
     else if (k === 1) { const im = a[0], n = a.length; let x, y, w, h; if (n >= 9) { x = a[5]; y = a[6]; w = a[7]; h = a[8]; } else if (n >= 5) { x = a[1]; y = a[2]; w = a[3]; h = a[4]; } else { x = a[1]; y = a[2]; w = im.width || 0; h = im.height || 0; } tpt(m, x, y); tpt(m, x + w, y); tpt(m, x, y + h); tpt(m, x + w, y + h); }
     else if (k === 2 || k === 3) { const r = k === 2 ? a[2] : Math.max(a[2], a[3]); tpt(m, a[0] - r, a[1] - r); tpt(m, a[0] + r, a[1] + r); tpt(m, a[0] - r, a[1] + r); tpt(m, a[0] + r, a[1] - r); }
@@ -441,7 +471,8 @@ const DirectPlay = (() => {
     tproxy = new Proxy(lctx, {
       get(t, p) {
         const v = TK.ctx[p]; if (typeof v !== 'function') return v;
-        return tcache[p] || (tcache[p] = OPS[p] !== undefined ? (...a) => { tmeas(p, a); return TK.ctx[p](...a); } : (...a) => TK.ctx[p](...a));
+        return tcache[p] || (tcache[p] = OPS[p] !== undefined ? function () { tmeas(p, arguments); return TK.ctx[p].apply(TK.ctx, arguments); } // 인자 배열 새로 안 만듦
+          : XFOPS[p] ? function () { TK.md = true; return TK.ctx[p].apply(TK.ctx, arguments); } : function () { return TK.ctx[p].apply(TK.ctx, arguments); });
       },
       set(t, p, v) { TK.ctx[p] = v; return true; },
     });
@@ -494,7 +525,7 @@ const DirectPlay = (() => {
     if (typeof k === 'object' && k.type && !k.drawOver && fxRoute(k)) return sink();
     const big = (typeof k === 'object' ? bigObj.get(k) : bigKey[k]) && S.bigN < MAXBIG;
     if (big) { const B = bigCanvas(S.bigN++); TK.ctx = B.x; TK.bigC = B.c; } else { TK.ctx = lctx; TK.bigC = null; }
-    TK.key = k; TK.box[0] = TK.box[1] = 1e9; TK.box[2] = TK.box[3] = -1e9;
+    TK.key = k; TK.md = true; TK.box[0] = TK.box[1] = 1e9; TK.box[2] = TK.box[3] = -1e9;
     return tracker();
   }
   function bigPlace(b, g) { // 세울 위치: 가까운 캐릭터 발(그 캐릭터 몸에 걸친 이펙트) 또는 이펙트 가운데
@@ -597,33 +628,34 @@ const DirectPlay = (() => {
   }
   // 바닥: 가로 띠마다 (띠 안을 다시 몇 칸으로 나눠) 아핀 변환으로 그림. 칸 크기는 원근 오차가 0.6px 이하가 되게 (지평선 가까울수록 잘게)
   function drawFloor(ctx) {
-    const hz = C.cy - C.f * Math.tan(C.pitch), hzD = hz * RES, top = Math.max(0, Math.ceil(hzD + 1)), qk = QBAND[Q.lv];
-    let y1 = H * RES;
+    const hz = C.cy - C.f * Math.tan(C.pitch), hzD = hz * DR, top = Math.max(0, Math.ceil(hzD + 1)), qk = QBAND[Q.lv];
+    let y1 = H * DR;
     while (y1 > top) {
       const h = clamp(Math.round((y1 - hzD) * 0.03 * qk), 1, Math.round(12 * qk)), y0 = Math.max(top, y1 - h);
       band(ctx, y0, y1, hz); y1 = y0;
     }
   }
+  const GB = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]; // band 의 바닥 점 (매 칸 새 배열 대신 재사용)
   function band(ctx, y0, y1, hz) {
-    const l0 = y0 / RES, l1 = y1 / RES, ym = (l0 + l1) / 2;
-    const L = ground(0, ym), Rr = ground(W, ym); if (!L || !Rr || ground(C.cx, l0) === null || ground(C.cx, l0)[2] > 1400) return;
-    const hx = [(Rr[0] - L[0]) / W, (Rr[1] - L[1]) / W], k = RES / FR;
+    const l0 = y0 / DR, l1 = y1 / DR, ym = (l0 + l1) / 2, L = GB[0], Rr = GB[1], q0 = GB[2];
+    if (!groundTo(L, 0, ym) || !groundTo(Rr, W, ym) || !groundTo(q0, C.cx, l0) || q0[2] > 1400) return;
+    const hx0 = (Rr[0] - L[0]) / W, hx1 = (Rr[1] - L[1]) / W, k = DR / FR;
     const n = clamp(Math.ceil(W * (l1 - l0) / (1.2 * QBAND[Q.lv] * QBAND[Q.lv] * Math.max(0.5, ym - hz))), 1, 16), cw = W / n; // 띠가 굵어진 만큼 칸 수가 늘지 않게 (품질 단계)
+    const c0 = GB[2], c1 = GB[3], c2 = GB[4], c3 = GB[5], T = GB[6], Bt = GB[7], O = GB[8];
     let clipped = false;
     for (let i = 0; i < n; i++) {
       const xa = i * cw, xb = xa + cw, xc = xa + cw / 2;
-      const c4 = [ground(xa, l0), ground(xb, l0), ground(xa, l1), ground(xb, l1)], T = ground(xc, l0), Bt = ground(xc, l1), O = ground(xc, ym);
-      if (c4.some(p => !p) || !T || !Bt || !O) continue;
+      if (!groundTo(c0, xa, l0) || !groundTo(c1, xb, l0) || !groundTo(c2, xa, l1) || !groundTo(c3, xb, l1) || !groundTo(T, xc, l0) || !groundTo(Bt, xc, l1) || !groundTo(O, xc, ym)) continue;
       if (S.wrap) { const sx = -Math.floor((O[0] - AR.x) / AR.w) * AR.w, sy = -Math.floor((O[1] - AR.y) / AR.h) * AR.h; // 뱀꼬리 맵: 바닥을 경기장 크기로 반복 (끝없는 맵처럼)
-        if (sx || sy) { for (const p of c4) { p[0] += sx; p[1] += sy; } O[0] += sx; O[1] += sy; } }
-      let u0 = 1e9, v0 = 1e9, u1 = -1e9, v1 = -1e9;
-      for (const p of c4) { const u = (p[0] - TX.x) * FR, v = (p[1] - TX.y) * FR; u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); }
+        if (sx || sy) { c0[0] += sx; c0[1] += sy; c1[0] += sx; c1[1] += sy; c2[0] += sx; c2[1] += sy; c3[0] += sx; c3[1] += sy; O[0] += sx; O[1] += sy; } }
+      const ua = (c0[0] - TX.x) * FR, ub = (c1[0] - TX.x) * FR, uc = (c2[0] - TX.x) * FR, ud = (c3[0] - TX.x) * FR, va = (c0[1] - TX.y) * FR, vb = (c1[1] - TX.y) * FR, vc = (c2[1] - TX.y) * FR, vd = (c3[1] - TX.y) * FR;
+      let u0 = Math.min(ua, ub, uc, ud), u1 = Math.max(ua, ub, uc, ud), v0 = Math.min(va, vb, vc, vd), v1 = Math.max(va, vb, vc, vd);
       u0 = Math.max(0, Math.floor(u0) - 1); v0 = Math.max(0, Math.floor(v0) - 1); u1 = Math.min(tex.width, Math.ceil(u1) + 1); v1 = Math.min(tex.height, Math.ceil(v1) + 1);
       if (u1 <= u0 || v1 <= v0) continue;
-      const vy = [(Bt[0] - T[0]) / (l1 - l0), (Bt[1] - T[1]) / (l1 - l0)], det = hx[0] * vy[1] - vy[0] * hx[1]; if (!det) continue;
-      const i00 = vy[1] / det, i01 = -vy[0] / det, i10 = -hx[1] / det, i11 = hx[0] / det, ox = TX.x - O[0], oy = TX.y - O[1];
-      if (!clipped) { clipped = true; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath(); ctx.rect(0, y0, W * RES, y1 - y0); ctx.clip(); }
-      ctx.setTransform(i00 * k, i10 * k, i01 * k, i11 * k, RES * (i00 * ox + i01 * oy + xc), RES * (i10 * ox + i11 * oy + ym));
+      const vy0 = (Bt[0] - T[0]) / (l1 - l0), vy1 = (Bt[1] - T[1]) / (l1 - l0), det = hx0 * vy1 - vy0 * hx1; if (!det) continue;
+      const i00 = vy1 / det, i01 = -vy0 / det, i10 = -hx1 / det, i11 = hx0 / det, ox = TX.x - O[0], oy = TX.y - O[1];
+      if (!clipped) { clipped = true; ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.beginPath(); ctx.rect(0, y0, W * DR, y1 - y0); ctx.clip(); }
+      ctx.setTransform(i00 * k, i10 * k, i01 * k, i11 * k, DR * (i00 * ox + i01 * oy + xc), DR * (i10 * ox + i11 * oy + ym));
       ctx.drawImage(tex, u0, v0, u1 - u0, v1 - v0, u0, v0, u1 - u0, v1 - v0);
     }
     if (clipped) ctx.restore();
@@ -1050,6 +1082,8 @@ const DirectPlay = (() => {
   }
   // 세로 벽 한 조각: 원본 [sx0, sx1] × [0, sh] → 화면 네 점 (아래 A·B, 위 TA·TB). 이웃 조각과 같은 경계 점을 써서 틈 없음
   function texQuad(ctx, img, sx0, sx1, sh, A, B, TA, TB, ex) {
+    const VW = ctx.canvas.width / DR + 2, VH = ctx.canvas.height / DR + 2; // 화면 밖 조각은 건너뜀 (그려도 안 보임 → 같은 화면, clip·drawImage 2번씩 절약)
+    if (Math.max(A.x, B.x, TA.x, TB.x) < -2 || Math.min(A.x, B.x, TA.x, TB.x) > VW || Math.max(A.y, B.y, TA.y, TB.y) < -2 || Math.min(A.y, B.y, TA.y, TB.y) > VH) return;
     texTri(ctx, img, sx0, sh, sx1, sh, sx0, 0, A, B, TA, ex);
     texTri(ctx, img, sx1, sh, sx1, 0, sx0, 0, B, TB, TA, ex);
   }
@@ -1081,7 +1115,7 @@ const DirectPlay = (() => {
   function draw(ctx, b, dt, view) { // 피구: 외곽 벽·경기장 = 코트 전체 (그리는 동안만 AR 바꿈)
     const wr = DGX(b) ? DODGE.wallRect : null, ar0 = wr ? { x: AR.x, y: AR.y, w: AR.w, h: AR.h } : null; if (wr) Object.assign(AR, wr);
     const t0 = performance.now();
-    try { draw0(ctx, b, dt, view); } finally { if (ar0) Object.assign(AR, ar0); }
+    try { draw0(ctx, b, dt, view); } finally { if (ar0) Object.assign(AR, ar0); DR = RES; }
     if (S.active) qTick(performance.now() - t0, dt); // 실전만 (리플레이 시점·녹화는 처음 품질 그대로)
   }
   // 흰 테두리 (공 가진 사람·강조 물체): 그림의 흰 실루엣을 상하좌우 1기기픽셀씩 밀어 찍고 그 위에 원본. ctx.filter(drop-shadow) 는 느리고 iOS Safari 에 없음
@@ -1091,12 +1125,23 @@ const DirectPlay = (() => {
     if (!silC || silC.width < sw || silC.height < sh) { const c = document.createElement('canvas'); c.width = Math.max(sw, silC ? silC.width : 0); c.height = Math.max(sh, silC ? silC.height : 0); silC = c; silX = c.getContext('2d'); }
     silX.setTransform(1, 0, 0, 1, 0, 0); silX.globalAlpha = 1; silX.globalCompositeOperation = 'copy'; silX.drawImage(cv, 0, 0); // copy: 캔버스 전체를 이 그림으로 바꿈 (픽셀은 읽지 않음 → file:// 도 됨)
     silX.globalCompositeOperation = 'source-in'; silX.fillStyle = '#fff'; silX.fillRect(0, 0, sw, sh); silX.globalCompositeOperation = 'source-over';
-    const o = 1 / RES;
+    const o = 1 / DR;
     for (const [ox, oy] of SIL4) ctx.drawImage(silC, 0, 0, sw, sh, x + ox * o, y + oy * o, w, h);
     ctx.drawImage(cv, x, y, w, h);
   }
-  function draw0(ctx, b, dt, view) {
-    S.battle = b; S.cv = ctx.canvas; b._dp = true; b.bsbView = view; // _dp·bsbView: 그리기 전용 표시 (야구장 HUD·방망이)
+  // 품질 2단계(느린 기기): 3D 장면(하늘·바닥·벽·캐릭터)만 절반 해상도 캔버스에 그려 픽셀 그대로(보간 없이) 2배 확대. 글자·조준점·HUD 는 원래 해상도
+  // 화면에 붙은 캔버스만 (동영상 녹화 캔버스는 원래 품질)
+  const LR = 1; let lo = null, lox = null;
+  function lowCtx(ctx) {
+    if (Q.lv < 2 || !ctx.canvas.isConnected) return null;
+    const w = Math.round(ctx.canvas.width * LR / RES), h = Math.round(ctx.canvas.height * LR / RES);
+    if (!lo || lo.width !== w || lo.height !== h) { lo = document.createElement('canvas'); lo.width = w; lo.height = h; lox = lo.getContext('2d'); }
+    lox.setTransform(LR, 0, 0, LR, 0, 0); lox.globalAlpha = 1; lox.globalCompositeOperation = 'source-over'; lox.filter = 'none'; lox.imageSmoothingEnabled = false;
+    DR = LR; return lox;
+  }
+  function draw0(ctx0, b, dt, view) {
+    let ctx = lowCtx(ctx0) || ctx0;
+    S.battle = b; S.cv = ctx0.canvas; b._dp = true; b.bsbView = view; // _dp·bsbView: 그리기 전용 표시 (야구장 HUD·방망이)
     updateCam(b, dt, view);
     ctx.imageSmoothingEnabled = false;
     // 하늘(천장) + 바깥 바닥
@@ -1153,6 +1198,8 @@ const DirectPlay = (() => {
       if (u.wSwing && !u.dead) drawSwing(ctx, u, b);
       if (!isP && !u.dead && u.maxHp > 0 && Number.isFinite(u.hp)) { const q = proj(u.x, u.y, (62 * (u.size || 1)) + b.airZ(u) + gz); if (q) hpBar(ctx, q.x, q.y, clamp(30 * q.s * 0.6, 18, 44), u.hp / u.maxHp, u.summon ? '#9ab0d8' : null); }
     }
+    if (ctx !== ctx0) { DR = RES; ctx0.save(); ctx0.setTransform(1, 0, 0, 1, 0, 0); ctx0.globalAlpha = 1; ctx0.globalCompositeOperation = 'source-over'; ctx0.imageSmoothingEnabled = false; // 절반 해상도 장면 → 화면 (픽셀 그대로 확대)
+      ctx0.drawImage(lo, 0, 0, lo.width, lo.height, 0, 0, ctx0.canvas.width, ctx0.canvas.height); ctx0.restore(); ctx = ctx0; ctx.imageSmoothingEnabled = false; }
     drawTexts(ctx, b);
     drawAim(ctx, b, P, view, dt);
     for (const fn of S.huds) { ctx.save(); try { fn(ctx); } catch (e) { console.warn('[direct] hud', e); } ctx.restore(); }
@@ -1214,10 +1261,10 @@ const DirectPlay = (() => {
       ctx.fillStyle = 'rgba(14,15,24,0.82)'; ctx.fillRect(W / 2 - w / 2, ay + 22, w, 16); ctx.fillStyle = col; ctx.fillText(msg, W / 2, ay + 30); }
     ctx.restore();
   }
-  function fresh() { tex = lift = rest = null; tctx = lctx = rctx = null; for (const P of [bigPool, opool, ppool, pool, fpool, mpool]) P.length = 0; } // 녹화: 중간 캔버스 새로 만들기
+  function fresh() { tex = lift = rest = base = null; tctx = lctx = rctx = bx = null; baseF = null; lo = lox = null; capC = capX = null; capK = ''; capR = null; for (const P of [bigPool, opool, ppool, pool, fpool, mpool]) P.length = 0; } // 녹화: 중간 캔버스 새로 만들기
   return { supported, begin, fresh, setActive, blocking, takeFlip, flipped, takeAct, acted, player, draw, timeK, EXCLUDE, FLIP_CD, get active() { return S.active; },
     get aimPt() { if (!S.view) return null; const G = DGX(S.battle), q = G && S.dgBall != null ? G.ball3(S.battle)[S.dgBall] : null, p = q ? proj(q.x, q.y, (q.z || 0) + q.r) : null; return { x: W / 2, y: S.view.y + S.view.h * 0.45, lk: S.dgLk || null, ball: S.dgBall, bs: p ? { x: p.x, y: p.y } : null }; }, // 확인용 (읽기 전용)
     get dproj() { return S.dproj ? S.dproj.map(f => ({ ...f })) : null; }, // 피구 조준 후보 화면 좌표 (확인용, 읽기 전용)
-    get quality() { return { lv: Q.lv, base: Q.base, ms: +Q.ms.toFixed(2) }; }, // 확인용 (읽기 전용)
+    setQuality(lv) { Q.lv = Q.base = clamp(lv | 0, 0, 2); }, get quality() { return { lv: Q.lv, base: Q.base, ms: +Q.ms.toFixed(2) }; }, // setQuality: 확인용 // 확인용 (읽기 전용)
     get camState() { return { yaw: C.yaw, pitch: C.pitch, autoYaw: S.autoYaw, userYaw: S.userYaw, userPitch: S.userPitch }; } }; // camState: 읽기 전용 (확인용)
 })();

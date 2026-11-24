@@ -1542,7 +1542,8 @@ const Render = (() => {
     }
   }
   // 캡슐 내부: 위 빨강 / 아래 흰색 / 가운데 띠와 버튼 (현재 반지름 R)
-  function drawCapsule(ctx, C, R, R0, warnR, time) {
+  function drawCapsule(ctx, C, R, R0, warnR, time) { capsuleBody(ctx, C, R, R0); capsuleRing(ctx, C, R, warnR, time); }
+  function capsuleBody(ctx, C, R, R0) { // 몬스터볼 바닥·벽 (R 이 같으면 같은 그림 → 직접 플레이는 캐시, js/direct.js)
     ctx.save();
     // 닫힌 영역 (원래 반지름 ~ 현재 반지름)
     ctx.beginPath(); ctx.arc(C.cx, C.cy, R0 + 6, 0, 6.28); ctx.fillStyle = '#2a2632'; ctx.fill();
@@ -1569,7 +1570,10 @@ const Render = (() => {
     ctx.save();
     ctx.strokeStyle = '#2a2632'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(C.cx, C.cy, R + 3, 0, 6.28); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(C.cx, C.cy, R, 0, 6.28); ctx.stroke();
-    // 축소 예고 링
+    ctx.restore();
+  }
+  function capsuleRing(ctx, C, R, warnR, time) { // 축소 예고 링 (깜박임)
+    ctx.save();
     if (warnR < R - 1) {
       ctx.globalAlpha = 0.35 + 0.15 * Math.sin(time * 4); ctx.strokeStyle = '#ffb0a0'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
       ctx.beginPath(); ctx.arc(C.cx, C.cy, warnR, 0, 6.28); ctx.stroke();
@@ -2472,7 +2476,8 @@ const Render = (() => {
     if (!floors[sid]) floors[sid] = makeFloor(sid);
     ctx.imageSmoothingEnabled = false;
     if (!b) { ctx.drawImage(floors[sid], 0, 0); return; }
-    ctx.fillStyle = '#14121c'; ctx.fillRect(0, 0, W, H);
+    const fb = V && o.floorBase && !b.cam ? o.floorBase(floors[sid]) : false; // 직접 플레이: 바닥 바탕(채우기+바닥 그림)을 미리 그려 둔 캔버스로 한 번에 (js/direct.js)
+    if (!fb) { ctx.fillStyle = '#14121c'; ctx.fillRect(0, 0, W, H); }
     ctx.save(); // 공용 카메라: 바닥/스테이지/유닛/이펙트 모두 동일 변환 (UI는 DOM)
     if (b.zoom && !V) { // 짧은 줌 펄스
       const z = b.zoom, k = 1 + z.k * Math.sin(Math.PI * Math.min(1, z.t / z.dur));
@@ -2480,12 +2485,12 @@ const Render = (() => {
     }
     b._shk = [0, 0]; if (b.shakeT > 0 && !V) { const k = b.shakeT / 0.18 * b.shakeA; b._shk = [Math.round(rand(-k, k)), Math.round(rand(-k, k))]; ctx.translate(b._shk[0], b._shk[1]); }
     if (b.cam) { ctx.scale(b.cam.k, b.cam.k); ctx.translate(-b.cam.x, -b.cam.y); } // 탈출맵 카메라 (js/escape.js, 일반 전투엔 없음)
-    if (!b.cam) ctx.drawImage(floors[sid], 0, 0);
+    if (!b.cam && !fb) ctx.drawImage(floors[sid], 0, 0);
     for (const h of STAGE_HOOKS) h.drawUnder && h.drawUnder(ctx, b);
     for (const f of b.fx) drawFx(ctx, f, 0);
     for (const f of b.visualFx) drawFx(ctx, f, 0);
     drawWater(ctx, b);
-    if (b.stage.circle && !b.stage.circle.hidden) { const C = b.stage.circle; drawCapsule(ctx, C, b.circleR(), C.r0, b.circleR(b.time + 3), b.time); }
+    if (b.stage.circle && !b.stage.circle.hidden) { const C = b.stage.circle, R = b.circleR(); if (!(V && o.capsule && o.capsule(ctx, C, R, C.r0, capsuleBody))) capsuleBody(ctx, C, R, C.r0); capsuleRing(ctx, C, R, b.circleR(b.time + 3), b.time); } // o.capsule: 직접 플레이 캐시
     if (b.balls.length && !(V && o.stand)) drawBalls(ctx, b.balls); // 직접 플레이: 공은 3D 로 따로
     if (b.iceSegs.length) drawIceWalls(ctx, b);
     if (b.stage.pads) drawPads(ctx, b, b.time);
