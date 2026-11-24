@@ -30,11 +30,11 @@
   const IGNORE_LINES = ['어ㅡ이!', '들으라구!', '아아아아아아앙~!!!!!!', '누군가 한 명을 잊어버린것 같지 않냐고!', '너, 뭔가 착각하고 있는 거 아니야?!'];
 
   // ---------- 상태: 음료수 마시는 중 (정지·무적, 끝나면 효과) ----------
-  STATUS_DEFS.trDrink = { name: '음료수', color: '#bfe8ff', positive: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true,
+  STATUS_DEFS.trDrink = { name: '음료수', color: '#bfe8ff', positive: true, nodispel: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true,
     onApply(u) { u.action = null; },
     onExpire(u, b, s) { drinkEffect(b, u, s.trKind, s.src, s.bl); if (s.bl && !s.bl.dead && s.bl.life > 0 && !s.bl.stock.length) { s.bl.life = 0; b.smoke(s.bl.x + s.bl.w / 2, s.bl.y, '#d8e8f0', 8); b.hooks.onSystem && b.hooks.onSystem('냉장고가 텅 비었습니다!'); } } };
   STATUS_DEFS.trGrabbed = { name: '붙잡힘', color: '#ffb0a0', noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
-  STATUS_DEFS.trSwinging = { name: '자이언트 스윙', color: '#ffe0a0', positive: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
+  STATUS_DEFS.trSwinging = { name: '자이언트 스윙', color: '#ffe0a0', positive: true, nodispel: true, noResistScale: true, stack: 'ignore', blocksMove: true, blocksAct: true, onApply(u) { u.action = null; } };
   const KIND_NAME = ['회복 음료', '쿨타임 음료', '독 음료'];
   const ageK = bl => bl ? clamp((bl.age || 0) / D.fridge.life, 0, 1) : 0; // 냉장고를 꺼낸 뒤 지난 비율 (0 → 1)
   function drinkEffect(b, u, k, src, bl) {

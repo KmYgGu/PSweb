@@ -30,7 +30,7 @@
     // top: 이동 영역 시작 y (그 위는 칠판·선생님·학생 구역), board/look/warn: 선생님 주기(초), judge: 완전히 돈 뒤 판정까지, students: [최소, 최대], side/back: 좌우·아래(교실 뒤) 학생 자리 띠 폭(이동 영역 밖)
     classroom: { top: 200, board: [4, 7], look: [1.2, 1.8], warn: 0.5, judge: 0.2, students: [4, 8], side: 34, back: 40, drag: 0.5, back: 0.5 }
   };
-  STATUS_DEFS.clsFreeze = { name: '얼음!', color: '#bfe4ff', positive: true, blocksMove: true, blocksAct: true, blocksSkill: true, noResistScale: true };
+  STATUS_DEFS.clsFreeze = { name: '얼음!', color: '#bfe4ff', positive: true, nodispel: true, blocksMove: true, blocksAct: true, blocksSkill: true, noResistScale: true };
   STATUS_DEFS.clsCaught = { name: '들킴', color: '#ffb0a0', positive: false, blocksMove: true, blocksAct: true, blocksSkill: true, noResistScale: true };
 
   /* =================== 바베큐 불판 =================== */

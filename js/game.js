@@ -516,6 +516,7 @@ class Battle {
     tgt.statuses.push(s);
     d.onApply && d.onApply(tgt, this, s);
     if (id === 'stun') this.later(0, () => { if (!s.knock) this.say(tgt, 'stunned'); });
+    if (o.quiet) return s; // quiet: 표시·소리·로그 없이 (샌즈 졸음·정지처럼 캐릭터가 따로 연출하는 상태)
     if (!d.positive) this.say(tgt, 'debuffed'); // 해로운 상태이상 (positive: true 면 제외)
     this.hooks.onStatus && this.hooks.onStatus(tgt, d.name, d.color);
     playSfx(id === 'stun' ? 'stun' : d.positive ? 'buff' : 'status', { element: id }); if (window.Sfx) Sfx.play('cstat', { id }); // 상태이상 효과음 (독·마비·석화, 캐릭터 공통)
@@ -972,14 +973,14 @@ class Battle {
       if (u.res[O.res] <= 0) { u.oni = false; this.hooks.onSystem && this.hooks.onSystem(u.def.name + ' 오니화 해제'); this.say(u, 'oniEnd'); this.smoke(u.x, u.y - 18, '#ff8a96', 8); }
     }
   }
-  // 이로운 효과 해제: 버프(nodispel 제외), 방벽, 혼령, 반격 자세, beneficial 상태. 해제된 이름 목록 반환
+  // 이로운 효과 해제: 버프(nodispel 제외), 방벽, 혼령, 반격 자세, 이로운 상태(positive, nodispel 제외 — 종료 처리 포함). 해제된 이름 목록 반환
   dispel(src, tgt) {
     const out = [], NAMES = { shield: '철벽 방패', invis: '은신', rage: '광폭화', garrote: '교살 자세' };
     const keep = tgt.buffs.filter(b => b.nodispel); for (const b of tgt.buffs) if (!b.nodispel) out.push(NAMES[b.type] || b.name || b.type); tgt.buffs = keep;
     if (tgt.barrier) { this.burst(tgt.x, tgt.y - 20, '#bfe3ff', 12); tgt.barrier = null; out.push('방벽'); }
     if (tgt.spirit) { tgt.spirit = null; this.smoke(tgt.x, tgt.y - 18, '#c8d4ff', 6); out.push('혼령'); }
     if (tgt.counter) { tgt.counter = null; out.push('반격 자세'); }
-    const bs = tgt.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].beneficial); if (bs.length) { tgt.statuses = tgt.statuses.filter(s => !bs.includes(s)); for (const s of bs) out.push(STATUS_DEFS[s.id].name); }
+    for (const s of this.removeStatuses(tgt, s => { const d = STATUS_DEFS[s.id]; return !!(d && d.positive && !d.nodispel); })) out.push(STATUS_DEFS[s.id].name);
     if (out.length) this.stats.dispels = (this.stats.dispels || 0) + 1;
     return [...new Set(out)];
   }

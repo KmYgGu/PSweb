@@ -19,15 +19,15 @@
   const S_ = u => u.sn || (u.sn = { st: ST.max, sleep: 0, final: false, finalDone: false });
   const objs = b => b.snObjs || (b.snObjs = []);
 
-  STATUS_DEFS.snSleep = { name: '졸음', color: '#a8b8e0', tint: '#304060', tintA: 0.25, blocksAct: true, blocksMove: true, positive: true, noResistScale: true };
+  STATUS_DEFS.snSleep = { name: '졸음', color: '#a8b8e0', tint: '#304060', tintA: 0.25, blocksAct: true, blocksMove: true, positive: true, noResistScale: true, nodispel: true }; // nodispel: 샌즈 자신의 연출 상태 (해제되면 졸음 규칙이 깨짐)
   STATUS_DEFS.snKR = { name: '업보', color: '#e070ff', tint: '#a040d0', tintA: 0.18, particle: '#e8a0ff', tick: 0.5, stack: 'ignore',
     onTick(u, b, s) { if (!s.src || s.src.dead) return; b.damage(s.src, u, (s.power || 1) * s.src.st.atk * 0.11, { dot: true, element: 'dark', noCrit: true, color: '#e070ff' }); } };
-  STATUS_DEFS.snStill = { name: '정지', color: '#7ab0ff', blocksMove: true, positive: true, noResistScale: true };
+  STATUS_DEFS.snStill = { name: '정지', color: '#7ab0ff', blocksMove: true, positive: true, noResistScale: true, stack: 'ignore', nodispel: true }; // 파란 뼈 앞에서 상대가 스스로 멈춤 (회피 행동이라 이로운 쪽)
   function addKR(b, src, tgt, n) { if (tgt.dead) return; let s = tgt.status('snKR'); if (!s) { s = b.applyStatus(tgt, 'snKR', 3, src, { power: 0 }); if (!s) return; }
     s.power = Math.min(10, (s.power || 0) + n); s.t = Math.max(s.t, 3); s.src = src; }
 
   // ---------- 회피 ----------
-  function sleep(b, u, dur) { const Z = S_(u); Z.st = 0; Z.sleep = dur; u.action = null; if (!u.status('snSleep')) u.statuses.push({ id: 'snSleep', t: dur, dur, src: u, tickT: 0 }); else u.status('snSleep').t = dur;
+  function sleep(b, u, dur) { const Z = S_(u); Z.st = 0; Z.sleep = dur; u.action = null; const sl = b.applyStatus(u, 'snSleep', dur, u, { quiet: true }); if (sl) sl.t = dur; // 자기 자신에게 (저항·면역은 해로운 상태만 막으므로 그대로 걸림)
     b.text(u.x, u.y - 70, 'Zz…', '#c8d8ff', 12); b.say(u, 'sleep'); }
   function dodge(b, u, src, cost) {
     const Z = S_(u); Z.st -= cost; Z.lastDodge = b.time;
@@ -76,7 +76,7 @@
         O.p += O.dir * O.spd * dt; const lo = O.axis === 'x' ? AR.x : AR.y, hi = O.axis === 'x' ? AR.x + AR.w : AR.y + AR.h; if (O.p < lo - 10 || O.p > hi + 10) { O.dead = true; continue; }
         for (const o of b.foes(u)) { if (o.hidden || O.hit.has(o)) continue;
           if (O.blue && !o.dead) { const ahead = (O.p - (O.axis === 'x' ? o.x : o.y)) * -O.dir; // 파란 뼈 반응 AI: 다가오면 멈춤 (가끔 실패)
-            if (ahead > 0 && ahead < 70 && !O.still.has(o)) { const ok = rand(0, 1) < 0.7; O.still.set(o, ok); if (ok) { const s = o.status('snStill'); if (!s) o.statuses.push({ id: 'snStill', t: 0.45, dur: 0.45, src: u, tickT: 0 }); } } }
+            if (ahead > 0 && ahead < 70 && !O.still.has(o)) { const ok = rand(0, 1) < 0.7; O.still.set(o, ok); if (ok && !o.status('snStill')) b.applyStatus(o, 'snStill', 0.45, u, { quiet: true }); } }
           const oa = O.axis === 'x' ? o.x : o.y, oc = O.axis === 'x' ? o.y : o.x;
           if (o.airborne || Math.abs(oa - O.p) > 7 + o.pad) continue;
           if (O.gh && oc > O.gy && oc < O.gy + O.gh) continue;
