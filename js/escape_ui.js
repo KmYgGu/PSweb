@@ -173,7 +173,9 @@ body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
   function setDir(d) { $('#escDir').value = d; document.querySelectorAll('#escOpt [data-d]').forEach(b => b.classList.toggle('on', b.dataset.d === d)); }
   function pathAdd(c, r) { // 상하좌우로만 이어 붙임 (대각선은 가로→세로로 채움), 바로 전 칸으로 되돌아가면 마지막 칸 지움
     if (!draft) draft = [];
-    const step = (cc, rr) => { const L = draft[draft.length - 1], P = draft[draft.length - 2]; if (L && L[0] === cc && L[1] === rr) return; if (P && P[0] === cc && P[1] === rr) { draft.pop(); return; } if (draft.length >= ESCAPE.LIM.path) return; draft.push([cc, rr]); };
+    const step = (cc, rr) => { const L = draft[draft.length - 1], P = draft[draft.length - 2]; if (L && L[0] === cc && L[1] === rr) return; if (P && P[0] === cc && P[1] === rr) { draft.pop(); return; } if (draft.length >= ESCAPE.LIM.path) return;
+      const A = draft[0]; if (draft.length >= 4 && A[0] === cc && A[1] === rr) return; // 시작 칸으로 돌아오면 = 닫힌 경로 (끝이 시작 옆 칸 → 순환 가능). 시작 칸을 또 넣으면 왕복으로 바뀌던 문제
+      draft.push([cc, rr]); };
     const L = draft[draft.length - 1]; if (!L) return step(c, r);
     let [cc, rr] = L; while (cc !== c) { cc += Math.sign(c - cc); step(cc, rr); } while (rr !== r) { rr += Math.sign(r - rr); step(cc, rr); }
   }
@@ -233,7 +235,7 @@ body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
     document.querySelectorAll('#escTools [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === tool));
     document.querySelectorAll('#escOpt .o').forEach(o => o.classList.toggle('on', o.dataset.for === tool));
   }
-  const tileAt = e => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * map.w / T), Math.floor((e.clientY - r.top) / r.height * map.h / T)]; };
+  const tileAt = e => { const r = cv.getBoundingClientRect(), k = r.width / (cv.offsetWidth || r.width), L = r.left + cv.clientLeft * k, Tp = r.top + cv.clientTop * k, w = (cv.clientWidth || r.width) * k, h = (cv.clientHeight || r.height) * k; return [Math.floor((e.clientX - L) / w * map.w / T), Math.floor((e.clientY - Tp) / h * map.h / T)]; }; // 테두리(1px) 제외, 화면 확대(transform) 비율 k 반영
   function applyTool(c, r) {
     if (c < 0 || r < 0 || c >= cols() || r >= rows()) return;
     if (SIZE_TOOLS.includes(tool)) { for (const [x, y] of brushCells(c, r)) applyCell(x, y, true); return; }
@@ -276,7 +278,9 @@ body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
   }
   cv.addEventListener('pointerdown', e => {
     e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (er) {}
-    begin(); onCv = true; const t = tileAt(e); paint = ['wall', 'erase', 'water', 'oneway', 'brk', 'mvpath', 'mvwall'].includes(tool) ? t : null;
+    begin(); onCv = true; const t = tileAt(e);
+    if (tool === 'mvpath' && draft && draft.length) { const L = draft[draft.length - 1]; if (Math.abs(L[0] - t[0]) + Math.abs(L[1] - t[1]) > 1) { draft = null; shape = null; } } // 경로 끝(또는 옆 칸)이 아닌 곳에서 끌기 시작 = 새 경로 (전에는 이전 경로 끝에서 ㄱ자로 이어 붙음)
+    paint = ['wall', 'erase', 'water', 'oneway', 'brk', 'mvpath', 'mvwall'].includes(tool) ? t : null;
     if (tool === 'mvwall') { shMode = shIdx(t[0], t[1]) >= 0 ? 'del' : 'add'; shWarn = ''; }
     applyTool(t[0], t[1]); map = ESCAPE.normalize(map); draw();
   });
@@ -294,7 +298,8 @@ body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
     if (was === 'mvwall') { if (shWarn) msg(shWarn); else if (shape) msg(`벽 모양 ${shape.length}칸 (◎ 기준, 점선 = 경로 끝에 도착했을 때). 다 그렸으면 ✔ 벽 완성 · 칸을 다시 누르거나 지우개로 빼기`); }
     onCv = false; commit(); };
   cv.addEventListener('pointerup', endPaint); cv.addEventListener('pointercancel', endPaint);
-  document.querySelectorAll('#escTools [data-t]').forEach(b => b.onclick = () => { tool = b.dataset.t; draw(); });
+  function showTool() { const tl = $('#escTools'), b = tl.querySelector(`[data-t="${tool}"]`); if (!b) return; const x0 = b.offsetLeft - tl.offsetLeft, x1 = x0 + b.offsetWidth; if (x0 < tl.scrollLeft) tl.scrollLeft = x0 - 4; else if (x1 > tl.scrollLeft + tl.clientWidth) tl.scrollLeft = x1 - tl.clientWidth + 4; }
+  document.querySelectorAll('#escTools [data-t]').forEach(b => b.onclick = () => { tool = b.dataset.t; draw(); showTool(); });
   document.querySelectorAll('#escBrushRow [data-b]').forEach(b => b.onclick = () => { setBrush(+b.dataset.b); draw(); });
   $('#escLock').onclick = () => { setLock(!lock); draw(); };
   document.querySelectorAll('#escOpt [data-d]').forEach(b => b.onclick = () => { setDir(b.dataset.d); });
@@ -307,7 +312,7 @@ body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
     const net = document.querySelector('#escNet'); if (net && !net.classList.contains('hidden')) return; // 목록·올리기 화면 위에서는 무시
     if (e.ctrlKey || e.metaKey) { const z = e.key.toLowerCase(); if (z === 'z' && !e.shiftKey) { e.preventDefault(); undo(); } else if (z === 'y' || (z === 'z' && e.shiftKey)) { e.preventDefault(); redo(); } return; }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, d = KEYDIR[k];
-    if (d) { e.preventDefault(); tool = 'oneway'; setDir(d); setTab('draw'); draw(); return; }
+    if (d) { e.preventDefault(); tool = 'oneway'; setDir(d); setTab('draw'); draw(); showTool(); return; }
     if (k === 'l') { e.preventDefault(); setLock(!lock); draw(); }
   });
   $('#escMvDone').onclick = quiet(edit(finishMover));
