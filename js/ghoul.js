@@ -166,6 +166,7 @@
     if (!s.dead) b.smoke(s.x, s.y - 14, '#ffd0ec', 6);
   }
   function stepSummons(b, dt) {
+    if (!b.u.some(s => s.summon)) return; // 소환수가 없으면 할 일 없음 (매 스텝 배열 복사 생략)
     for (const s of b.u.slice()) {
       if (!s.summon) continue; const S = s.summon;
       const ownerGone = !b.u.includes(S.owner) || S.owner.dead;
@@ -548,7 +549,7 @@
     step(b, dt) {
       window.__gb = b;
       stepSummons(b, dt);
-      for (const s of [...b.u]) if (s.summon && s.gUsed !== undefined && (!s.action || b.time - s.gUsed > 1.5) && b.time - s.gUsed > 0.15) { b.smoke(s.x, s.y - 14, '#ffd0ec', 8); removeSummon(b, s); }
+      if (b.u.some(s => s.summon && s.gUsed !== undefined)) for (const s of [...b.u]) if (s.summon && s.gUsed !== undefined && (!s.action || b.time - s.gUsed > 1.5) && b.time - s.gUsed > 0.15) { b.smoke(s.x, s.y - 14, '#ffd0ec', 8); removeSummon(b, s); }
       if (b.gTS && (b.time > b.gTS.until || b.gTS.owner.dead)) b.gTS = null;
       for (const A of acts(b)) { A.t += dt; if (A.upd) A.upd(A, dt); }
       b.gAct = acts(b).filter(A => A.t < A.dur);

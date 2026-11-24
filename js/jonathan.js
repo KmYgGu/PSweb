@@ -228,7 +228,7 @@
       if (b.winner && isSW(b.winner)) b.winner = b.winner.summon.owner;
       if (b.jjFly && b.jjFly.length) { for (const f of b.jjFly) { f.t += dt; f.x += f.vx * dt; } b.jjFly = b.jjFly.filter(f => f.t < 0.9); }
       if (held(b) || b.over) return;
-      for (const w of b.u.slice()) if (isSW(w)) { swStep(b, w, dt); const H = w.summon.hat; if (H && !H.done && b.u.includes(w)) hatStep(b, H, w.summon.opt, dt); }
+      if (b.u.some(isSW)) for (const w of b.u.slice()) if (isSW(w)) { swStep(b, w, dt); const H = w.summon.hat; if (H && !H.done && b.u.includes(w)) hatStep(b, H, w.summon.opt, dt); }
       for (const u of b.u) if (u.jjLift && b.time - u.jjLift.t0 > u.jjLift.dur) u.jjLift = null;
     },
     drawOver(ctx, b) {

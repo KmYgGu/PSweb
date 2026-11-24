@@ -104,6 +104,16 @@ class Unit {
   get fdef() { return this.form || (this.oni && this.def.oni ? this.def.oni.form : this.def); } // 현재 스프라이트 정의
 }
 
+// 타이머 한 번에: 남은 시간 줄이고, 끝난 것(t <= 0)은 순서대로 꺼내 돌려줌(없으면 null), 남은 것(t > 0)만 같은 배열에 남김. 예전 filter 두 번과 같은 결과 (매 스텝 새 배열 없음)
+function tickTimers(o, k, dt) {
+  const T = o[k]; if (!T.length) return null; let due = null, j = 0;
+  for (const t of T) t.t -= dt;
+  for (let i = 0; i < T.length; i++) { const t = T[i]; if (t.t > 0) T[j++] = t; else if (t.t <= 0) (due || (due = [])).push(t); }
+  T.length = j; return due;
+}
+// STAGE_HOOKS 중 그 메서드가 있는 훅만 (원래 순서 그대로) 미리 걸러 둠: 매 스텝·매 위치 계산마다 훅 45개를 다 훑지 않게. 훅은 스크립트 로드 때만 추가되므로 개수가 바뀌면 다시 만듦
+const HKC = { n: -1, m: {} };
+function HK(k) { if (HKC.n !== STAGE_HOOKS.length) { HKC.n = STAGE_HOOKS.length; HKC.m = {}; } return HKC.m[k] || (HKC.m[k] = STAGE_HOOKS.filter(h => h[k])); }
 class Battle {
   constructor(defA, defB, hooks = {}, stageId = 'arena') {
     // 팀 구성: def.partner 가 있으면 [partner, def] 2인 팀 (파라가스 & 브로리). 그 외는 기존 1v1 그대로
@@ -178,10 +188,10 @@ class Battle {
   bubble(u, t) { return; this.texts.push({ x: u.x, y: u.y - 70 - u.pad * 2.2, txt: t, color: '#fff6dc', size: 8, t: 0, dur: 1.6, bubble: true, u }); }
   later(t, fn) { this.timers.push({ t, fn }); }
   // 엔진 이벤트 → STAGE_HOOKS[].on(b, ev, ...args). 하나라도 true 를 반환하면 '무효' (듀얼리스트 함정 등, js/duel.js)
-  emit(ev, ...a) { let neg = false; for (const h of STAGE_HOOKS) if (h.on && h.on(this, ev, ...a)) neg = true; return neg; }
+  emit(ev, ...a) { let neg = false; for (const h of HK('on')) if (h.on(this, ev, ...a)) neg = true; return neg; }
   clampPos(x, y, pad = 0, u = null) {
-    for (const h of STAGE_HOOKS) if (h.noClamp && u && h.noClamp(this, u)) return { x, y };
-    for (const h of STAGE_HOOKS) if (h.clamp) { const p = h.clamp(this, x, y, pad); x = p.x; y = p.y; }
+    if (u) for (const h of HK('noClamp')) if (h.noClamp(this, u)) return { x, y };
+    for (const h of HK('clamp')) { const p = h.clamp(this, x, y, pad); x = p.x; y = p.y; }
     const P = this.play || AR; x = clamp(x, P.x + 14 + pad, P.x + P.w - 14 - pad); y = clamp(y, P.y + 26 + pad, P.y + P.h - 8 - pad * 0.5);
     const C = this.stage && this.stage.circle;
     if (C) { const R = this.circleR() - 12 - pad, dx = x - C.cx, dy = y - C.cy, d = Math.hypot(dx, dy); if (d > R) { x = C.cx + dx / d * R; y = C.cy + dy / d * R; } }
@@ -330,10 +340,7 @@ class Battle {
     if (this.freeze) { this.frozenStep(dt); return; } // 전투 정지 (엑조디아 연출 등): 유닛/투사체/스킬/상태/해저드 모두 멈춤
     this.time += dt;
     if (!this.fever && this.time >= RAMP_START) { this.fever = true; this.hooks.onSystem && this.hooks.onSystem('전투가 격렬해집니다! (피해량 점점 증가)'); }
-    for (const t of this.timers) t.t -= dt;
-    const due = this.timers.filter(t => t.t <= 0);
-    this.timers = this.timers.filter(t => t.t > 0);
-    due.forEach(t => t.fn());
+    const due = tickTimers(this, 'timers', dt); if (due) for (const t of due) t.fn();
 
     for (const u of this.u) this.updateUnit(u, dt);
     for (let i = 0; i < this.u.length; i++) for (let j = i + 1; j < this.u.length; j++) this.collide(this.u[i], this.u[j]);
@@ -344,7 +351,7 @@ class Battle {
     for (const u of this.u) { this.updateAir(u, dt); if (!u.airborne) this.resolveBuildings(u); this.circleWall(u); if (!u.airborne) this.updateTerrain(u, dt); }
     this.updateBalls(dt);
     for (const u of this.u) if (u.flipHold) this.holdFlip(u); // 직접 플레이 모드 반전 유지 (반전한 적 없으면 아무 일 없음)
-    for (const h of STAGE_HOOKS) h.step && h.step(this, dt);
+    for (const h of HK('step')) h.step(this, dt);
     for (const bl of this.buildings) bl.hitT = Math.max(0, bl.hitT - dt);
     this.updateProj(dt);
     for (const p of this.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= 1 - 2 * dt; }
@@ -365,11 +372,8 @@ class Battle {
   // 전투 정지 중 진행: 정지 전용 타이머 + 순수 시각 효과 + 결과 처리만
   frozenStep(dt) {
     const F = this.freeze;
-    for (const t of F.timers) t.t -= dt;
-    const due = F.timers.filter(t => t.t <= 0);
-    F.timers = F.timers.filter(t => t.t > 0);
-    due.forEach(t => t.fn());
-    for (const h of STAGE_HOOKS) h.frozenStep && h.frozenStep(this, dt);
+    const due = tickTimers(F, 'timers', dt); if (due) for (const t of due) t.fn();
+    for (const h of HK('frozenStep')) h.frozenStep(this, dt);
     for (const p of this.parts) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; p.vx *= 1 - 2 * dt; }
     this.parts = this.parts.filter(p => p.life > 0);
     for (const t of this.texts) t.t += dt;
@@ -642,7 +646,7 @@ class Battle {
   blockAt(x, y, pad = 0) {
     for (const b of this.buildings) if (!b.dead && x >= b.x - pad && x <= b.x + b.w + pad && y >= b.y - pad && y <= b.y + b.h + pad) return b;
     // 스테이지 고체 장애물 (철망·해치 벽·전광판·정차 열차 벽 등): { stageSolid, hit(dmg, strong, x, y) } → 벽 충돌 규칙을 건물과 똑같이 적용
-    for (const h of STAGE_HOOKS) if (h.solidAt) { const o = h.solidAt(this, x, y, pad); if (o) return o; }
+    for (const h of HK('solidAt')) { const o = h.solidAt(this, x, y, pad); if (o) return o; }
     return null;
   }
   resolveBuildings(u, spawn) {
@@ -745,7 +749,7 @@ class Battle {
   }
 
   bounceWalls(u) {
-    for (const h of STAGE_HOOKS) if (h.noClamp && h.noClamp(this, u)) return;
+    for (const h of HK('noClamp')) if (h.noClamp(this, u)) return;
     const P = this.play || AR, pd = u.pad, L = P.x + 14 + pd, R = P.x + P.w - 14 - pd, T = P.y + 26 + pd, B = P.y + P.h - 8 - pd * 0.5;
     let vx = Math.cos(u.dir), vy = Math.sin(u.dir), hit = false;
     const sides = [];
@@ -1202,7 +1206,7 @@ class Battle {
       const ta = Math.atan2(src.y - tgt.y, src.x - tgt.x), df = Math.abs(Math.atan2(Math.sin(ta - tgt.barrier.ang), Math.cos(ta - tgt.barrier.ang)));
       if (df < 1.2) { const g = this.barrierGeom(tgt); this.barrierHit(tgt, amount, g.cx, g.cy); return 0; }
     }
-    if (!o.dot) for (const h of STAGE_HOOKS) if (h.preDamage) { // 피해 직전 훅: true = 무효, 숫자 = 피해량 변경 (듀얼리스트 크리보/방패/함정 등)
+    if (!o.dot) for (const h of HK('preDamage')) { // 피해 직전 훅: true = 무효, 숫자 = 피해량 변경 (듀얼리스트 크리보/방패/함정 등)
       const r = h.preDamage(this, src, tgt, amount, o); if (r === true) return 0; if (typeof r === 'number' && !o.fixed) amount = r; // o.fixed: 피해 감소 무시 (무효는 적용)
     }
     const hc = this.hitCheck(src, tgt, o);

@@ -641,8 +641,8 @@
       Sfx.stopChar(); // 리플레이 탐색(되감기·하이라이트 이동) 전 재생 중 캐릭터 소리 정지
       T = clamp(T, this.range[0], this.range[1]);
       if (T < battle.time - 1e-6) this.restart();
-      RPQ.quiet = true; Sfx.hold(true); let g = 0;
-      try { while (battle.time < T - 1e-9 && g++ < 200000) { this.step1(); battle.updateVisual(STEP); } } finally { RPQ.quiet = false; Sfx.hold(false); }
+      RPQ.quiet = true; Sfx.hold(true); let g = 0, va = 0; const near = T - 1.5; // 시각 효과(updateVisual: 충격 문양·반동·결정타 연출 시간)는 목표 1.5초 전까지 0.2초씩 몰아서, 그 뒤는 매 스텝 (시뮬과 무관 → 결과 같음, 목표 시점 화면도 같음)
+      try { while (battle.time < T - 1e-9 && g++ < 200000) { this.step1(); va += STEP; if (va >= 0.2 - 1e-9 || battle.time >= near) { battle.updateVisual(va); va = 0; } } if (va > 0) battle.updateVisual(va); } finally { RPQ.quiet = false; Sfx.hold(false); }
       const log = $('#log'); log.innerHTML = fullLog.slice(-logKeep()).map(r => `<div class="logl${r.cls}">${r.html}</div>`).join('');
       updateHud(9); updateHud(9); this.ui();
     },
