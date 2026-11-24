@@ -9,62 +9,101 @@
   try { const c = localStorage.getItem('psEscCam'); if (c) window.ESC_CAM = c; } catch (e) {}
 
   const css = document.createElement('style'); css.textContent = `
-#escape{position:absolute;inset:0;z-index:30;background:rgba(22,24,36,.97);padding:8px 10px;display:flex;flex-direction:column;gap:5px;overflow-y:auto;color:#c9cee0;font-size:11px}
+#escape{position:absolute;inset:0;z-index:30;background:#161824;display:flex;flex-direction:column;color:#c9cee0;font-size:11px;overflow:hidden;overflow-anchor:none}
 #escape.hidden{display:none}
-#escape h1{font-size:16px;color:#ffe27a;margin:0;display:flex;justify-content:space-between;align-items:center}
-#escape .row{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
-#escape button,#escCam{height:24px;padding:0 7px;border-radius:5px;font-size:11px;background:#2e3346;color:#c9cee0;box-shadow:0 2px 0 #14151f;border:0;cursor:pointer}
+#escape h1{flex:none;font-size:14px;color:#ffe27a;margin:0;display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid #2a2f44}
+#escape h1 .tt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default;user-select:none}
+#escape .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+#escape button,#escCam{height:32px;padding:0 9px;border-radius:7px;font-size:12px;background:#2e3346;color:#c9cee0;box-shadow:0 2px 0 #14151f;border:0;cursor:pointer}
+#escape button:disabled{opacity:.35;cursor:default}
 #escape button.on{background:#ffcf4a;color:#2a2010}
 #escape button.go{background:#3bbf7a;color:#08200f;font-weight:bold}
-#escape select,#escape input{height:22px;font-size:11px;background:#262a3c;color:#e0e4f0;border:1px solid #3a4058;border-radius:4px}
-#escape input[type=number]{width:52px}
-#escCv{background:#111;align-self:center;touch-action:none;border:1px solid #3a4058;cursor:crosshair}
-#escMsg{min-height:30px;white-space:pre-wrap;color:#ffe08a;font-size:10px;line-height:1.35}
+#escape h1 button{min-width:34px;font-size:14px}
+#escape h1 button.go{font-size:13px}
+#escape select,#escape input{height:30px;font-size:12px;background:#262a3c;color:#e0e4f0;border:1px solid #3a4058;border-radius:5px}
+#escape input[type=number]{width:58px}
+#escCvW{flex:1 1 0;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;padding:6px;overflow:hidden}
+#escCv{background:#111;touch-action:none;border:1px solid #3a4058;cursor:crosshair;display:block}
+#escMsg{flex:none;height:30px;overflow-y:auto;white-space:pre-wrap;color:#ffe08a;font-size:10px;line-height:1.35;padding:0 10px}
+#escPanel{flex:none;background:#1e2132;border-top:1px solid #2a2f44;padding:7px 8px;max-height:46%;overflow-y:auto;overflow-anchor:none}
+#escPanel .tab{display:none;flex-direction:column;gap:7px}
+#escPanel .tab.on{display:flex}
+#escPanel .tab h4{margin:2px 0 0;font-size:11px;color:#ffe27a;font-weight:normal}
+#escape #escTools{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+#escTools button{flex:0 0 auto;width:54px;height:52px;padding:0;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:10px;line-height:1.1;background:#2a2f44}
+#escTools button i{font-style:normal;font-size:18px;line-height:1.1}
+#escape .seg{display:inline-flex;gap:0;border-radius:7px;overflow:hidden;background:#262a3c}
+#escape .seg button{border-radius:0;box-shadow:none;background:transparent;min-width:36px}
+#escape .seg button.on{background:#ffcf4a}
+#escOpt{min-height:32px}
+#escOpt .o{display:none;gap:6px;align-items:center;flex-wrap:wrap}
+#escOpt .o.on{display:flex}
+#escOpt .hint{color:#8a90a8}
+#escape button.sm{padding:0 7px}
+#escape button.dir{min-width:40px;font-size:16px}
+#escLock.on{background:#ff8a4a;color:#2a1408}
+#escTabs{flex:none;display:flex;background:#12141e;border-top:1px solid #2a2f44}
+#escape #escTabs button{flex:1;height:48px;border-radius:0;box-shadow:none;background:transparent;color:#8a90a8;font-size:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0}
+#escTabs button i{font-style:normal;font-size:17px;line-height:1.1}
+#escape #escTabs button.on{color:#ffcf4a;box-shadow:inset 0 2px 0 #ffcf4a;background:transparent}
+/* 넓은 화면(PC 배치 680×496): 맵은 왼쪽 전체, 오른쪽 열에 안내·패널·탭 */
+body.wb #escape{display:grid;grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto auto minmax(0,1fr) auto;grid-template-areas:"top top" "cv msg" "cv panel" "cv tabs"}
+body.wb #escape h1{grid-area:top}
+body.wb #escCvW{grid-area:cv}
+body.wb #escMsg{grid-area:msg;height:auto;min-height:30px;max-height:72px;padding-top:4px;border-left:1px solid #2a2f44}
+body.wb #escPanel{grid-area:panel;max-height:none;border-top:0;border-left:1px solid #2a2f44}
+body.wb #escTabs{grid-area:tabs;border-left:1px solid #2a2f44}
+body.wb #escape #escTools{flex-wrap:wrap;overflow:visible}
 #escCam{position:absolute;right:6px;bottom:84px;z-index:7;display:none}
 #escNotice{position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);z-index:60;max-width:300px;padding:12px 14px;border-radius:8px;background:rgba(30,26,44,.97);border:2px solid #ffcf4a;color:#ffe9a8;font-size:13px;line-height:1.45;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.6);pointer-events:none}
 #escNotice.hidden{display:none}
-#escOpt{min-height:24px;overflow-anchor:none}
-#escape{overflow-anchor:none}
-#escOpt .o{display:none;gap:4px;align-items:center}
-#escOpt .o.on{display:flex}
-#escape button.sm{padding:0 5px}
-#escape button.dir{min-width:30px;font-size:14px}
-#escLock.on{background:#ff8a4a;color:#2a1408}
-/* 터치 화면·좁은 폭: 편집기 버튼을 손가락 크기로 (높이 36px, 도구 버튼 40px) */
-@media (pointer: coarse), (max-width: 480px) {
- #escape button, #escape select, #escCam { height: 36px; font-size: 12px; }
- #escape input { height: 32px; font-size: 13px; }
- #escape .row { gap: 6px; }
- #escTools button, #escTools2 button, #escBrushRow button, #escOpt button { height: 40px; min-width: 40px; }
- #escape button.dir { min-width: 44px; font-size: 18px; }
 }`;
   document.head.appendChild(css);
 
   const P = document.createElement('div'); P.id = 'escape'; P.className = 'hidden';
   P.innerHTML = `
-<h1>🚪 탈출맵 편집기 <button id="escClose" type="button">메인으로</button></h1>
-<div class="row">이름 <input id="escName" style="width:120px"> 크기 <select id="escSize">${ESCAPE.SIZES.map(s => `<option value="${s[0]}x${s[1]}">${s[0]}×${s[1]} (${s[0] / T}×${s[1] / T}칸)</option>`).join('')}</select></div>
-<div class="row" id="escTools"><button data-t="wall">■ 벽 칠하기</button><button data-t="erase">□ 지우개</button><button data-t="s0">P1 시작</button><button data-t="s1">P2 시작</button><button data-t="exit">🚪 출구</button>
- <select id="escExitSz" title="출구 크기(칸)"><option value="1x1">출구 1×1</option><option value="2x2">출구 2×2</option><option value="3x2">출구 3×2</option><option value="4x3">출구 4×3</option></select><button id="escClear" type="button">전부 비우기</button><button id="escSample" type="button">샘플</button></div>
-<div class="row" id="escTools2"><button data-t="water">💧 물</button><button data-t="oneway">⇧ 일방통행</button><button data-t="brk">🧱 파괴벽</button><button data-t="mvpath">① 움직일 경로</button><button data-t="mvwall">② 움직이는 벽</button></div>
-<div class="row" id="escBrushRow">브러시 <button type="button" data-b="1">1×1</button><button type="button" data-b="2">2×2</button><button type="button" data-b="3">3×3</button><button type="button" data-b="5">5×5</button> <button id="escLock" type="button" title="잠금 (L): 켜면 빈 칸에만 칠함">🔓 잠금 꺼짐</button></div>
+<h1><button id="escClose" type="button" title="메인으로">←</button><span class="tt">🚪 탈출맵 편집기</span><button id="escUndo" type="button" title="되돌리기 (Ctrl+Z)" disabled>↶</button><button id="escRedo" type="button" title="다시하기 (Ctrl+Y)" disabled>↷</button><button id="escRun" class="go" type="button">▶ 실행</button></h1>
+<div id="escCvW"><canvas id="escCv"></canvas></div>
+<div id="escMsg"></div>
+<div id="escPanel">
+<div class="tab on" data-tab="draw">
+<div class="row" id="escTools"><button data-t="wall"><i>■</i>벽</button><button data-t="erase"><i>□</i>지우개</button><button data-t="water"><i>💧</i>물</button><button data-t="oneway"><i>⇧</i>일방통행</button><button data-t="brk"><i>🧱</i>파괴벽</button><button data-t="mvpath"><i>①</i>움직일 경로</button><button data-t="mvwall"><i>②</i>움직이는 벽</button><button data-t="exit"><i>🚪</i>출구</button><button data-t="s0"><i>🔵</i>P1 시작</button><button data-t="s1"><i>🔴</i>P2 시작</button></div>
+<div class="row" id="escBrushRow">브러시 <span class="seg"><button type="button" data-b="1">1×1</button><button type="button" data-b="2">2×2</button><button type="button" data-b="3">3×3</button><button type="button" data-b="5">5×5</button></span> <button id="escLock" type="button" title="잠금 (L): 켜면 빈 칸에만 칠함">🔓 잠금 꺼짐</button></div>
 <div class="row" id="escOpt">
- <span class="o" data-for="oneway">방향 <select id="escDir" hidden><option value="^">↑ 위</option><option value="v">↓ 아래</option><option value="<">← 왼쪽</option><option value=">">→ 오른쪽</option></select><button type="button" class="dir" data-d="^">↑</button><button type="button" class="dir" data-d="v">↓</button><button type="button" class="dir" data-d="<">←</button><button type="button" class="dir" data-d=">">→</button> <span style="color:#8a90a8">키보드 방향키·WASD</span></span>
+ <span class="o" data-for="wall"><span class="hint">칸을 누르거나 끌어서 벽을 칠해요</span></span>
+ <span class="o" data-for="erase"><span class="hint">벽·물·일방통행·파괴벽·움직이는 벽을 지워요</span></span>
+ <span class="o" data-for="oneway">방향 <select id="escDir" hidden><option value="^">↑ 위</option><option value="v">↓ 아래</option><option value="<">← 왼쪽</option><option value=">">→ 오른쪽</option></select><button type="button" class="dir" data-d="^">↑</button><button type="button" class="dir" data-d="v">↓</button><button type="button" class="dir" data-d="<">←</button><button type="button" class="dir" data-d=">">→</button> <span class="hint">키보드 방향키·WASD</span></span>
  <span class="o" data-for="brk"><select id="escBrkM"><option value="hits">부딪힌 횟수</option><option value="hp">내구도(체력)</option></select><input type="number" id="escBrkN" min="1" max="9999" value="3"><button id="escBrk1" class="sm" type="button">즉시 파괴(1회)</button></span>
  <span class="o" data-for="water">물: 느려짐(×${ESCAPE.WATER.spd}) · 산소 ${ESCAPE.WATER.o2}초 뒤 익사 피해 (피해 0이어도 적용)</span>
  <span class="o" data-for="mvpath">칸을 끌어 경로를 그리세요 (되돌아가면 지워짐) <button id="escMvNew" class="sm" type="button">새 경로</button></span>
  <span class="o" data-for="mvwall"><button id="escMvDone" class="go sm" type="button">✔ 벽 완성</button><button id="escMvShClr" class="sm" type="button">모양 지우기</button> 속도 <input type="number" id="escMvSpd" min="20" max="400" value="80"> <select id="escMvMode"><option value="pingpong">왕복</option><option value="loop">순환</option></select></span>
+ <span class="o" data-for="exit">크기 <select id="escExitSz" title="출구 크기(칸)"><option value="1x1">출구 1×1</option><option value="2x2">출구 2×2</option><option value="3x2">출구 3×2</option><option value="4x3">출구 4×3</option></select> <span class="hint">누른 칸이 출구 왼쪽 위</span></span>
+ <span class="o" data-for="s0"><span class="hint">P1(파랑) 시작 칸을 누르세요</span></span>
+ <span class="o" data-for="s1"><span class="hint">P2(빨강) 시작 칸을 누르세요</span></span>
 </div>
-<canvas id="escCv"></canvas>
-<div class="row">캐릭터 <span id="escChars" style="color:#e0e4f0"></span> <span style="color:#8a90a8">(첫 화면에서 고른 캐릭터·타입)</span></div>
+</div>
+<div class="tab" data-tab="rule">
+<div class="row">이름 <input id="escName" style="width:130px"> 크기 <select id="escSize">${ESCAPE.SIZES.map(s => `<option value="${s[0]}x${s[1]}">${s[0]}×${s[1]} (${s[0] / T}×${s[1] / T}칸)</option>`).join('')}</select></div>
+<div class="row">캐릭터 <span id="escChars" style="color:#e0e4f0"></span> <span class="hint" style="color:#8a90a8">(첫 화면에서 고른 캐릭터·타입)</span></div>
 <div class="row">승리 <select id="escGoal"><option value="race">먼저 도착한 쪽</option><option value="coop">둘 다 도착(협동)</option></select>
  <label><input type="checkbox" id="escNoDmg">서로 피해 0</label><label><input type="checkbox" id="escNoAtk">공격 불가</label></div>
-<div class="row">속도 <select id="escSpd"><option>0.5</option><option>0.75</option><option selected>1</option><option>1.5</option><option>2</option></select>
- 제한 <input type="number" id="escTime" min="10" max="${ESCAPE.MAX_TIME}">초 시드 <input type="number" id="escSeed" style="width:86px"></div>
+<div class="row">속도 <select id="escSpd"><option>0.5</option><option>0.75</option><option selected>1</option><option>1.5</option><option>2</option></select> 제한 <input type="number" id="escTime" min="10" max="${ESCAPE.MAX_TIME}">초</div>
 <div class="row">카메라 <select id="escCamSel"><option value="fit">두 캐릭터 맞춤</option><option value="p0">P1 따라가기</option><option value="p1">P2 따라가기</option></select></div>
-<div class="row"><button id="escCheck" type="button">✔ 클리어 검사</button><button id="escSeedFind" type="button">🎲 시드 탐색(20개)</button><button id="escRun" class="go" type="button">▶ 탈출 실행</button></div>
+<div class="row">맵 <button id="escClear" type="button">전부 비우기</button><button id="escSample" type="button">샘플</button></div>
+</div>
+<div class="tab" data-tab="test">
+<div class="row">시드 <input type="number" id="escSeed" style="width:96px"></div>
+<div class="row"><button id="escCheck" type="button">✔ 클리어 검사</button><button id="escSeedFind" type="button">🎲 시드 탐색(20개)</button></div>
+<div id="escPv" class="hidden" style="display:none;gap:6px;align-items:center"><canvas id="escPvCv" width="256" height="192" style="width:128px;height:96px;border-radius:4px;border:1px solid #4a5170"></canvas><div id="escPvCap" style="font-size:10px;color:#a9afc6;line-height:1.35"></div></div>
+</div>
+<div class="tab" data-tab="file">
+<h4>내 기기</h4>
 <div class="row"><button id="escSave" type="button">💾 저장</button><select id="escList"></select><button id="escLoad" type="button">불러오기</button><button id="escDel" type="button">삭제</button><button id="escExp" type="button">⬇ 내보내기</button><button id="escImp" type="button">⬆ 가져오기</button><input id="escFile" type="file" accept=".json,.psescape,application/json" hidden></div>
-<div id="escMsg"></div><div id="escPv" class="hidden" style="display:none;gap:6px;align-items:center"><canvas id="escPvCv" width="256" height="192" style="width:128px;height:96px;border-radius:4px;border:1px solid #4a5170"></canvas><div id="escPvCap" style="font-size:10px;color:#a9afc6;line-height:1.35"></div></div>`;
+<h4>온라인</h4>
+<div class="row" id="escNetSlot"></div>
+</div>
+</div>
+<div id="escTabs"><button type="button" data-tab="draw" class="on"><i>✏️</i>그리기</button><button type="button" data-tab="rule"><i>⚙️</i>규칙</button><button type="button" data-tab="test"><i>✔</i>검사·시드</button><button type="button" data-tab="file"><i>💾</i>저장·공유</button></div>`;
   $('#stage').appendChild(P);
   const N = document.createElement('div'); N.id = 'escNotice'; N.className = 'hidden'; $('#stage').appendChild(N);
   // 안내는 클릭을 가로채지 않음 (pointer-events:none), 3.2초 뒤 자동으로 사라짐
@@ -82,12 +121,29 @@
   $('#rpLoad').after(ent);
   ent.onclick = () => { if (!sel().chars) return notice(NEED); open(); };
 
-  const cv = $('#escCv'), cx = cv.getContext('2d');
+  const cv = $('#escCv'), cx = cv.getContext('2d'), cvW = $('#escCvW');
+  // ---------- 되돌리기 / 다시하기: 편집 한 번(드래그 한 번, 버튼 한 번, 설정 바꾸기 한 번) = 한 단계, 최대 100단계 ----------
+  // 스냅샷 = 맵 전체 + 그리는 중인 경로(draft)·벽 모양(shape). 바뀐 게 없으면 단계를 만들지 않음
+  const UNDO_MAX = 100, undoS = [], redoS = []; let pre = null;
+  const snap = () => JSON.stringify({ map, draft, shape });
+  function updUndo() { $('#escUndo').disabled = !undoS.length; $('#escRedo').disabled = !redoS.length; }
+  function begin() { if (pre == null) pre = snap(); }
+  function commit() { if (pre == null) return; const now = snap(); if (now !== pre) { undoS.push(pre); if (undoS.length > UNDO_MAX) undoS.shift(); redoS.length = 0; } pre = null; updUndo(); }
+  const edit = f => (...a) => { begin(); try { return f(...a); } finally { commit(); } };
+  function restore(str) { const o = JSON.parse(str); map = ESCAPE.normalize(o.map); draft = o.draft; shape = o.shape; paint = null; toUI(); fromUI(); }
+  function undo() { if (paint || !undoS.length) return; stopSearch(); redoS.push(snap()); restore(undoS.pop()); updUndo(); msg(`↶ 되돌림 (남은 ${undoS.length}단계)`); }
+  function redo() { if (paint || !redoS.length) return; stopSearch(); undoS.push(snap()); restore(redoS.pop()); updUndo(); msg('↷ 다시함'); }
+  // ---------- 하단 탭 ----------
+  function setTab(k) { P.querySelectorAll('#escTabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === k)); P.querySelectorAll('#escPanel .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === k)); $('#escPanel').scrollTop = 0; }
+  P.querySelectorAll('#escTabs [data-tab]').forEach(b => b.onclick = () => setTab(b.dataset.tab));
+  { const tl = $('#escTools'); tl.addEventListener('wheel', e => { if (tl.scrollWidth > tl.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); tl.scrollLeft += e.deltaY; } }, { passive: false }); } // PC: 도구 줄을 마우스 휠로 가로 스크롤
+  // 패널 높이·창 크기가 바뀌면 맵 캔버스를 남은 영역에 다시 맞춤
+  if (window.ResizeObserver) new ResizeObserver(() => { if (!P.classList.contains('hidden') && map) { resize(); draw(); } }).observe(cvW);
+  else window.addEventListener('resize', () => { if (!P.classList.contains('hidden')) { resize(); draw(); } });
   // 안내 문구: 버튼으로 시작한 결과(검사·시드 탐색 등)만 문구 쪽으로 스크롤. 캔버스를 칠하는 중(onCv)에는 스크롤하지 않고, 문구가 화면 밖이면 잠깐 뜨는 알림으로 보여줌
   let onCv = false; const quiet = f => () => { onCv = true; try { f(); } finally { onCv = false; } }; // 편집 도구 버튼(벽 완성 등)도 스크롤하지 않음
-  const msg = t => { const e = $('#escMsg'); e.textContent = t;
-    if (!onCv) { if (e.scrollIntoView) e.scrollIntoView({ block: 'nearest' }); return; }
-    const a = e.getBoundingClientRect(), b = P.getBoundingClientRect(); if (a.top < b.top || a.bottom > b.bottom) notice(t); };
+  const msg = t => { const e = $('#escMsg'); e.textContent = t; e.scrollTop = 0; // 안내 줄은 맵 바로 아래(넓은 화면은 오른쪽 위)에 늘 보임
+    const a = e.getBoundingClientRect(), b = P.getBoundingClientRect(); if (!P.classList.contains('hidden') && (a.height < 4 || a.top < b.top || a.bottom > b.bottom)) notice(t); };
   const cols = () => map.grid[0].length, rows = () => map.grid.length;
   const isWall = (c, r) => map.grid[r] && map.grid[r][c] === '#';
   const brkAt = (c, r) => (map.breakables || []).findIndex(k => k.c === c && k.r === r);
@@ -121,7 +177,11 @@
     const L = draft[draft.length - 1]; if (!L) return step(c, r);
     let [cc, rr] = L; while (cc !== c) { cc += Math.sign(c - cc); step(cc, rr); } while (rr !== r) { rr += Math.sign(r - rr); step(cc, rr); }
   }
-  function resize() { sc = Math.min(336 / map.w, 300 / map.h); cv.width = Math.round(map.w * sc); cv.height = Math.round(map.h * sc); }
+  // 맵 캔버스: 남은 영역(#escCvW)에 맞춰 화면 크기, 내부 해상도는 Q배 (선 굵기는 화면 픽셀 기준 * Q / sc)
+  const Q = 2;
+  function resize() { const W = cvW.clientWidth - 14, H = cvW.clientHeight - 14, k = W > 40 && H > 40 ? Math.min(W / map.w, H / map.h) : Math.min(336 / map.w, 300 / map.h);
+    const w = Math.max(1, Math.floor(map.w * k)), h = Math.max(1, Math.floor(map.h * k)); sc = k * Q;
+    if (cv.width !== w * Q || cv.height !== h * Q) { cv.width = w * Q; cv.height = h * Q; } cv.style.width = w + 'px'; cv.style.height = h + 'px'; }
   function charsTxt() { const s = sel(); return s.chars ? `P1 ${s.names[0]} · P2 ${s.names[1]} · ${s.mode}타입` : '⚠ 미선택'; }
   function toUI() {
     $('#escName').value = map.name; $('#escSize').value = map.w + 'x' + map.h; $('#escChars').textContent = charsTxt();
@@ -140,10 +200,13 @@
   }
   P.addEventListener('change', e => {
     const id = e.target.id; if (id === 'escCamSel') return setCam(e.target.value); if (id === 'escList' || id === 'escFile') return;
+    begin(); try { onChange(id, e); } finally { commit(); }
+  });
+  function onChange(id, e) {
     if (id === 'escSize') { const [w, h] = e.target.value.split('x').map(Number); map.w = w; map.h = h; map = ESCAPE.normalize(map); resize(); } // 격자는 잘리거나 빈칸으로 늘어남
     if (id === 'escExitSz') { const [a, c] = e.target.value.split('x').map(Number); map.exit.w = a * T; map.exit.h = c * T; }
     fromUI(); draw();
-  });
+  }
   function draw() {
     cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = '#2b2f3f'; cx.fillRect(0, 0, cv.width, cv.height);
     cx.setTransform(sc, 0, 0, sc, 0, 0);
@@ -156,18 +219,18 @@
     drawPath(draft, 'rgba(120,255,255,.9)');
     if (draft && draft.length) { const a = draft[0], z = draft[draft.length - 1]; // 기준 칸(경로 시작) ◎ + 그리는 모양 + 경로 끝에 도착했을 때 모양(점선)
       if (shape) { cx.fillStyle = 'rgba(120,255,255,.45)'; for (const [c, r] of shape) cx.fillRect(c * T + 1, r * T + 1, T - 2, T - 2);
-        if (draft.length >= 2) { cx.strokeStyle = 'rgba(120,255,255,.8)'; cx.lineWidth = 2 / sc; cx.setLineDash([5 / sc, 4 / sc]); for (const [c, r] of shape) cx.strokeRect((c + z[0] - a[0]) * T + 2, (r + z[1] - a[1]) * T + 2, T - 4, T - 4); cx.setLineDash([]); } }
+        if (draft.length >= 2) { cx.strokeStyle = 'rgba(120,255,255,.8)'; cx.lineWidth = 2 * Q / sc; cx.setLineDash([5 * Q / sc, 4 * Q / sc]); for (const [c, r] of shape) cx.strokeRect((c + z[0] - a[0]) * T + 2, (r + z[1] - a[1]) * T + 2, T - 4, T - 4); cx.setLineDash([]); } }
       cx.strokeStyle = '#fff'; cx.lineWidth = 3; cx.beginPath(); cx.arc(a[0] * T + T / 2, a[1] * T + T / 2, T * 0.32, 0, Math.PI * 2); cx.stroke(); }
     else if (shape) { cx.fillStyle = 'rgba(120,255,255,.45)'; for (const [c, r] of shape) cx.fillRect(c * T + 1, r * T + 1, T - 2, T - 2); }
     if (hover && SIZE_TOOLS.includes(tool)) { const C = brushCells(hover[0], hover[1]); if (C.length) { let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1; for (const [x, y] of C) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
-      cx.fillStyle = tool === 'erase' ? 'rgba(255,90,90,.18)' : 'rgba(255,255,255,.14)'; cx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); cx.strokeStyle = tool === 'erase' ? '#ff7a7a' : (lock ? '#ff8a4a' : '#ffe27a'); cx.lineWidth = 2 / sc; cx.strokeRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); } }
+      cx.fillStyle = tool === 'erase' ? 'rgba(255,90,90,.18)' : 'rgba(255,255,255,.14)'; cx.fillRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); cx.strokeStyle = tool === 'erase' ? '#ff7a7a' : (lock ? '#ff8a4a' : '#ffe27a'); cx.lineWidth = 2 * Q / sc; cx.strokeRect(x0 * T, y0 * T, (x1 - x0 + 1) * T, (y1 - y0 + 1) * T); } }
     cx.textAlign = 'left'; cx.textBaseline = 'alphabetic';
-    cx.strokeStyle = 'rgba(255,255,255,0.07)'; cx.lineWidth = 1 / sc; cx.beginPath();
+    cx.strokeStyle = 'rgba(255,255,255,0.07)'; cx.lineWidth = 1 * Q / sc; cx.beginPath();
     for (let x = 0; x <= map.w; x += T) { cx.moveTo(x, 0); cx.lineTo(x, map.h); } for (let y = 0; y <= map.h; y += T) { cx.moveTo(0, y); cx.lineTo(map.w, y); } cx.stroke();
     cx.strokeStyle = 'rgba(255,220,120,0.25)'; cx.strokeRect(0, 0, 360, 640); // 기존 화면 1장 크기 참고
-    const X = map.exit; cx.fillStyle = 'rgba(60,220,140,.45)'; cx.fillRect(X.x, X.y, X.w, X.h); cx.strokeStyle = '#7dffb0'; cx.lineWidth = 2 / sc; cx.strokeRect(X.x, X.y, X.w, X.h);
+    const X = map.exit; cx.fillStyle = 'rgba(60,220,140,.45)'; cx.fillRect(X.x, X.y, X.w, X.h); cx.strokeStyle = '#7dffb0'; cx.lineWidth = 2 * Q / sc; cx.strokeRect(X.x, X.y, X.w, X.h);
     map.starts.forEach((s, i) => { cx.fillStyle = i ? '#ff8a8a' : '#8ab4ff'; cx.beginPath(); cx.arc(s.x, s.y, T * 0.38, 0, Math.PI * 2); cx.fill(); });
-    document.querySelectorAll('#escTools [data-t],#escTools2 [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === tool));
+    document.querySelectorAll('#escTools [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === tool));
     document.querySelectorAll('#escOpt .o').forEach(o => o.classList.toggle('on', o.dataset.for === tool));
   }
   const tileAt = e => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / r.width * map.w / T), Math.floor((e.clientY - r.top) / r.height * map.h / T)]; };
@@ -213,7 +276,7 @@
   }
   cv.addEventListener('pointerdown', e => {
     e.preventDefault(); try { cv.setPointerCapture(e.pointerId); } catch (er) {}
-    onCv = true; const t = tileAt(e); paint = ['wall', 'erase', 'water', 'oneway', 'brk', 'mvpath', 'mvwall'].includes(tool) ? t : null;
+    begin(); onCv = true; const t = tileAt(e); paint = ['wall', 'erase', 'water', 'oneway', 'brk', 'mvpath', 'mvwall'].includes(tool) ? t : null;
     if (tool === 'mvwall') { shMode = shIdx(t[0], t[1]) >= 0 ? 'del' : 'add'; shWarn = ''; }
     applyTool(t[0], t[1]); map = ESCAPE.normalize(map); draw();
   });
@@ -229,9 +292,9 @@
     if (paint) { paint = null; fromUI(); draw(); } else fromUI();
     if (was === 'mvpath' && draft && draft.length >= 2) msg(`경로 ${draft.length}칸. 이제 ② 움직이는 벽을 누르고, 경로 시작 칸(◎) 둘레에 벽 모양을 칠한 뒤 ✔ 벽 완성을 누르세요`);
     if (was === 'mvwall') { if (shWarn) msg(shWarn); else if (shape) msg(`벽 모양 ${shape.length}칸 (◎ 기준, 점선 = 경로 끝에 도착했을 때). 다 그렸으면 ✔ 벽 완성 · 칸을 다시 누르거나 지우개로 빼기`); }
-    onCv = false; };
+    onCv = false; commit(); };
   cv.addEventListener('pointerup', endPaint); cv.addEventListener('pointercancel', endPaint);
-  document.querySelectorAll('#escTools [data-t],#escTools2 [data-t]').forEach(b => b.onclick = () => { tool = b.dataset.t; draw(); });
+  document.querySelectorAll('#escTools [data-t]').forEach(b => b.onclick = () => { tool = b.dataset.t; draw(); });
   document.querySelectorAll('#escBrushRow [data-b]').forEach(b => b.onclick = () => { setBrush(+b.dataset.b); draw(); });
   $('#escLock').onclick = () => { setLock(!lock); draw(); };
   document.querySelectorAll('#escOpt [data-d]').forEach(b => b.onclick = () => { setDir(b.dataset.d); });
@@ -239,19 +302,21 @@
   // 키보드: 방향키·WASD → 일방통행 도구로 바꾸고 그 방향 선택, L → 잠금 토글. 편집기가 열려 있고 입력칸에 포커스가 없을 때만
   const KEYDIR = { ArrowUp: '^', ArrowDown: 'v', ArrowLeft: '<', ArrowRight: '>', w: '^', s: 'v', a: '<', d: '>' };
   document.addEventListener('keydown', e => {
-    if (P.classList.contains('hidden') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (P.classList.contains('hidden') || e.altKey) return;
     const t = e.target, tag = t && t.tagName; if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
     const net = document.querySelector('#escNet'); if (net && !net.classList.contains('hidden')) return; // 목록·올리기 화면 위에서는 무시
+    if (e.ctrlKey || e.metaKey) { const z = e.key.toLowerCase(); if (z === 'z' && !e.shiftKey) { e.preventDefault(); undo(); } else if (z === 'y' || (z === 'z' && e.shiftKey)) { e.preventDefault(); redo(); } return; }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key, d = KEYDIR[k];
-    if (d) { e.preventDefault(); tool = 'oneway'; setDir(d); draw(); return; }
+    if (d) { e.preventDefault(); tool = 'oneway'; setDir(d); setTab('draw'); draw(); return; }
     if (k === 'l') { e.preventDefault(); setLock(!lock); draw(); }
   });
-  $('#escMvDone').onclick = quiet(finishMover);
-  $('#escMvShClr').onclick = quiet(() => { shape = null; draw(); msg('벽 모양을 지웠어요'); });
-  $('#escMvNew').onclick = quiet(() => { draft = null; shape = null; draw(); msg('새 경로: 칸을 끌어 그리세요'); });
+  $('#escMvDone').onclick = quiet(edit(finishMover));
+  $('#escMvShClr').onclick = quiet(edit(() => { shape = null; draw(); msg('벽 모양을 지웠어요'); }));
+  $('#escMvNew').onclick = quiet(edit(() => { draft = null; shape = null; draw(); msg('새 경로: 칸을 끌어 그리세요'); }));
   $('#escBrk1').onclick = quiet(() => { $('#escBrkM').value = 'hits'; $('#escBrkN').value = 1; msg('즉시 파괴: 한 번 부딪히면 부서지는 벽'); });
-  $('#escClear').onclick = () => { map.grid = ESCAPE.emptyGrid(cols(), rows()); delete map.breakables; delete map.movers; draft = null; shape = null; map = ESCAPE.normalize(map); fromUI(); draw(); };
-  $('#escSample').onclick = () => { map = ESCAPE.sampleMap(); toUI(); fromUI(); };
+  $('#escClear').onclick = edit(() => { map.grid = ESCAPE.emptyGrid(cols(), rows()); delete map.breakables; delete map.movers; draft = null; shape = null; map = ESCAPE.normalize(map); fromUI(); draw(); });
+  $('#escSample').onclick = edit(() => { map = ESCAPE.sampleMap(); toUI(); fromUI(); });
+  $('#escUndo').onclick = undo; $('#escRedo').onclick = redo;
   $('#escClose').onclick = () => { stopSearch(); P.classList.add('hidden'); window.leaveEscape && leaveEscape(); $('#select').classList.remove('hidden'); };
 
   // 실행 전 조건 검사: 실패 이유를 화면에 표시
@@ -300,11 +365,11 @@
   const store = () => { try { return JSON.parse(localStorage.getItem(LS) || '{}'); } catch (e) { return {}; } };
   function list() { const S = store(); $('#escList').innerHTML = Object.keys(S).map(k => `<option>${k.replace(/</g, '&lt;')}</option>`).join('') || '<option value="">(저장 없음)</option>'; }
   $('#escSave').onclick = () => { const m = fromUI(), S = store(); S[m.name] = m; try { localStorage.setItem(LS, JSON.stringify(S)); msg('저장됨: ' + m.name); } catch (e) { msg('저장 실패: ' + e.message); } list(); };
-  $('#escLoad').onclick = () => { const S = store(), k = $('#escList').value; if (!S[k]) return; try { map = ESCAPE.normalize(S[k]); toUI(); fromUI(); msg('불러옴: ' + k); } catch (e) { msg('⚠ 불러오기 실패: ' + e.message); } };
+  $('#escLoad').onclick = edit(() => { const S = store(), k = $('#escList').value; if (!S[k]) return; try { map = ESCAPE.normalize(S[k]); toUI(); fromUI(); msg('불러옴: ' + k); } catch (e) { msg('⚠ 불러오기 실패: ' + e.message); } });
   $('#escDel').onclick = () => { const S = store(), k = $('#escList').value; if (!S[k]) return; delete S[k]; try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { msg('삭제 실패: ' + e.message); } list(); };
   $('#escExp').onclick = () => { const m = fromUI(), a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([ESCAPE.toJSON(m)], { type: 'application/json' })); a.download = (m.name || 'escape').replace(/[\\/:*?"<>|]/g, '_') + '.psescape.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); };
   $('#escImp').onclick = () => $('#escFile').click();
-  $('#escFile').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { map = ESCAPE.normalize(t); toUI(); fromUI(); msg('가져옴: ' + map.name + (JSON.parse(t).grid ? '' : ' (구버전 사각형 벽 → 타일로 변환)')); }).catch(err => msg('가져오기 실패: ' + err.message)); e.target.value = ''; };
+  $('#escFile').onchange = e => { const f = e.target.files[0]; if (!f) return; f.text().then(t => { begin(); map = ESCAPE.normalize(t); toUI(); fromUI(); msg('가져옴: ' + map.name + (JSON.parse(t).grid ? '' : ' (구버전 사각형 벽 → 타일로 변환)')); commit(); }).catch(err => { pre = null; msg('가져오기 실패: ' + err.message); }); e.target.value = ''; };
   function open() { N.classList.add('hidden'); $('#select').classList.add('hidden'); P.classList.remove('hidden'); setCam(window.ESC_CAM || 'fit'); toUI(); }
-  window.ESC_UI = { open, notice, why: m => why(m), current: () => fromUI(), msg, get map() { return map; }, set map(m) { map = ESCAPE.normalize(m); toUI(); fromUI(); } };
+  window.ESC_UI = { open, notice, why: m => why(m), current: () => fromUI(), msg, get map() { return map; }, set map(m) { begin(); map = ESCAPE.normalize(m); toUI(); fromUI(); commit(); } };
 })();

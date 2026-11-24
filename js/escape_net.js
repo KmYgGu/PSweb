@@ -195,7 +195,7 @@
   // ---------- 편집기에 버튼 추가 ----------
   const row = el('div', { className: 'row' }, [btn('🌐 공개 맵 목록', openList), btn('⬆ 맵 올리기', openUpload)]);
   row.children[0].id = 'escNetList'; row.children[1].id = 'escNetUp';
-  const runRow = $('#escRun').parentNode; runRow.parentNode.insertBefore(row, runRow.nextSibling);
+  const slot = $('#escNetSlot'); if (slot) slot.replaceWith(row); else { const runRow = $('#escRun').parentNode; runRow.parentNode.insertBefore(row, runRow.nextSibling); } // 편집기 '저장·공유' 탭의 온라인 줄
   let taps = []; $('#escape h1').addEventListener('click', e => { if (e.target.tagName === 'BUTTON') return; const t = Date.now(); taps = taps.filter(x => t - x < 2000); taps.push(t); if (taps.length >= 5) { taps = []; openAdmin(); } });
   $('#escNetTabList').onclick = openList; $('#escNetTabUp').onclick = openUpload;
   window.ESC_NET = { openList, openUpload, openAdmin, pvCanvas };
