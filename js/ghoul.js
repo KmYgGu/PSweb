@@ -336,7 +336,7 @@
       summon(b, u, 'sitri', p.x, p.y, { dur: 6 });
     }, { tags: ['control'], score: S => 10 + (S.e && charmGender(S.e) === 'male' ? 6 : 0) }),
     mon(17, '엑소시스터 이렌느', 4, 1400, 'light', '5초간 모든 디버프 면역 + 현재 디버프 해제.', ctx => {
-      const { b, u } = ctx; u.gImmune = b.time + 5; u.statuses = u.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive);
+      const { b, u } = ctx; u.gImmune = b.time + 5; b.removeStatuses(u, s => !(STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive));
       b.ring(u.x, u.y - 18, 6, 36, 0.5, '#f0f4ff'); ctx.text('디버프 면역!', '#f0f4ff');
     }, { tags: ['defense'], score: S => (S.u.statuses.length ? 20 : -6) + (S.oppStatusHeavy ? 6 : 0) }),
     mon(18, '다이놀피어 켄트레기나', 6, 2400, 'slash', '클로 베기 (부채꼴 115, 시전 위치 고정). 남은 LP 비율에 비례: ATK×(0.5 + 1.0×LP%).', ctx => {

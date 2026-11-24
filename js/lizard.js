@@ -97,8 +97,8 @@
 
   // ---------- 지나가는 길의 부서지는 오브젝트: 즉시 파괴, 튕기지 않고 그대로 직진 ----------
   // 대상: 건물·군장 등 내구도 있는 장애물(b.buildings, 부서지지 않는 지형·냉장고·빈 공간·암반 등 solid/수명 지형 제외), 스트리트 철망 칸.
-  //  얼음 동굴 외벽(깨지면 크레바스)·해치·전광판·열차 같은 고정 구조물은 대상 아님
-  const breakable = bl => bl && !bl.dead && (bl.stageSolid ? bl.stageSolid === 'fence' : (!bl.solid && bl.life == null && bl.hp > 0 && bl.hp < 1e6));
+  //  얼음 동굴 외벽(깨지면 크레바스)·해치·전광판·열차 같은 고정 구조물은 대상 아님. 탈출맵 파괴벽(escBreak: hp·hits)도 아님 → 일반 충돌처럼 튕기며 평소 피해/횟수만
+  const breakable = bl => bl && !bl.dead && !bl.escBreak && (bl.stageSolid ? bl.stageSolid === 'fence' : (!bl.solid && bl.life == null && bl.hp > 0 && bl.hp < 1e6));
   const oRB = Battle.prototype.resolveBuildings;
   Battle.prototype.resolveBuildings = function (u, spawn) {
     if (isL(u) && !spawn && !u.dead && !u.airborne && !u.hidden) {

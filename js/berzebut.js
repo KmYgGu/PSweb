@@ -75,7 +75,7 @@
   SKILLS.bzHole = {
     desc: '그 자리에 고정되어(상태이상 면역) 상대와 맵 밖의 물건들을 천천히 빨아들입니다. 상대가 공격하면 시전 시간이 줄어듭니다. 날아오는 물건에 맞은 상대는 기절(근접 공격이 준비돼 있으면 바로 부숨). 빨아들인 물건 수·시전 시간만큼 강한 내뱉기, 상대를 삼켰다면 마력을 회복하고 크게 뱉어냅니다.',
     canUse: (u, e, d) => d < 260 && !u.airborne && affordable(u, e, d, u.skills.find(s => s.id === 'bzHole').cost),
-    use(u, e0, b, slot) { const S = slot; spend(b, u, S.cost); B(u).holdOff = false; B(u).holdT = null; /* 홀 시전 → 비축 상태 초기화 */ u.statuses = u.statuses.filter(s => (STATUS_DEFS[s.id] || {}).positive);
+    use(u, e0, b, slot) { const S = slot; spend(b, u, S.cost); B(u).holdOff = false; B(u).holdT = null; /* 홀 시전 → 비축 상태 초기화 */ b.removeStatuses(u, s => !(STATUS_DEFS[s.id] || {}).positive);
       const H = u.bzHole = { t: 0, dur: S.dur, objs: [], got: 0, spawnT: 0.05, swallowed: null };
       u.action = { type: 'bzHole', step(dt) {
         const e = foeOf(b, u); H.t += dt; H.spawnT -= dt;
@@ -185,7 +185,7 @@
   const oKill = Battle.prototype.kill; Battle.prototype.kill = function (tgt, src) { // 근성
     if (isBz(tgt) && !tgt.dead && tgt.bz && !tgt.bz.grit && !tgt.bz.tired && tgt.bz.mana > 0 && !this.over && !(this.freeze && this.freeze.allowKill === false)) {
       const Z = tgt.bz; Z.grit = true; Z.dry = true; tgt.hp = Math.max(1, Math.round(tgt.maxHp * Z.mana / MANA.max));
-      tgt.statuses = tgt.statuses.filter(s => (STATUS_DEFS[s.id] || {}).positive);
+      this.removeStatuses(tgt, s => !(STATUS_DEFS[s.id] || {}).positive);
       this.text(tgt.x, tgt.y - 80, '근성!', '#ffd0f0', 14); this.glow(tgt.x, tgt.y - 20, 50, '#ffd0f0', 0.6); this.shock(tgt.x, tgt.y - 18, 6, 50, '#ffd0f0', 0.5, 5); this.hitstop(0.2);
       this.hooks.onSystem && this.hooks.onSystem(`베르제브트 근성! 체력 ${tgt.hp}로 부활 (이후 마력 고갈 시 회복 불가)`);
       this.say(tgt, 'grit'); return; }

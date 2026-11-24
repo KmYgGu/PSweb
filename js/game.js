@@ -917,6 +917,14 @@ class Battle {
     if (Math.random() < 0.5) this.dust(u.x, u.y);
     if (a.t > (a.maxT || 2.5)) { u.action = null; if (a.pin) this.releasePin(e); }
   }
+  // 상태 해제(정화·부스터·변신 등): pred(s) 가 참인 상태를 지우고 남은 순서는 그대로, 지운 상태의 종료 처리(onExpire)를 실행 (시간 만료와 같게). 지운 목록 반환
+  removeStatuses(u, pred) {
+    let gone = null; const keep = [];
+    for (const s of u.statuses) { if (pred(s)) (gone || (gone = [])).push(s); else keep.push(s); }
+    if (!gone) return []; u.statuses = keep;
+    for (const s of gone) { const d = STATUS_DEFS[s.id]; d && d.onExpire && d.onExpire(u, this, s); }
+    return gone;
+  }
   releasePin(e) { e.statuses = e.statuses.filter(s => s.id !== 'pin'); }
   chargeImpact(u, e, a, w, front) {
     charSfx(u, 'chargeImpact'); // 돌진 충돌 (라인하르트 돌진쾅)

@@ -108,7 +108,7 @@
     const S = L.stats, ratio = u.hp / u.maxHp; // 현재 체력 비율 유지 (회복 없음)
     u.st.hp = S.hp; u.maxHp = S.hp; u.hp = Math.max(1, ratio * S.hp); u.st.atk = S.atk; u.st.def = S.def; u.st.spd *= B.spd; u.st.atkRate *= B.atkRate; u.st.crit = (u.st.crit || 0) * (B.crit || 1); /* 치명타 확률 ×2 (배율은 그대로) */
     u.skills = L.skills; u.skillT = u.skills.map(s => s.cd * rand(0.12, 0.3));
-    u.statuses = u.statuses.filter(s => STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive); // 해로운 상태 정화
+    b.removeStatuses(u, s => !(STATUS_DEFS[s.id] && STATUS_DEFS[s.id].positive)); // 해로운 상태 정화 (종료 처리 포함)
     u.buffs.push({ type: 'lssAura', name: '전설의 슈퍼사이어인', t: 1e9, nodispel: true, statusResist: B.statusResist });
     u.nBuffs = u.buffs.length; // 변신 버프는 'buffed' 대사 없이
     u.action = { type: 'wind', t: 0.9 }; // 기를 끌어올림

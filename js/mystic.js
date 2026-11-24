@@ -130,7 +130,7 @@
     u.mPrev = [u.x, u.y];
     for (const [x, y] of [[fx[0], fx[1]], [fx[2], fx[3]]]) { b.smoke && b.smoke(x, y - 18, '#d890ff', 6); b.shock(x, y, 4, 26, '#d890ff', 0.35, 3); }
     const bad = u.statuses.filter(s => { const d = STATUS_DEFS[s.id]; return d && !d.positive; });
-    u.statuses = u.statuses.filter(s => !bad.includes(s));
+    b.removeStatuses(u, s => bad.includes(s)); // 종료 처리 포함 (아래에서 src 에게 다시 걸림)
     const moved = [];
     for (const s of bad) { const n = b.applyStatus(src, s.id, s.t, u, { power: s.power }); if (n) moved.push(STATUS_DEFS[s.id].name); }
     b.text(u.x, u.y - 66, '리플레이스!', '#e0b0ff', 11);

@@ -261,7 +261,7 @@
     clearAilments(b, D, full = true) {
       for (const u of b.u) {
         if (u.dead) continue;
-        if (u.statuses.length) u.statuses = u.statuses.filter(s => { const d = STATUS_DEFS[s.id]; return d && (d.positive || KEEP_ST.has(s.id)); });
+        if (u.statuses.length) b.removeStatuses(u, s => { const d = STATUS_DEFS[s.id]; return !(d && (d.positive || KEEP_ST.has(s.id))); });
         if (!full) continue;
         if (u.action && u.action.pin && u.action.tgt) b.releasePin(u.action.tgt);
         u.action = null; u.push = null; u.pull = null; u.kx = 0; u.ky = 0; u.bsV = null;

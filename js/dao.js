@@ -34,7 +34,7 @@
   // ---------- 부스터 ----------
   function boostOn(b, u) {
     u.res.boost = 0; u.daoBoost = { left: D.boost.len }; u.buffs.push({ type: 'daoBoost', name: '부스터', t: 1e9, nodispel: true, spdMul: D.boost.spdMul });
-    u.statuses = u.statuses.filter(s => { const d = STATUS_DEFS[s.id]; return !d || d.positive; }); // 부스터 순간 해로운 상태 해제
+    b.removeStatuses(u, s => { const d = STATUS_DEFS[s.id]; return !(!d || d.positive); }); // 부스터 순간 해로운 상태 해제 (종료 처리 포함)
     voice(b, u, '부스터!', CYAN, 12); b.shock(u.x, u.y - 10, 4, 34, CYAN, 0.3, 3); b.stats.daoBoost = (b.stats.daoBoost || 0) + 1;
   }
   function boostOff(b, u, why) { if (!u.daoBoost) return; u.daoBoost = null; u.buffs = u.buffs.filter(x => x.type !== 'daoBoost'); if (why) b.text(u.x, u.y - 60, why, '#bfe8ff', 9); }

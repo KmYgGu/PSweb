@@ -151,7 +151,7 @@
   };
   function enrage(b, u, src) {
     u.action = null; u.push = null; u.pull = null; u.kx = u.ky = 0;
-    u.statuses = u.statuses.filter(s => { const d = STATUS_DEFS[s.id]; return !d || d.positive || !(d.blocksAct || d.blocksMove); });
+    b.removeStatuses(u, s => { const d = STATUS_DEFS[s.id]; return !(!d || d.positive || !(d.blocksAct || d.blocksMove)); });
     const old = u.buff('jsAnger'); if (old) old.t = D.anger.dur; else u.buffs.push({ type: 'jsAnger', name: '빡침', t: D.anger.dur, meleeRateMul: D.anger.rate, nodispel: true });
     u.atkT = Math.min(u.atkT, 0.1); u.dir = angTo(u, src);
     b.text(u.x, u.y - 78, '…뭐라고?', '#ff4a4a', 12); b.shock(u.x, u.y - 18, 6, 44, '#ff4a4a', 0.4, 4); b.shake(2); b.hitstop(0.1);

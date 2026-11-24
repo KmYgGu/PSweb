@@ -132,7 +132,7 @@
       for (const o of b.u) { if (o.snPx != null) o.snMoving = Math.hypot(o.x - o.snPx, o.y - o.snPy) > 0.4; o.snPx = o.x; o.snPy = o.y; }
       stepObjs(b, dt);
       for (const u of b.u) { if (!isSans(u) || u.dead) continue; const Z = S_(u);
-        if (Z.sleep > 0) { Z.sleep -= dt; if (Z.sleep <= 0) { Z.st = ST.wake; u.statuses = u.statuses.filter(s => s.id !== 'snSleep' && (STATUS_DEFS[s.id] || {}).positive); b.text(u.x, u.y - 66, '…어, 깼다', '#e0e8ff', 9); } continue; }
+        if (Z.sleep > 0) { Z.sleep -= dt; if (Z.sleep <= 0) { Z.st = ST.wake; b.removeStatuses(u, s => !(s.id !== 'snSleep' && (STATUS_DEFS[s.id] || {}).positive)); b.text(u.x, u.y - 66, '…어, 깼다', '#e0e8ff', 9); } continue; }
         if (!Z.final) Z.st = Math.min(ST.max, Z.st + ST.regen * dt);
         const e = foeOf(b, u); if (!Z.final && !Z.finalDone && e && !e.dead && e.hp < e.maxHp * 0.25 && !u.action && !u.blocked('blocksAct')) startFinal(b, u, e);
       }

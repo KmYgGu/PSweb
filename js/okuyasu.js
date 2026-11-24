@@ -176,7 +176,7 @@
       for (const u of b.u) { if (!u.ok) continue; if (u.okSwing > 0) u.okSwing -= dt;
         const E = u.ok.erase; if (!E) continue;
         if (u.dead || b.over || !b.u.includes(E.H)) { eraseEnd(b, u); continue; }
-        const H = E.H; H.x = E.x; H.y = E.y; H.kx = H.ky = 0; H.action = null; H.push = null; H.pull = null; H.statuses = H.statuses.filter(x => STATUS_DEFS[x.id] && STATUS_DEFS[x.id].positive); H.hp = u.hp; H.maxHp = u.maxHp; // 제자리 고정·체력 동기화
+        const H = E.H; H.x = E.x; H.y = E.y; H.kx = H.ky = 0; H.action = null; H.push = null; H.pull = null; b.removeStatuses(H, x => !(STATUS_DEFS[x.id] && STATUS_DEFS[x.id].positive)); H.hp = u.hp; H.maxHp = u.maxHp; // 제자리 고정·체력 동기화
         E.t += dt; if (Math.random() < dt * (6 + 20 * E.t / E.charge)) b.parts.push({ x: H.x + Math.cos(E.ang) * 16 + rand(-6, 6), y: H.y - 22 + rand(-6, 6), vx: rand(-20, 20), vy: rand(-20, 20), life: 0.4, max: 0.4, color: rand(0, 1) < 0.5 ? BLUE : '#ffffff', size: 2, glow: true });
         if (E.t >= E.charge) { eraseSwing(b, u, E); eraseEnd(b, u); }
       }
